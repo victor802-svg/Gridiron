@@ -4937,6 +4937,32 @@ def combo_legs_words(legs: list) -> str:
     return " · ".join(legs or [])
 
 
+def combo_leg_words(words: str, card: dict) -> str:
+    """One leg of a proposed combo as its card names it: the words of the
+    side it is picked on, then the game it is in -- "under 8.5 total runs ·
+    Rays at Braves", "Chicago covers +1.5 · White Sox at Royals".
+
+    THE PROVER OF PICK-NUMBER STEP B (2026-09-30). A proposal card draws its
+    legs and nothing else -- no row, no game heading above them -- so a leg
+    whose words name no club named no contract: the reasoning pass's
+    baseball combos read "under 8.5 total runs + under 8.5 total runs" three
+    times on the record (two games each, and a worth for both), and a leg
+    naming a city two clubs share ("Chicago covers +1.5", "Los Angeles
+    covers +1.5", "New York covers +1.5") left the club to be guessed. A
+    worth has to stand under the words of the exact contracts it multiplies.
+
+    THE SHAPE A PROP'S PICK LINE ALREADY HAS ("Josh Allen over 245.5 passing
+    yards · Packers at Bills", the card's `matchup`). The game is the row
+    title the board heads that game with, so the leg can be found on the
+    page: "Rays at Braves", or "Hooker vs Parnasse" for a fight, which has no
+    home side; a prop's row title is its player, so a prop takes the
+    matchup. A card with neither keeps its words alone.
+    """
+    game = (card.get("matchup") if card.get("market_type") == "prop"
+            else card.get("row_title"))
+    return f"{words} · {game}" if game else words
+
+
 def combo_margin_words(package_price: float | None,
                        legs_product: float | None) -> str:
     """The venue's package price beside what its own legs multiply to.

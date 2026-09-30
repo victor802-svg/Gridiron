@@ -92,6 +92,45 @@
   a spread tile keeps its bare figure for step A. Five plantings, each
   escaping on 401d059 and caught here. Question 37 stays open (its edge
   part is narrower now: see its prover's note).
+  **STEP B BUILT (2026-09-30, uncommitted for its prover; FOLLOWUPS "A combo
+  is worth the product of its picked sides"):** a proposed combo is worth
+  the product of each leg's number on the side its recommendation buys
+  (`combos.leg_on_its_side`: one minus the proposition's number, at the rest
+  of the dollar, on the no side), its ceiling and singles line are those
+  sides' at those costs, and each leg is named in the words of the side it
+  buys (`views._the_side_bought`, the recommendation line's). On one
+  verified copy (made 11:31Z, deleted 12:24Z): 34 of 35 proposals' worths,
+  ceilings and singles lines moved -- "Rutgers covers -24.5 + Navy covers
+  -6.5" 2% -> "Howard covers +24.5 + Navy covers -6.5" 71.1%; the model's
+  MLB run-line combos 8.7-19.5% -> 34.5-49.5%; NBA's two on today's board
+  32.2% -> 37.9% and 23.0% -> 27.0%; NFL week 3's three 12-18% -> 63-73% --
+  and 8 proposals' words. Gate: `audit.check_every_combo_is_its_picked_sides`
+  (step 2; 259 faults on 8318650's payloads, none here); two plantings,
+  each escaping on 8318650 and caught here; `plant.py` 394/394; the suite
+  2256 passed, 4 skipped. LAW 5's combo clause unchanged. NOT HERE: the line of a spread leg's
+  numbers (12 legs in 7 proposals rung-differs, 37 in 22 off an away
+  contract: finding 2 and question 36, step A).
+  **STEP B PROVED (2026-09-30, its prover, alone in the worktree; one local
+  commit, "A combo is worth the product of its picked sides, each leg named
+  on its picked side"; FOLLOWUPS, the same section, THE PROVER):** the
+  builder's figures hold on a fresh verified copy (made 12:53:33Z, deleted
+  after): 259 faults on 8318650's 44 payloads, none on the build; every
+  leg's worth less its cost and fee is its line's edge. The prover found one
+  more and fixed it: A LEG NAMED NO GAME -- the card draws its legs and
+  nothing around them, so three of the reasoning pass's baseball combos read
+  "under 8.5 total runs + under 8.5 total runs" (MLB 165, 166 twice), ten
+  total legs named no game and seven baseball legs a city two clubs share
+  ("Chicago covers +1.5"); each leg is now its side's words and the game as
+  the board heads its row, "under 8.5 total runs · Rays at Braves"
+  (`language.combo_leg_words`), drawn one to a line with the plus in the
+  muted ink; the check names a leg without its game (324 faults on
+  8318650, 80 on the build as first written, none here); a third planting,
+  `plant_a_combo_leg_that_names_no_game`; `plant.py` 395/395; the suite
+  2258 passed, 4 skipped; gate step 2's touched rows 38/38 on the copy
+  (the copy deleted 13:30:11Z). Read on the render and named for
+  step A: every leg on NFL's current slate is a venue contract's number at
+  another line than its words' ("Chicago covers -15.5" at 86% is Chicago
+  -3.5's; its own is 42%). **Next: step A when Q36 is ruled.**
 
 - **THE ORDER NOW (29 Sep, second set, ~05:40Z;
   docs/briefs/2026-09-29-rulings-second-set.md; wins over every order

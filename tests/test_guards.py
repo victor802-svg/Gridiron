@@ -720,6 +720,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         # the edge figure's side on the Today card and the board's tile.
         "plant_a_results_row_naming_the_other_side",
         "plant_an_edge_on_the_other_side_drawn_as_the_questions",
+        # PICK-NUMBER STEP B (2026-09-30): a proposed combo is worth the
+        # product of its legs' picked sides, each leg named on its side.
+        "plant_a_combo_worth_its_legs_yes_sides",
+        "plant_a_combo_leg_named_on_the_side_it_does_not_buy",
+        # ITS PROVER (2026-09-30): each leg names the game it is in.
+        "plant_a_combo_leg_that_names_no_game",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

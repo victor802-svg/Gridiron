@@ -870,6 +870,14 @@ def step_2_guards() -> bool:
          lambda: [audit.check_every_pick_names_its_side(
                       views.history(_record_conn(), sport=sport, limit=500))
                   for sport in _config().SPORTS] and None),
+        # PICK-NUMBER STEP B (2026-09-30; the queue rule as amended that
+        # day): a proposed combo is worth the product of its legs' picked
+        # sides, its ceiling and singles line are those sides', and each leg
+        # is named on the side it buys. Read on every sport's slate from the
+        # record's copy.
+        ("every proposed combo is its legs' picked sides, each leg named on its side",
+         lambda: [audit.check_every_combo_is_its_picked_sides(_slate_payload(sport))
+                  for sport in _config().SPORTS] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

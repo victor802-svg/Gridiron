@@ -12944,6 +12944,303 @@ _check_the_pick_side_scanner_can_see()
 
 
 # ---------------------------------------------------------------------------
+# A COMBO IS WORTH THE PRODUCT OF ITS PICKED SIDES, EACH LEG NAMED ON ITS
+# PICKED SIDE (pick-number step B, 2026-09-30; the queue rule as amended that
+# day: "anything that could show the operator a wrong number on a pick (side,
+# price, probability, size) joins the queue first, display or not")
+# ---------------------------------------------------------------------------
+#
+# LAW 5's combo clause: the engine proposes combos from legs that each clear
+# the bar alone and computes what the combo is WORTH -- "the product of the
+# legs' corrected probabilities" -- and the highest price worth paying, with
+# the singles alternative on the same money. Finding 1 of the wrong-side
+# fix's builder and prover: `combos.propose` multiplied each leg's
+# `fair_value`, the claim's FIXED proposition's number (the home side, the
+# over), whichever side the leg's recommendation buys, and priced the
+# singles line off the yes price; and `views._proposal_card` named each leg
+# in its QUESTION's words. Measured on one verified copy of the record
+# (2026-09-30, every slate that carried a price, both forecasters): 34 of the
+# 35 proposals had a leg bought on the no side and drew a worth that was not
+# its picked sides' product -- "Rutgers covers -24.5 + Navy covers -6.5" at
+# 2% (the sides bought multiply to 71.1%), 25 baseball combos at 9-20%
+# (34.5-49.5%) -- and 8 named a leg on the side it was not picked on.
+#
+# `combo_side_faults` works each proposal out again from the payload's own
+# numbers: each leg's side from its recommendation line (every leg clears
+# alone, so every leg has one), its number and cost from its question's
+# Today card (the proposition's number and price, turned by which side the
+# question names), its words -- the question's where the side bought is the
+# side the words name, else their other side through the one place
+# (`language.phrase_of_the_other_side`) -- and the worth, the ceiling, the
+# singles line and the group's fee sentence from those sides alone.
+# `check_every_combo_is_its_picked_sides` raises; gate step 2 reads every
+# sport's slate on the record's copy.
+#
+# AND EACH LEG NAMES THE GAME IT IS IN (the prover of step B, 2026-09-30):
+# the card draws its legs and nothing around them, so a leg in its side's
+# words alone named no contract -- "under 8.5 total runs + under 8.5 total
+# runs" on three of the reasoning pass's baseball combos, "Chicago covers
+# +1.5" with two Chicago clubs playing. A leg's words are
+# `language.combo_leg_words` of its side's words and its card, and a leg
+# drawn without its game is named here.
+#
+# NOT HERE (docs/REPAIR_STATE.md and FOLLOWUPS): the LINE a spread leg's
+# numbers belong to where its claim was read at the venue's line and not the
+# question's (pick-number finding 2, step A) or off an away contract at the
+# wrong sign (operator question 36) -- the words keep the question's line,
+# through the same function the recommendation line reads, until step A is
+# ruled; and a venue package's graded legs (`today.combos.graded`), oriented
+# to the side each names since 2026-09-08.
+
+
+def combo_side_faults(payload) -> list[str]:
+    """A proposed combo whose worth, ceiling or singles line is not its legs'
+    picked sides', or a leg named on another side than the one it buys, or
+    without the game it is in."""
+    from . import language as _language, subjects as _subjects
+    from .market import combos as _combos
+
+    payload = payload or {}
+    today = payload.get("today") or {}
+    group = today.get("combos") or {}
+    faults: list[str] = []
+    lines = {x.get("prediction_id"): x
+             for x in (((payload.get("recommendations") or {}).get("lines")) or [])
+             if isinstance(x, dict)}
+    today_cards = {c.get("prediction_id"): c
+                   for name in ("clears", "below_floor", "watching")
+                   for c in (today.get(name) or []) if isinstance(c, dict)}
+    slate = {c.get("prediction_id"): c for c in (payload.get("cards") or [])
+             if isinstance(c, dict)}
+    first_ratio = None
+    for i, proposal in enumerate(group.get("cards") or []):
+        if not isinstance(proposal, dict):
+            continue
+        legs = [leg for leg in (proposal.get("legs") or []) if isinstance(leg, dict)]
+        where = (f"today.combos.cards[{i}] "
+                 f"({' + '.join(str(leg.get('words')) for leg in legs)})")
+        worths, costs = [], []
+        for j, leg in enumerate(legs):
+            pid = leg.get("prediction_id")
+            at = f"{where}, leg {j} (question {pid})"
+            line, card = lines.get(pid), today_cards.get(pid)
+            side = (line or {}).get("side")
+            if side not in ("yes", "no"):
+                faults.append(
+                    f"{at} has no recommendation line on this slate to say which "
+                    f"side it is picked on (side {side!r}): every leg of a "
+                    f"proposed combo clears the bar alone (LAW 5)")
+                continue
+            takes = (card or {}).get("question_takes_the_proposition")
+            fair, price = (card or {}).get("fair_value"), (card or {}).get("price")
+            if (card is None or (takes is not True and takes is not False)
+                    or fair is None or price is None):
+                faults.append(
+                    f"{at}: its Today card cannot say which side is picked "
+                    f"(question_takes_the_proposition {takes!r}, number {fair!r}, "
+                    f"price {price!r})")
+                continue
+            yes = side == "yes"
+            worth = fair if yes else 1.0 - fair
+            cost = price if yes else 1.0 - price
+            if yes == takes:
+                want = card.get("question")
+            else:
+                try:
+                    want = _language.phrase_of_the_other_side(slate.get(pid) or {})
+                except (_subjects.UnplaceableSide, ValueError, TypeError, KeyError) as exc:
+                    faults.append(f"{at}: the side it buys cannot be put in words: {exc}")
+                    continue
+            # AND THE GAME IT IS IN (the prover of step B, 2026-09-30): the
+            # card draws the leg with nothing around it, so the side's words
+            # alone -- "under 8.5 total runs" -- named no contract.
+            named = _language.combo_leg_words(want, slate.get(pid) or {})
+            if leg.get("words") == want and named != want:
+                faults.append(
+                    f"{at} is named {leg.get('words')!r} without the game it is in, "
+                    f"where it is picked on {named!r}: the card draws nothing "
+                    f"else, so two legs can read alike and a worth names no "
+                    f"contract (the prover of pick-number step B)")
+            elif leg.get("words") != named:
+                faults.append(
+                    f"{at} is named {leg.get('words')!r} where it is picked on "
+                    f"{named!r}, the {side} side of its claim: a leg named on the "
+                    f"side it does not buy (pick-number finding 1)")
+            if "side_words" in leg and leg.get("side_words") != want:
+                faults.append(
+                    f"{at} says its side is {leg.get('side_words')!r} where it is "
+                    f"picked on {want!r}, the {side} side of its claim")
+            if leg.get("fair_cents") != round(worth * 100):
+                faults.append(
+                    f"{at} states {leg.get('fair_cents')!r}c for {want!r}, whose "
+                    f"model number is {round(worth, 4)!r} (pick-number finding 1)")
+            if "side" in leg and leg.get("side") != side:
+                faults.append(f"{at} says it is bought on the {leg.get('side')!r} "
+                              f"side where its recommendation buys the {side!r} side")
+            for key, want_number in (("worth", worth), ("cost", cost)):
+                if key in leg and (leg.get(key) is None
+                                   or abs(leg[key] - want_number) > 1e-9):
+                    faults.append(
+                        f"{at} carries {key} {leg.get(key)!r} where the side it "
+                        f"buys, {want!r}, is {round(want_number, 4)!r}")
+            worths.append(worth)
+            costs.append(cost)
+        if len(worths) != len(legs) or not legs:
+            continue
+        product = _combos.fair_value(worths)
+        got = proposal.get("fair")
+        if got is None or product is None or abs(got - product) > 1e-6:
+            faults.append(
+                f"{where} is worth {got!r} where its legs' picked sides multiply "
+                f"to {product!r}: the product of another side's numbers "
+                f"(pick-number finding 1; LAW 5: the product of the legs' "
+                f"corrected probabilities)")
+        if proposal.get("fair_words") != _language.price_chip_words(product * 100):
+            faults.append(
+                f"{where} draws {proposal.get('fair_words')!r} where its picked "
+                f"sides are worth {_language.price_chip_words(product * 100)!r}")
+        ceiling = _combos.price_ceiling(product)
+        if (proposal.get("ceiling_cents") != ceiling["ceiling_cents"]
+                or proposal.get("ceiling_words")
+                != _language.combo_ceiling_words(ceiling["ceiling_cents"])):
+            faults.append(
+                f"{where} says {proposal.get('ceiling_words')!r} where a combo "
+                f"worth its picked sides' {product!r} is worth taking below "
+                f"{ceiling['ceiling_cents']!r}c (pick-number finding 1)")
+        singles = _combos.singles_alternative(costs, worths)
+        if (proposal.get("singles_words") != _language.combo_singles_words(singles)
+                or proposal.get("fee_ratio") != singles.get("ratio")):
+            faults.append(
+                f"{where} says {proposal.get('singles_words')!r} (fee ratio "
+                f"{proposal.get('fee_ratio')!r}) where its picked sides at what "
+                f"each costs say {_language.combo_singles_words(singles)!r} "
+                f"({singles.get('ratio')!r}): the singles line on another "
+                f"side's prices (pick-number finding 1)")
+        if i == 0:
+            first_ratio = singles.get("ratio")
+    if (group.get("cards") and group.get("fee_words") is not None
+            and group.get("fee_words") != _language.combo_fee_words(first_ratio)):
+        faults.append(
+            f"today.combos says {group.get('fee_words')!r} where its first "
+            f"combo's picked sides give {_language.combo_fee_words(first_ratio)!r}")
+    return faults
+
+
+def check_every_combo_is_its_picked_sides(payload) -> None:
+    faults = combo_side_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A PROPOSED COMBO STATES ANOTHER SIDE'S NUMBER OR NAMES A LEG ON "
+            "ANOTHER SIDE (a combo is worth the product of its legs' picked "
+            "sides, each leg named on the side it is picked on; pick-number "
+            "step B, 2026-09-30):" + _NL2 + _NL2.join(faults[:8]))
+
+
+#: One slate in the payload's own shape, as step B leaves it: two baseball
+#: moneylines whose questions name the away side. Question 1, "BBB to win",
+#: is bought on the side its words name (the claim's no side: 57% at 51.5c);
+#: question 2, "DDD to win", is bought on the other side of its words (the
+#: claim's yes side, CCC: 43% at 30c), as recs 47 and 82 were.
+COMBO_SIDE_FIXTURE_GOOD = {
+    "forecaster": "statistical",
+    "cards": [
+        {"prediction_id": 1, "sport": "mlb", "market_type": "moneyline",
+         "subject": "BBB", "opponent": "AAA", "line_asked": None,
+         "model_side": "win", "phrase": "BBB to win",
+         "row_title": "BBB at AAA", "matchup": "BBB at AAA"},
+        {"prediction_id": 2, "sport": "mlb", "market_type": "moneyline",
+         "subject": "DDD", "opponent": "CCC", "line_asked": None,
+         "model_side": "win", "phrase": "DDD to win",
+         "row_title": "DDD at CCC", "matchup": "DDD at CCC"}],
+    "today": {
+        "clears": [
+            {"prediction_id": 1, "state": "upcoming", "question": "BBB to win",
+             "fair_value": 0.43, "price": 0.485,
+             "question_takes_the_proposition": False},
+            {"prediction_id": 2, "state": "upcoming", "question": "DDD to win",
+             "fair_value": 0.43, "price": 0.30,
+             "question_takes_the_proposition": False}],
+        "combos": {
+            "fee_words": ("The fee at package prices is about 1.2 times the "
+                          "singles' rate per dollar, and every card prints both."),
+            "cards": [{
+                "leg_ids": [1, 2], "sport": "mlb",
+                "legs": [
+                    {"prediction_id": 1, "game_id": "g1",
+                     "words": "BBB to win · BBB at AAA", "side_words": "BBB to win",
+                     "side": "no", "worth": 0.57, "cost": 0.515, "fair_cents": 57,
+                     "market": "moneyline"},
+                    {"prediction_id": 2, "game_id": "g2",
+                     "words": "CCC to win · DDD at CCC", "side_words": "CCC to win",
+                     "side": "yes", "worth": 0.43, "cost": 0.30, "fair_cents": 43,
+                     "market": "moneyline"}],
+                "fair": 0.2451, "fair_words": "25¢",
+                "ceiling_cents": 21, "ceiling_words": "worth taking only below 21¢",
+                "singles_words": ("as singles: +7.2¢ a leg, fee 5.3% · as one "
+                                  "package: fee 6.5%"),
+                "fee_ratio": 1.23}]}},
+    "recommendations": {"lines": [
+        {"prediction_id": 1, "side": "no", "side_words": "BBB to win",
+         "fair_value": 0.57, "price": 0.515},
+        {"prediction_id": 2, "side": "yes", "side_words": "CCC to win",
+         "fair_value": 0.43, "price": 0.30}]},
+}
+
+
+def _combo_side_fixture(**changes):
+    """COMBO_SIDE_FIXTURE_GOOD with one place put back as it was released."""
+    out = json.loads(json.dumps(COMBO_SIDE_FIXTURE_GOOD))
+    card = out["today"]["combos"]["cards"][0]
+    for leg_index, fields in (changes.get("legs") or {}).items():
+        card["legs"][leg_index].update(fields)
+    card.update(changes.get("card") or {})
+    return out
+
+
+#: THE RELEASED SHAPES (8318650): the worth the product of each leg's
+#: yes-side number (0.43 x 0.43 where the sides bought give 0.57 x 0.43), the
+#: ceiling and the singles line worked out from the yes sides, a leg's number
+#: the proposition's, and a leg bought on the other side of its words named
+#: in its question's words -- and, from the prover of step B (2026-09-30), a
+#: leg named in its side's words alone, without the game it is in.
+COMBO_SIDE_FIXTURES_AS_RELEASED = {
+    "the worth the product of each leg's yes-side number (finding 1)":
+        {"card": {"fair": 0.1849, "fair_words": "18¢"}},
+    "the ceiling worked out from the yes sides' product (finding 1)":
+        {"card": {"ceiling_cents": 16, "ceiling_words": "worth taking only below 16¢"}},
+    "the singles line priced off the yes price (finding 1)":
+        {"card": {"singles_words": ("as singles: +1.8¢ a leg, fee 5.4% · as one "
+                                    "package: fee 6.9%"), "fee_ratio": 1.27}},
+    "a no-side leg stating the proposition's number (finding 1)":
+        {"legs": {0: {"fair_cents": 43}}},
+    "a leg bought on the other side named in its question's words (finding 1)":
+        {"legs": {1: {"words": "DDD to win"}}},
+    "the same, with its game named (finding 1)":
+        {"legs": {1: {"words": "DDD to win · DDD at CCC"}}},
+    # THE PROVER OF STEP B (2026-09-30): the leg in the words of its side
+    # alone, as the build first drew it -- "under 8.5 total runs" twice on
+    # one card named no contract.
+    "a leg named without the game it is in (the prover of step B)":
+        {"legs": {0: {"words": "BBB to win"}}},
+}
+
+
+def _check_the_combo_side_scanner_can_see() -> None:
+    problems = []
+    if combo_side_faults(COMBO_SIDE_FIXTURE_GOOD):
+        problems.append("combo_side_faults refuses the slate as step B leaves "
+                        "it: " + combo_side_faults(COMBO_SIDE_FIXTURE_GOOD)[0])
+    for name, change in COMBO_SIDE_FIXTURES_AS_RELEASED.items():
+        if not combo_side_faults(_combo_side_fixture(**change)):
+            problems.append(f"combo_side_faults passes {name}")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_combo_side_scanner_can_see()
+
+
+# ---------------------------------------------------------------------------
 # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
 # 2026-09-29, docs/briefs/2026-09-29-player-numbers.md)
 # ---------------------------------------------------------------------------

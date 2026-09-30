@@ -2540,6 +2540,12 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 /* TWO OR THREE LEGS WRAP. The single card's band holds two club names and
    never needs to; a package's legs are whole propositions and do. */
 .combo-legs { flex-wrap: wrap; row-gap: 6px; }
+/* A PROPOSED COMBO'S LEGS, ONE TO A LINE (the prover of pick-number step B,
+   2026-09-30). Each leg names the game it is in now ("under 8.5 total runs ·
+   Rays at Braves"), so a leg is a whole phrase; and the plus between two legs
+   had no rule at all, so it sat against both ("LAD to win+BOS to win"). */
+.combo-face .face-head { display: flex; flex-direction: column; gap: 2px; }
+.combo-face .combo-and { color: var(--muted); }
 .combo-margin,
 .combo-singles {
   margin: 0.3rem 0 0;

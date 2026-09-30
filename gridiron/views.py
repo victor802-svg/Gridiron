@@ -2239,18 +2239,21 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
     # stays, as `graded`, because those rare series do carry a public price.
     label = language.SPORT_LABELS.get(sport, (sport or "").upper())
     # A LEG ON A SIDE THAT CANNOT BE PLACED IS REFUSED, NOT PROPOSED (the
-    # ruling of 2026-09-30): a proposal states each leg's worth under that
-    # leg's question, so a leg whose question's side cannot be placed has no
-    # number that could stand there. The API answers 500 and names it.
+    # ruling of 2026-09-30): a proposal states each leg's worth under the
+    # words of the side it buys, which are its question's words or their
+    # other side according to which side the question names (step B, the
+    # same day), so a leg whose question's side cannot be placed has no words
+    # its number could stand under. The API answers 500 and names it.
     for entry in priced:
         if entry.get("side") is not None and entry.get("fair_value") is not None:
             _on_the_question(entry["fair_value"],
                              entry.get("question_takes_the_proposition"),
                              what="a combo leg's worth", entry=entry,
                              card=by_id.get(entry["prediction_id"]) or {})
+    entries = {e["prediction_id"]: e for e in priced}
     proposals = [
         _proposal_card(p, unit_dollars=unit_dollars, names=names,
-                       colours=colours, by_id=by_id)
+                       colours=colours, by_id=by_id, entries=entries)
         for p in _combos.propose(priced, sport=sport)
     ] if sport else []
     return {
@@ -2275,7 +2278,8 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
 
 
 def _proposal_card(proposal: dict, *, unit_dollars: float | None,
-                   names: dict, colours: dict, by_id: dict) -> dict:
+                   names: dict, colours: dict, by_id: dict,
+                   entries: dict) -> dict:
     """One combo the app puts forward: what it is worth, and the ceiling.
 
     NO VENUE PRICE, NO EDGE, NO PAYOUT CHIP, and their absence is the point.
@@ -2284,19 +2288,52 @@ def _proposal_card(proposal: dict, *, unit_dollars: float | None,
     carries instead is the fair value, the highest price worth paying, and the
     same singles alternative every package card has printed since the group
     shipped.
+
+    EACH LEG IS NAMED ON THE SIDE IT IS PICKED ON (pick-number step B,
+    2026-09-30). A leg was labelled with its QUESTION's words -- the side
+    the model took -- while its recommendation can buy the other side of
+    those words (the price made the other side the one worth buying): on the
+    record, 8 of 35 proposals drew such a leg, e.g. "Rutgers covers -24.5"
+    for a leg bought as Howard +24.5 and "Washington covers +1.5" for one
+    bought as Detroit -1.5. The words are the side bought's, from the one
+    function the recommendation line reads (`_the_side_bought`), and the
+    numbers are that side's (`combos.leg_on_its_side`). AND EACH LEG NAMES
+    THE GAME IT IS IN (its prover, the same day): the card draws nothing
+    else, so "under 8.5 total runs + under 8.5 total runs" (three of the
+    reasoning pass's baseball combos) named no contract
+    (`language.combo_leg_words`).
+
+    THE LINE IS NOT CHANGED HERE: where a spread's claim was read at the
+    venue's line and not the question's (pick-number finding 2, operator
+    question 36), the words keep the question's line until step A is ruled,
+    through the same function.
     """
     from .market import combos as _combos
 
     legs = []
     for leg in proposal["legs"]:
         card = by_id.get(leg["prediction_id"]) or {}
-        club = (card.get("phrase") or card.get("row_title")
-                or leg.get("market") or "")
+        # THE SIDE THE LEG BUYS, IN ITS OWN WORDS (2026-09-30, step B). This
+        # was `card["phrase"]`, the question's words, whichever side was
+        # bought. Every leg is one of `priced`'s entries (`propose` reads
+        # nothing else), so a leg with none is a fault, not a guess.
+        side_words = _the_side_bought(entries[leg["prediction_id"]], card)["words"]
         legs.append({
             "prediction_id": leg["prediction_id"],
             "game_id": leg["game_id"],
-            "words": club,
-            "fair_cents": round((leg["fair_value"] or 0) * 100),
+            # AND THE GAME IT IS IN (the prover of step B, the same day): the
+            # card draws its legs with nothing around them, so "under 8.5
+            # total runs" twice named no contract, and "Chicago covers +1.5"
+            # left the club to be guessed (`language.combo_leg_words`).
+            "words": language.combo_leg_words(side_words, card),
+            "side_words": side_words,
+            # THE SIDE'S NUMBER AND WHAT IT COSTS, which the combo's worth
+            # multiplies and its singles line prices (payload only; the card
+            # draws the worth and the ceiling).
+            "side": leg.get("side"),
+            "worth": leg.get("worth"),
+            "cost": leg.get("cost"),
+            "fair_cents": round((leg.get("worth") or 0) * 100),
             "market": leg.get("market"),
         })
     size = _combos.size_for(len(legs), settled=0,

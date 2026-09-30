@@ -10817,3 +10817,326 @@ contacted, nothing run from the main checkout.
   unit today.
 - rec 111's tile edge "+22.5¢" and every rung-differs spread figure: finding
   2, step A.
+
+## A combo is worth the product of its picked sides, each leg named on its picked side -- built 2026-09-30 *(pick-number step B; the queue rule as amended on 30 September, docs/briefs/2026-09-30-rulings.md; uncommitted for its prover)*
+
+The reading taken (docs/REPAIR_STATE.md, the conservative default): a number
+on a pick is always stated under the words of the exact contract it belongs
+to -- its line and its side. Step B is finding 1 of the wrong-side fix's
+builder and prover (above, "PICK-NUMBER FINDINGS"). Step A (the line) stopped
+on operator question 36; nothing here changes which line or contract a spread
+claim's price belongs to, `at_the_line.home_view_line`, the claim writer, or
+how a spread row draws a priced number. LAW 5's combo clause is unchanged:
+proposed, never priced at the venue, a same-game combo refused.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, started 2026-09-30T11:31:49Z, finished 11:32:35Z: 1,092,984,832 bytes, integrity ok, 64 tables, none mismatched; read with `db.read_only`; both trees -- the `git archive` of 8318650 and this one -- built every sport's current slate and all 17 slates that carried a price at the line, both forecasters, the clock held at 11:31:49Z; `scratchpad/picknum/B/measure_combos.py` -> `m_head.json`, `m_fix.json`; `summarise.py`, `before_after.py` -> `before_after.txt`; deleted after -- see PROVED)*
+
+35 proposals on the record's priced slates (CFB 4, MLB 26, NBA 2, NFL 3;
+30 the statistical model's, 5 the reasoning pass's). 34 had a leg bought on
+the claim's no side, and all 34 were drawn at a worth that was not the
+product of the sides their legs' recommendations buy; 8 named a leg on the
+other side of the one it is picked on. The one proposal already right in
+its worth (MLB 1812 + 1819, both legs on the yes side) named its Detroit -1.5
+leg "Washington covers +1.5" (rec 82's question).
+
+### BUILT
+
+- **The leg as the contract it is picked on.** `combos.leg_on_its_side` is
+  the one place: the side of the claim's proposition the leg buys, the
+  model's number for that side (the entry's `fair_value` on the yes side,
+  one minus it on the no side) and what one contract of that side costs
+  (`recommend._cost_of`: the yes price, or the rest of the dollar), so the
+  leg's worth less its cost and the fee on it is its own `edge_cents`. A
+  side that is neither is refused by name (`ValueError`).
+- **The proposal.** `combos.propose` multiplies those numbers
+  (`fair_value`), works the ceiling out from the product (`price_ceiling`)
+  and prices the singles line on those sides at those costs
+  (`singles_alternative`). Each leg carries `side`, `worth` and `cost`; the
+  proposition's own number and price are no leg's. The pairing, the order
+  (the legs' own edge), the per-sport limit, "no leg reused" and "different
+  games" are as they were.
+- **The words.** `views._proposal_card` names each leg through
+  `views._the_side_bought`, the function the recommendation line reads
+  (step C): the question's words where the side bought is the side they
+  name, else `language.phrase_of_the_other_side` through the one place. Its
+  `fair_cents` is the side's number; `side`, `worth` and `cost` travel on the
+  leg (payload only; the card draws the words, the worth and the ceiling).
+- **The gate.** `audit.combo_side_faults` works each proposal out again from
+  the payload: each leg's side from its recommendation line (every leg clears
+  the bar alone, so every leg has one; a leg without one is named), its number
+  and cost from its question's Today card turned by the card's own
+  `question_takes_the_proposition`, its words, `fair_cents`, `side`, `worth`
+  and `cost`; the combo's worth, its chip's words, the ceiling (cents and
+  words), the singles line and fee ratio, and the group's fee sentence, from
+  those sides alone. `audit.check_every_combo_is_its_picked_sides` raises,
+  in gate step 2 on every sport's slate (the record's copy). Its fixtures
+  (`COMBO_SIDE_FIXTURE_GOOD`, five `COMBO_SIDE_FIXTURES_AS_RELEASED`) are held
+  at import.
+- **Tests:** `tests/test_combo_sides.py`, 11. Nine fail on 8318650's package
+  (run there with this module copied in): the leg on its side (and its edge
+  its own), a side that is neither refused, the product of the picked sides
+  with its ceiling and singles line (the singles edge the legs' own edges),
+  the page on the sides bought (0.57 x 0.57 = 32%, where it drew 18%), each
+  leg named on the side it buys (in its recommendation line's words), each
+  released shape of the page named, the fixtures, a leg with no
+  recommendation line, and the gate's call. Two hold what was right and pass
+  on both: a yes-side leg keeps its numbers, and the combo clause (a
+  same-game pair refused on any sides; no venue price, edge or payout).
+- **Plantings** (`tools/guards/plant.py`, in `main()` and in
+  `tests/test_guards.py`'s list; `LAW_THE_COMBO_IS_ITS_PICKED_SIDES`):
+  `plant_a_combo_worth_its_legs_yes_sides` (the worth, the ceiling, the
+  singles line and a leg's number of the yes sides; the gate's step 2 making
+  the call) and `plant_a_combo_leg_named_on_the_side_it_does_not_buy`.
+
+### EVERY PROPOSAL, BEFORE AND AFTER *(8318650 -> this tree; "below" is the ceiling; `before_after.txt`)*
+
+34 worths, 34 ceilings and 34 singles lines moved; 8 proposals' words moved.
+`combo_side_faults` names 259 faults on the 44 payloads 8318650 builds (40
+proposal cards drawn, the current slates repeating their week's) and none on
+this tree's.
+
+- CFB 25 Sep (model): "Rutgers covers -24.5 + Navy covers -6.5" 2.3%, below
+  1¢ -> "Howard covers +24.5 + Navy covers -6.5" 71.1%, below 65¢.
+- CFB 25 Sep (model): "California covers +6.5 + Army covers +0.5" 14.3%,
+  below 12¢ -> "Clemson covers -6.5 + Army covers +0.5" 38.0%, below 34¢.
+- CFB 26 Sep (model): "Florida International covers -14.5 + Texas A&M covers
+  +0.5" 3.8%, below 2¢ -> "Long Island University covers +14.5 + Texas A&M
+  covers +0.5" 62.8%, below 57¢.
+- CFB 26 Sep (model): "North Texas covers -41.5 + Buffalo covers -24.5"
+  24.8%, below 21¢ -> "North Texas covers -41.5 + Robert Morris covers
+  +24.5" 31.2%, below 27¢.
+- MLB, the model's 22 run-line and mixed combos (days 164-183), words
+  unchanged but for one: 8.7-19.5% -> 34.5-49.5%, ceilings 7-17¢ -> 30-45¢
+  (e.g. day 180 "Chicago covers +1.5 + New York covers +1.5" 8.7%, below 7¢
+  -> 49.5%, below 45¢); day 178 "over 7.5 total runs + Washington covers
+  +1.5" -> "over 7.5 total runs + Detroit covers -1.5", 22.8% and below 19¢
+  unchanged (both legs on the yes side).
+- MLB, the reasoning pass's four "under ... total runs" combos (days 165,
+  166, 166, 178): 14.4-16.8% -> 34.8-38.4%, ceilings 12-15¢ -> 31-34¢.
+- NBA day 1 (drawn on today's board): the model's "Detroit to win +
+  Philadelphia to win" 32.2%, below 28¢ -> 37.9%, below 34¢; the reasoning
+  pass's "Philadelphia to win + Boston to win" 23.0%, below 20¢ -> 27.0%,
+  below 23¢.
+- NFL week 3 (the model; the current slate): "Minnesota covers -7.5 +
+  Atlanta covers +15.5" 17.2%, below 15¢ -> "Minnesota covers -7.5 + Green
+  Bay covers -15.5" 62.8%, below 57¢; "Las Vegas covers +15.5 + Pittsburgh
+  covers +7.5" 17.9%, below 16¢ -> "New Orleans covers -15.5 + Cincinnati
+  covers -7.5" 66.3%, below 61¢; "Philadelphia covers +15.5 + WAS covers
+  +7.5" 12.5%, below 10¢ -> "Chicago covers -15.5 + Seattle covers -7.5"
+  73.2%, below 67¢.
+
+### READINGS TAKEN *(the conservative default)*
+
+- **"The picked side"** of a leg is the side its recommendation buys (the
+  entry's `side`), the side the leg's number, cost and edge were chosen on.
+- **"Named in the words of the side it is picked on"**: the words the
+  recommendation line uses for the side it buys (step C's
+  `_the_side_bought`), so a combo leg and its line never say two things.
+  Question 37 asks which contract a BOARD ROW headlines; a combo leg is the
+  contract bought by the step's own words, and no row changes here.
+- **The line** stays the question's, as on the recommendation line: step A's.
+
+### NOT HERE, AND NAMED
+
+- **The line a spread leg's numbers belong to (finding 2, operator question
+  36; step A).** Of the 56 spread legs, 12 in 7 proposals were priced at the
+  venue's line where it is not the question's -- CFB 2484 (claim -41.5,
+  question -24.5: "Howard covers +24.5" at 88.6% is Howard +41.5's number),
+  2502, 2478, 2808, 2874, 2898, 2744; NFL 2325, 2305, 2328, 2309, 2332 -- and
+  37 in 22 proposals were priced off an away contract read at the wrong sign
+  (question 36: the model's number at one line, the cost at its mirror; 30
+  MLB run-line legs, CFB 2490, 2502, 2478, NFL 2325, 2309, 2332, 2319). Their words keep the question's line, through the
+  function the recommendation line reads, and their worth multiplies the
+  numbers the claims carry; step A settles both.
+- **A venue package's graded legs** (`today.combos.graded`, `views._leg_reading`):
+  oriented to the side each venue leg names since 2026-09-08, and not
+  touched.
+- **SEEN, NOT THIS STEP'S (display, not a number):** the proposal card's legs
+  are drawn "LAD to win+BOS to win" -- `.combo-and` has no rule in the
+  stylesheet, so the "+" sits against both legs (on 8318650 too; the render
+  below). *(Fixed by its prover, below: the legs one to a line.)*
+
+### THE RENDER *(a scratch world -- two baseball moneylines, "BOS to win" bought on the side its words name at 48.5c, "SF to win" bought as LAD at 30c -- served by the test server on a free local port with a dummy token, never the live app on 8848; Chromium at 1100px and 390px; `scratchpad/picknum/B/render_combos.py`, `render/`)*
+
+On 8318650 the card read "SF to win+BOS to win · MODEL 18¢ · PAY BELOW worth
+taking only below 16¢ · as singles: +1.8¢ a leg, fee 5.4% · as one package:
+fee 6.9%"; on this tree "LAD to win+BOS to win · 25¢ · worth taking only
+below 21¢ · as singles: +7.2¢ a leg, fee 5.3% · as one package: fee 6.5%", and
+the group's fee sentence "about 1.2 times" where it said 1.3. No page error,
+no sideways scroll at either width; the words read.
+
+### PROVED *(`scratchpad/picknum/B/`)*
+
+- The two plantings, run alone by this tree's `plant.py` against the `git
+  archive` of 8318650 (`headp/`, `run_plantings.py` -> `escape_on_head.txt`):
+  both ESCAPE -- "the shipped combo is worth 0.1849 where its legs' picked
+  sides (BBB and DDD, 57% each) multiply to 0.3249 | ... the gate has no
+  check that a combo is its legs' picked sides | the gate's step 2 does not
+  call ..."; "the shipped combo names ['BBB to win', 'DDD to win'] worth
+  0.1849, where its legs are bought as BBB to win (57%) and CCC to win (43%)
+  | ..." -- and both are CAUGHT on this tree (`caught_on_fix.txt`).
+- `tests/test_combo_sides.py` on 8318650's package: 9 of 11 fail (the two
+  that hold what was right pass on both).
+- Gate step 2's touched rows, dry-run with GRIDIRON_VERIFYING set on the
+  copy (`step2_dry.py`, step C's prover's shape; not verify.py whole): 26 of
+  26 pass, the new combo row among them (8.6s), with the orphan, docstring,
+  side, prose, plain-words, LAW 5 and scan rows; `prose_reaching_the_raw_side()`
+  is empty.
+- `plant.py` whole: 394/394 caught (392 and these two), "Every law has a
+  guard, and every guard has now fired at least once", exit 0
+  (`plant_all.txt`). The full suite, a dummy non-secret token, TMP/TEMP at
+  their defaults: 2256 passed, 4 skipped, exit 0 (`suite.txt`; 2245 and this
+  module's 11; again on the tree as left, `suite_final.txt`, the same); the
+  only line under "tests that reached the network" is the network guard's
+  own self-test.
+- The one copy of the record was deleted at 2026-09-30T12:24:12Z (it had no
+  -wal or -shm left). The measurements read it with `db.read_only`; the
+  step-2 dry run read it through the gate's own handle on its copy. Nothing
+  was written to the record; no network, no real token, the live app never
+  contacted, nothing run from the main checkout.
+
+### THE PROVER *(2026-09-30, alone in the worktree; ONE verified copy of the record through `rebuild.verified_backup`, started 12:53:33Z, finished 12:54:20Z -- 1,092,984,832 bytes, integrity ok, 64 tables, none mismatched -- read with `db.read_only`, except where the test server took its sign-in rows; deleted after, below; scripts and outputs in `scratchpad/picknum/B/prover/`)*
+
+**The builder's claims, checked on the copy.** A fresh `git archive` of
+8318650 and the build as left each built the 44 payloads again, WHOLE (every
+sport's current slate and the 17 slates that carried a price, both
+forecasters, the clock held at 12:53:33Z; `dump_payloads.py`, `analyse.py`):
+40 proposal cards, 35 distinct; `combo_side_faults` 259 faults on HEAD's and
+none on the build's; on every one of the 80 legs the worth less its cost and
+the fee on it is its recommendation line's edge to the cent; `pick_side_faults`
+and `board_price_side_faults` empty on both; the before/after list above is
+what the copy gives. The builder's two plantings escape on HEAD and are
+caught; 9 of its 11 tests fail on HEAD. Every sport, market and forecaster
+the record proposes from was read (legs: 62 spreads, 10 totals, 8
+moneylines; MLB, NFL, NBA, college football; both forecasters; no prop or
+fight leg on the record -- a prop's and a fight's other side's words were read
+for every stored spelling, `probe_other_side.py`, and none refuses).
+
+**FOUND AND FIXED: A LEG NAMED NO GAME.** The proposal card draws its legs
+and nothing around them -- no row, no game heading, no club colour -- and
+the build named each leg in the words of the side it buys and nothing more
+(8318650: its question's words, nothing more). On the copy:
+
+- THREE PROPOSALS WHOSE TWO LEGS READ ALIKE, each with one worth for two
+  contracts nobody could tell apart: the reasoning pass's "under 8.5 total
+  runs + under 8.5 total runs" on MLB 165 (Rays at Braves, Astros at
+  Phillies; 36.0%) and twice on MLB 166 (Diamondbacks at Royals and Twins at
+  Tigers, 38.4%; Pirates at White Sox and Nationals at Padres, 34.8%) --
+  drawn so on the 390px and 1300px renders of both HEAD and the build.
+- TEN TOTAL LEGS IN SIX PROPOSALS named no game at all ("over 7.5 total
+  runs", "under 7.5 total runs"), and SEVEN BASEBALL LEGS IN SIX PROPOSALS
+  named a city two clubs share -- "Chicago covers +1.5" (the White Sox, the
+  Cubs), "Los Angeles covers +1.5" (the Angels), "New York covers +1.5" (the
+  Mets) -- where the club had to be guessed: MLB 165, 166, 180 (three), 181,
+  182. A fight's distance or rounds leg would name no fight in the same way.
+
+A worth has to stand under the words of the exact contracts it multiplies,
+and these named none: the reading covers it. BUILT: `language.combo_leg_words`
+-- a leg is its side's words and the game it is in, "under 8.5 total runs ·
+Rays at Braves", the shape a prop's pick line already had ("Josh Allen over
+245.5 passing yards · Packers at Bills"): the game as the board heads that
+game's row ("Hooker vs Parnasse" for a fight, which has no home side), and a
+prop's matchup, since a prop's row title is its player. `_proposal_card`
+draws it; the side's words alone travel as `side_words` (payload). The card
+draws its legs ONE TO A LINE, the plus between them in the muted ink
+(`.combo-face .face-head`, `.combo-face .combo-and`): the plus had no rule and
+sat against both legs ("LAD to win+BOS to win", on 8318650 too), and a leg
+naming its game is a whole phrase. HELD: `combo_side_faults` works the words
+out as `combo_leg_words` of the side's words and the slate's card, names a leg
+drawn in its side's words alone ("without the game it is in") and a leg whose
+`side_words` are another side's; the fixture's cards carry their row titles
+and two more released shapes are held at import (the leg without its game,
+and the other side's words with the game named). Planted:
+`plant_a_combo_leg_that_names_no_game` (two unders on two games; the shipped
+legs, and the planted ones in their sides' words alone). Tests:
+`test_combo_sides.py::test_each_leg_names_the_game_it_is_in` (a totals
+world: the two legs differ, each ending in its row's title, the check names
+both planted legs) and `::test_a_leg_names_its_game_by_the_rows_title_or_a_props_matchup`.
+On the copy: `combo_side_faults` names 324 faults on HEAD's 44 payloads, 80
+on the build as first written (every leg of its 40 cards) and none on this
+tree's; no proposal's legs read alike (`words_before_after.txt` has every
+proposal's words before and after).
+
+**THE RENDER** *(the copy served by the test server on a free local port,
+the named tree's app -- this tree's, and HEAD's from its archive -- a dummy
+non-secret token, never the live app on 8848; Chromium at 1300px and 390px,
+the panel and each card centred; `render.py`, `render_fix/`,
+`render_head/`)*: the Combos panel on NBA's current slate (drawn on the board
+today: "Detroit to win · Celtics at Pistons + Philadelphia to win · 76ers at
+Knicks · 38¢ · worth taking only below 34¢"), MLB 166's reasoning pass ("under
+8.5 total runs · Diamondbacks at Royals + under 8.5 total runs · Twins at
+Tigers · 38¢ · below 34¢", where HEAD drew "under 8.5 total runs+under 8.5
+total runs · 14¢ · below 12¢ · as singles: -15.5¢ a leg"), college football
+25 September ("Howard covers +24.5 · Howard Bison at Rutgers Scarlet Knights +
+Navy covers -6.5 · Navy Midshipmen at UAB Blazers · 71¢ · below 65¢", where
+HEAD drew "Rutgers covers -24.5+Navy covers -6.5 · 2¢ · below 1¢"), and NFL's
+current slate. No page error, no sideways scroll at either width; the legs
+one to a line, a college leg wrapping to two lines at 390px inside the card.
+Read: every leg names its game and the side it buys, and every worth, ceiling
+and singles line is those sides'.
+
+**READ ON THE RENDER, STEP A'S (named, not changed here; `probe_nfl.py`):**
+every leg on NFL's current slate is a number of the venue's contract at
+ANOTHER line than its words'. "Chicago covers -15.5 · Eagles at Bears" at 86%
+is Chicago -3.5's number (the claim was read at -3.5; and it was priced off
+an away contract, so by question 36 its 52.5¢ is about +3.5); the model's
+own number for Chicago -15.5 is 42% (its question,
+"Philadelphia covers +15.5", 58%). The same for "New Orleans covers -15.5"
+at 84% (New Orleans -3.5's; its own 32%), "Green Bay covers -15.5" at 80%
+(-4.5's; 35%), "Seattle covers -7.5" at 85% (Seattle +7.5's; 45%),
+"Cincinnati covers -7.5" at 79% (+3.5's; 40%) and "Minnesota covers -7.5" at
+79% (+1.5's; 50%). The worths (63-73%) multiply the numbers the claims
+carry, on the sides the recommendations buy; the words carry the question's
+line. 8318650 drew
+"Philadelphia covers +15.5" beside Chicago -3.5's 86% and "WAS covers +7.5"
+beside WAS -7.5's 15% -- the side and the line both another contract's.
+Which line a spread leg's numbers belong to is step A's (finding 2, and
+operator question 36 for the four of these off an away contract), as the
+builder named; the reading's "the pick names the VENUE's contract" is not
+applied to a leg here for that reason. Those games are final.
+
+**SEEN, NOT FIXED (named; none is a number on a pick of this step's):**
+- The taken rail names a total the same way ("under 8.5 total runs · +11.5¢
+  when marked", `language.taken_entry_words`): no game. Nothing is taken on
+  the record, so nothing is drawn; and the rail's edge on a recommendation
+  that buys the other side of its words is question 37's.
+- At 390px the sport tabs' records run into the next tab's name ("NFL
+  193-119MLB", "577-195UFC": each button's text 1-3px wider than the
+  button), on 8318650 too (`render_head/top-390.png`). The header, not a
+  pick.
+- A doubleheader's two games are two games with one title; a combo of their
+  two unders would read alike again (none on the record).
+- The combos panel proposes on finished games (NFL week 3, the current
+  slate, is final), as it did before this step; the Today block prices a
+  finished game's question by design (`recommend.for_predictions`).
+
+**PROVED.** The three plantings, run by this tree's `plant.py` against the
+`git archive` of 8318650 (`run_plantings.py`): all three ESCAPE -- the
+builder's two as before, and "the shipped combo names its legs ['under 8.5
+total runs', 'under 8.5 total runs'], where they are the unders of two games,
+BBB at AAA and DDD at CCC | ... the gate has no check ... | the gate's step 2
+does not call ..." -- and all three are CAUGHT here (`escape_on_head.txt`,
+`caught_on_fix.txt`); the new one escapes on the build as first written too
+("... both legs 'under 8.5 total runs' passed", `escape_on_impl.txt`).
+`tests/test_combo_sides.py`, 13: 11 fail on 8318650's package (the builder's
+nine and the prover's two); on the build as first written (a scratch copy of
+this tree with the two behaviour changes put back, `make_impl.py`) the new
+page test and the two page tests that now ask for each leg's game fail. Gate step 2's touched rows,
+dry-run with GRIDIRON_VERIFYING set on the copy (`step2_dry.py`, not
+verify.py whole): 38 of 38 pass -- the builder's 26 and the stylesheet's
+rows (the files parse, the bar, the motion vocabulary, the arrival, the
+colour law, prices that do not move, every selector built, no tile
+truncates, hidden means not painted, no club colour typed) and the no-hurry
+scan of the day's words; `prose_reaching_the_raw_side()` is empty.
+`plant.py` whole: 395/395 caught (the builder's 394 and this one), "Every law
+has a guard, and every guard has now fired at least once", exit 0
+(`plant_all.txt`, 13:21:50-13:29:38Z). The full suite, a dummy non-secret
+token, TMP/TEMP at their defaults: 2258 passed, 4 skipped, none failed, exit
+0 (`suite.txt`, 13:29:52-13:54:40Z; the builder's 2256 and the prover's two
+tests; run with `-q` over the ini's own, so its summary line is not printed
+and the count is the progress marks'); the only line under "tests that
+reached the network" is the network guard's own self-test. The one copy of
+the record was deleted, with its -wal and -shm, at 2026-09-30T13:30:11Z; it was
+read with `db.read_only` and written only by the test server serving it
+(sign-in rows). Nothing was written to the record; no network, no real
+token, the live app never contacted, nothing run from the main checkout.

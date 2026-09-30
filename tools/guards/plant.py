@@ -10046,6 +10046,360 @@ def plant_an_edge_on_the_other_side_drawn_as_the_questions() -> Result:
     return Result(LAW_THE_PICK_NAMES_ITS_SIDE, violation, guard, True, first or "")
 
 
+# ---------------------------------------------------------------------------
+# A COMBO IS WORTH THE PRODUCT OF ITS PICKED SIDES, EACH LEG NAMED ON ITS
+# PICKED SIDE (pick-number step B, 2026-09-30; the queue rule as amended that
+# day)
+# ---------------------------------------------------------------------------
+#
+# Finding 1 of the wrong-side fix's builder and prover: `combos.propose`
+# multiplied each leg's `fair_value` -- the claim's fixed proposition's
+# number -- whichever side the leg's recommendation buys, worked its ceiling
+# out from that and priced its singles line off the yes price; and
+# `views._proposal_card` named each leg in its question's words. On the
+# record 34 of 35 proposals were drawn at a worth that was not their picked
+# sides' product and 8 named a leg on the side it did not buy. Each is
+# planted as the released code (8318650) ships it, on a scratch world, and
+# must be refused by `audit.combo_side_faults`, which gate step 2 calls on
+# every sport's slate. Its prover (the same day) added a third: legs named
+# in their sides' words alone, without the game each is in, so two unders
+# read alike.
+
+LAW_THE_COMBO_IS_ITS_PICKED_SIDES = ("A PROPOSED COMBO IS WORTH THE PRODUCT OF ITS "
+                                     "LEGS' PICKED SIDES, EACH LEG NAMED ON ITS SIDE")
+
+
+def _combo_side_world(path: Path, legs):
+    """Baseball moneylines on one slate, one question per game: the away
+    side at 57%, so a claim of 43% on the home side, against the home price
+    given; every question on the shortlist, every game in 2099. `legs` is
+    [(game, home, away, price)]. At 48.5c a pick buys the away side (the
+    claim's no side, the side its words name: 57% at 51.5c, +3.5c); at 30c
+    it buys the home side (the claim's yes side, the OTHER side of its
+    words: 43% at 30c, +11.0c), as recs 47 and 82 did."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    conn = db.open_db(path)
+    ids = []
+    claimed = "2026-09-07T01:30:00Z"
+    for game, home, away, price in legs:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1,"
+            " 'R', ?, ?, '2099-01-01T00:00:00Z', 'scheduled', '2026-09-08')",
+            (game, home, away))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', ?, 'moneyline', ?, NULL,"
+            " 0.57, 'win', 'statistical', 'final', 'fs2', ?, 'planting')",
+            (game, away, _json.dumps({"coverage": 1.0, "margin_distribution": dist})))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " implied_prob, kind) VALUES (?, ?, 'planting', ?, 'open_at_predict')",
+            (pid, claimed, price))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+            " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+            " VALUES ('kalshi', ?, 'e', 'mlb', ?, 'moneyline', 'home_win',"
+            " NULL, 'home', ?, ?, ?)",
+            (f"t{game}", game, price - 0.01, price + 0.01, claimed))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+            " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " VALUES (?, ?, 'kalshi', 'mlb', ?, 'moneyline', 'home_win', NULL,"
+            " 'home', 'line_less', NULL, NULL, 0.43, ?, ?, 'mid', ?)",
+            (pid, quote, game, price, price, claimed))
+        ids.append(pid)
+    conn.commit()
+    _shortlist.rank_rows(conn, ids)
+    return conn, ids
+
+
+def _combo_side_check(payload, name: str, missed: list, want: str):
+    """Ask step B's check about a planted payload: named, or missed."""
+    scan = getattr(audit, "combo_side_faults", None)
+    if scan is None:
+        missed.append(f"{name}: the gate has no check that a combo is its legs' "
+                      f"picked sides")
+        return None
+    faults = scan(payload)
+    if not any(want in f for f in faults):
+        missed.append(f"{name} passed" + (f" (named only: {faults[0]})" if faults else ""))
+        return None
+    try:
+        audit.check_every_combo_is_its_picked_sides(payload)
+        missed.append(f"{name}: the check raised nothing")
+    except audit.LawViolation:
+        pass
+    return next(f for f in faults if want in f)
+
+
+def plant_a_combo_worth_its_legs_yes_sides() -> Result:
+    """A proposed combo worth the product of each leg's YES-side number, its
+    ceiling and its singles line worked out from the yes sides.
+
+    AS RELEASED (8318650): two legs, "BBB to win" and "DDD to win", each
+    bought on the claim's no side (the away club, the side its words name:
+    57% at 51.5c). The combo was worth 0.43 x 0.43 = 18%, "worth taking
+    only below 16¢", and its singles line priced the home side at 48.5c --
+    where the sides bought are worth 0.57 x 0.57 = 32% (pick-number finding
+    1; on the record, "Rutgers covers -24.5 + Navy covers -6.5" at 2% for
+    71.1%). CAUGHT means: the shipped combo is worth 0.3249 with the ceiling
+    and singles line of the sides bought, each released shape -- the worth,
+    the ceiling, the singles line, a leg's number -- is named by
+    `audit.combo_side_faults`, and the gate's step 2 makes the call.
+    """
+    from gridiron import language as _language, views as _views
+    from gridiron.market import combos as _combos
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.combo_side_faults"
+    violation = "a proposed combo worth the product of its legs' yes-side numbers"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, ids = _combo_side_world(
+                Path(tmp) / "worth.db",
+                [("g0", "AAA", "BBB", 0.485), ("g1", "CCC", "DDD", 0.485)])
+
+            def proposal_of(payload):
+                cards = ((payload.get("today") or {}).get("combos") or {}).get("cards") or []
+                return cards[0] if cards else None
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            card = proposal_of(shipped)
+            if card is None or card.get("fair") != 0.3249:
+                missed.append(f"the shipped combo is worth {card and card.get('fair')!r} "
+                              f"where its legs' picked sides (BBB and DDD, 57% each) "
+                              f"multiply to 0.3249")
+            elif (getattr(audit, "combo_side_faults", None) is not None
+                  and audit.combo_side_faults(shipped)):
+                missed.append("the shipped combo is refused by the check: "
+                              + audit.combo_side_faults(shipped)[0])
+            yes_fair = _combos.fair_value([0.43, 0.43])
+            yes_ceiling = _combos.price_ceiling(yes_fair)["ceiling_cents"]
+            yes_singles = _combos.singles_alternative([0.485, 0.485], [0.43, 0.43])
+            forms = (
+                ("the worth the yes sides' product", "finding 1; LAW 5",
+                 {"fair": yes_fair,
+                  "fair_words": _language.price_chip_words(yes_fair * 100)}, None),
+                ("the ceiling from the yes sides' product", "worth taking below",
+                 {"ceiling_cents": yes_ceiling,
+                  "ceiling_words": _language.combo_ceiling_words(yes_ceiling)}, None),
+                ("the singles line on the yes price", "singles line on another side",
+                 {"singles_words": _language.combo_singles_words(yes_singles),
+                  "fee_ratio": yes_singles.get("ratio")}, None),
+                ("a leg stating the proposition's number", "whose model number is",
+                 {}, {"fair_cents": 43}),
+            )
+            for name, want, change, leg_change in forms:
+                released = _views.week(conn, "mlb", 2026, 1)
+                planted = proposal_of(released)
+                if planted is None:
+                    missed.append(f"{name}: the proposer made nothing to check")
+                    continue
+                planted.update(change)
+                if leg_change:
+                    planted["legs"][0].update(leg_change)
+                got = _combo_side_check(released, name, missed, want)
+                first = first or got
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_combo_is_its_picked_sides"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_combo_is_its_picked_sides`")
+    if missed:
+        return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, True, first or "")
+
+
+def plant_a_combo_leg_named_on_the_side_it_does_not_buy() -> Result:
+    """A proposed combo's leg named in its question's words where its
+    recommendation buys the OTHER side of them.
+
+    AS RELEASED (8318650): "DDD to win" at 57% against a 30c home price is
+    bought as CCC to win (the claim's yes side, 43% at 30c, +11.0c), and the
+    combo drew the leg "DDD to win" (pick-number finding 1; on the record 8
+    of 35 proposals, e.g. "Rutgers covers -24.5" for a leg bought as Howard
+    +24.5 and "Washington covers +1.5" for Detroit -1.5). CAUGHT means: the
+    shipped combo names its legs "CCC to win" and "BBB to win" and is worth
+    0.43 x 0.57, and the released leg is named by `audit.combo_side_faults`.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.combo_side_faults"
+    violation = "a combo leg named on the side it does not buy"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, ids = _combo_side_world(
+                Path(tmp) / "words.db",
+                [("g0", "AAA", "BBB", 0.485), ("g1", "CCC", "DDD", 0.30)])
+
+            def proposal_of(payload):
+                cards = ((payload.get("today") or {}).get("combos") or {}).get("cards") or []
+                return cards[0] if cards else None
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            card = proposal_of(shipped)
+            words = sorted(str(leg.get("words")) for leg in (card or {}).get("legs") or [])
+            # EACH ON ITS SIDE, AND IN ITS GAME (the prover of step B,
+            # 2026-09-30: a leg names the game it is in).
+            if (words != ["BBB to win · BBB at AAA", "CCC to win · DDD at CCC"]
+                    or (card or {}).get("fair") != 0.2451):
+                missed.append(f"the shipped combo names {words} worth "
+                              f"{card and card.get('fair')!r}, where its legs are "
+                              f"bought as BBB to win (57%) and CCC to win (43%)")
+            released = _views.week(conn, "mlb", 2026, 1)
+            planted = proposal_of(released)
+            if planted is None:
+                missed.append("the proposer made nothing to check")
+            else:
+                for leg in planted["legs"]:
+                    if leg["prediction_id"] == ids[1]:
+                        leg["words"] = "DDD to win"
+                first = _combo_side_check(released, "the CCC leg named 'DDD to win'",
+                                          missed, "side it does not buy")
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_combo_is_its_picked_sides"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_combo_is_its_picked_sides`")
+    if missed:
+        return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, True, first or "")
+
+
+def _combo_total_world(path: Path, games):
+    """Baseball totals on one slate, one question per game, the shape the
+    reasoning pass's combos had on the record (MLB 165 and 166), written as
+    the statistical model's: "under 8.5 total runs" at 62%, a claim of 38%
+    on the over against a 51.5c over, so each pick buys the under at 48.5c
+    (+11.5c). `games` is [(game, home, away)], every game in 2099."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    conn = db.open_db(path)
+    ids = []
+    claimed = "2026-09-07T01:30:00Z"
+    for game, home, away in games:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1,"
+            " 'R', ?, ?, '2099-01-01T00:00:00Z', 'scheduled', '2026-09-08')",
+            (game, home, away))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-07T00:00:00Z', 'mlb', ?, 'total', ?, 8.5, 0.62, 'under',"
+            " 'statistical', 'final', 'fs2', ?, 'planting')",
+            (game, f"{away} at {home}", _json.dumps({"coverage": 1.0})))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+            " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+            " VALUES ('kalshi', ?, 'e', 'mlb', ?, 'total', 'total', 8.5, 'over',"
+            " 0.505, 0.525, ?)", (f"t{game}", game, claimed))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+            " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " VALUES (?, ?, 'kalshi', 'mlb', ?, 'total', 'total', 8.5, 'over',"
+            " 'rung_matched', NULL, NULL, 0.38, 0.515, 0.515, 'mid', ?)",
+            (pid, quote, game, claimed))
+        ids.append(pid)
+    conn.commit()
+    _shortlist.rank_rows(conn, ids)
+    return conn, ids
+
+
+def plant_a_combo_leg_that_names_no_game() -> Result:
+    """A proposed combo whose legs are named in their sides' words alone, so
+    two of them read alike and the worth names no contract.
+
+    THE PROVER OF STEP B (2026-09-30). The card draws its legs and nothing
+    around them -- no row, no game heading -- and the build as first written
+    named each leg in the words of the side it buys and nothing more: the
+    reasoning pass's baseball combos on the record read "under 8.5 total runs
+    + under 8.5 total runs" three times (MLB 165 and 166), and a leg naming a
+    city two clubs share ("Chicago covers +1.5") left the club to be
+    guessed. AS RELEASED (8318650) the same: each leg in its question's
+    words. CAUGHT means: the shipped legs are "under 8.5 total runs · BBB at
+    AAA" and "under 8.5 total runs · DDD at CCC" -- each its side's words
+    and the game as the board heads it (`language.combo_leg_words`) -- the
+    legs named in their sides' words alone are named by
+    `audit.combo_side_faults`, and the gate's step 2 makes the call.
+    """
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.combo_side_faults"
+    violation = "a combo whose legs name no game, two of them alike"
+    missed, first = [], None
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, ids = _combo_total_world(
+                Path(tmp) / "games.db", [("g0", "AAA", "BBB"), ("g1", "CCC", "DDD")])
+
+            def proposal_of(payload):
+                cards = ((payload.get("today") or {}).get("combos") or {}).get("cards") or []
+                return cards[0] if cards else None
+
+            shipped = _views.week(conn, "mlb", 2026, 1)
+            card = proposal_of(shipped)
+            words = sorted(str(leg.get("words")) for leg in (card or {}).get("legs") or [])
+            if words != ["under 8.5 total runs · BBB at AAA",
+                         "under 8.5 total runs · DDD at CCC"]:
+                missed.append(f"the shipped combo names its legs {words}, where "
+                              f"they are the unders of two games, BBB at AAA and "
+                              f"DDD at CCC")
+            released = _views.week(conn, "mlb", 2026, 1)
+            planted = proposal_of(released)
+            if planted is None:
+                missed.append("the proposer made nothing to check")
+            else:
+                for leg in planted["legs"]:
+                    leg["words"] = "under 8.5 total runs"
+                first = _combo_side_check(released, "both legs 'under 8.5 total runs'",
+                                          missed, "without the game it is in")
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls("check_every_combo_is_its_picked_sides"):
+        missed.append("the gate's step 2 does not call "
+                      "`audit.check_every_combo_is_its_picked_sides`")
+    if missed:
+        return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_COMBO_IS_ITS_PICKED_SIDES, violation, guard, True, first or "")
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -21946,6 +22300,13 @@ def main() -> int:
     # and the edge figure's side on the Today card and the board's tile.
     results.append(plant_a_results_row_naming_the_other_side())
     results.append(plant_an_edge_on_the_other_side_drawn_as_the_questions())
+    # PICK-NUMBER STEP B (2026-09-30): a proposed combo is worth the
+    # product of its legs' picked sides, with the ceiling and singles line
+    # of those sides, and each leg is named on the side it buys.
+    results.append(plant_a_combo_worth_its_legs_yes_sides())
+    results.append(plant_a_combo_leg_named_on_the_side_it_does_not_buy())
+    # ITS PROVER (2026-09-30): each leg names the game it is in.
+    results.append(plant_a_combo_leg_that_names_no_game())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

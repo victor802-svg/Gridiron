@@ -223,6 +223,12 @@ def fair_value(leg_probabilities: list[float]) -> float | None:
     through `correction.shown_proposition` -- the number each leg's own side
     was chosen from.
 
+    EACH ONE THE PROBABILITY OF THE SIDE ITS LEG IS PICKED ON (pick-number
+    step B, 2026-09-30). This function multiplies what it is handed; a
+    proposal hands it `leg_on_its_side`'s numbers, never an entry's
+    `fair_value`, which is the claim's fixed proposition's (the home side,
+    the over) whichever side the leg buys.
+
     Independence is ASSUMED and is only defensible because `classify` has
     already refused every same-game package. Two games on one evening are not
     perfectly independent either, and this is the closest thing to a joint
@@ -297,6 +303,13 @@ def singles_alternative(leg_prices: list[float], leg_fairs: list[float]) -> dict
     THE COST IS THE POINT. Measured 2026-09-08: the fee per dollar staked is
     1.67 times the singles' rate on two 60c legs and 2.8 times on three. A
     package that shows only its own edge is a page arguing one side.
+
+    `leg_prices` is what each leg's own side costs and `leg_fairs` the
+    model's number for that side, pair by pair (2026-09-30, step B: a
+    proposal handed it the yes price and the proposition's number, so a leg
+    bought on the no side was priced as singles on the other side). A
+    venue package's legs are already oriented to the side each names
+    (`views._leg_reading`).
     """
     from . import recommend
 
@@ -325,6 +338,47 @@ MAX_PROPOSALS_PER_SPORT = 3
 #: Two by default, for the fee reason recorded beside `config.PROPOSAL_LEGS`;
 #: three is available through `GRIDIRON_PROPOSAL_LEGS` and is not enabled.
 PROPOSAL_LEGS = config.PROPOSAL_LEGS
+
+
+def leg_on_its_side(entry: dict) -> dict:
+    """One proposed leg as the contract it is picked on: the side of the
+    claim's proposition it buys, the model's number for THAT side, and what
+    one contract of that side costs.
+
+    PICK-NUMBER STEP B (2026-09-30; finding 1 of the wrong-side fix's
+    builder and prover). An entry of `recommend.for_predictions` states two
+    numbers about the claim's FIXED proposition -- `fair_value` (the model's,
+    corrected) and `price` (the venue's yes price) -- and `side`, which side
+    of that proposition the pick buys. `propose` multiplied `fair_value`
+    whatever the side, and priced the singles line off the yes price, so a
+    leg bought on the no side entered its combo at the other side's chance
+    and cost: on the record's priced slates 34 of 35 proposals had such a
+    leg, e.g. "Rutgers covers -24.5 + Navy covers -6.5" drawn worth 2% where
+    the sides the two recommendations buy multiply to 71.1%, and 25 baseball
+    combos at 9-20% where their sides give 34.5-49.5%.
+
+    THE SIDE'S NUMBERS, BY THE ORIENTATION THE EDGE AND THE BAR SHARE:
+    the proposition's number and `recommend._cost_of` on the yes side, one
+    minus the number and the rest of the dollar on the no side -- so a leg's
+    worth, less its cost and the fee on it, is the leg's own `edge_cents`.
+    A side that is neither is refused here by name (`ValueError`), never
+    read as one of the two.
+    """
+    from . import recommend
+
+    side = entry.get("side")
+    if side not in ("yes", "no"):
+        raise ValueError(
+            f"a proposed leg is bought on the 'yes' or the 'no' side of its "
+            f"claim's proposition, not {side!r} (forecast "
+            f"{entry.get('prediction_id')})")
+    fair, price = entry.get("fair_value"), entry.get("price")
+    return {
+        "side": side,
+        "worth": (None if fair is None
+                  else float(fair) if side == "yes" else 1.0 - float(fair)),
+        "cost": None if price is None else recommend._cost_of(side, price),
+    }
 
 
 def price_ceiling(fair: float | None) -> dict:
@@ -381,6 +435,14 @@ def propose(entries: list[dict], *, sport: str) -> list[dict]:
     from that order. It is not tuned and it is not an optimiser: an optimiser
     would be choosing combinations to make a number look good, which is the
     discovery-by-scanning LAW 2 exists to prevent.
+
+    EVERY NUMBER IS THE PICKED SIDES' (pick-number step B, 2026-09-30):
+    the worth is the product of each leg's probability on the side it is
+    picked on, the ceiling is worked out from that product, and the singles
+    line is those sides at what each costs -- `leg_on_its_side`, one place.
+    Each leg carries its side, its number and its cost; the page names it in
+    that side's words. Until this date the worth was the product of each
+    leg's YES-side number, and the singles line was priced off the yes price.
     """
     clearing = [e for e in entries
                 if e.get("side") is not None
@@ -411,24 +473,34 @@ def propose(entries: list[dict], *, sport: str) -> list[dict]:
         for entry in legs:
             spent.add(entry["prediction_id"])
         used_games |= games
-        fair = fair_value([e["fair_value"] for e in legs])
+        # ON THE SIDES THE LEGS ARE PICKED ON (2026-09-30, step B). This
+        # multiplied `e["fair_value"]` -- the claim's fixed proposition's
+        # number -- and handed the singles line `e["price"]`, the yes price,
+        # whichever side each leg buys.
+        sides = [leg_on_its_side(e) for e in legs]
+        fair = fair_value([s["worth"] for s in sides])
         ceiling = price_ceiling(fair)
+        priced_sides = [s for s in sides if s["cost"] is not None]
         proposals.append({
             "sport": sport,
             "legs": [{
                 "prediction_id": e["prediction_id"],
                 "game_id": e["game_id"],
                 "market": e.get("market"),
-                "fair_value": e["fair_value"],
-                "price": e.get("price"),
+                # THE CONTRACT THE LEG IS: its side of the claim's
+                # proposition, the model's number for that side and what
+                # that side costs. The proposition's own number and price
+                # stay on the entry, and are not a leg's.
+                "side": s["side"],
+                "worth": s["worth"],
+                "cost": s["cost"],
                 "edge_cents": e.get("edge_cents"),
-            } for e in legs],
+            } for e, s in zip(legs, sides)],
             "leg_ids": [e["prediction_id"] for e in legs],
             "fair": fair,
             **ceiling,
-            "singles": singles_alternative(
-                [e["price"] for e in legs if e.get("price") is not None],
-                [e["fair_value"] for e in legs if e.get("price") is not None]),
+            "singles": singles_alternative([s["cost"] for s in priced_sides],
+                                           [s["worth"] for s in priced_sides]),
         })
     return proposals
 
