@@ -56,7 +56,17 @@
   release so far) -- now "to lose", held by a gate row; the edge figure,
   the better side's, is labelled "on the other side" where it is (10 cards,
   NBA 3166 upcoming); `audit.check_every_pick_names_its_side` in step 2.
-  Question 37 below. **Next: step B (combos)**, then A when Q36 is ruled.
+  Question 37 below.
+  **STEP B released as 2330954 (2026-09-30 14:38Z; gate 4/4, 395/395,
+  first run):** a proposed combo is worth the product of its legs'
+  probabilities on their picked sides, its ceiling and singles line on
+  those sides at their costs, each leg named on its picked side and with its
+  game (`language.combo_leg_words`); `audit.check_every_combo_is_its_picked_
+  sides` in step 2. 34 of 35 proposals on the record were drawn at the
+  yes sides' product (e.g. NCAAF "Rutgers -24.5 + Navy -6.5" 2% -> "Howard
+  +24.5 + Navy -6.5" 71.1%; NFL week 3 17.9% -> 66.3%; NBA today 32.2% ->
+  37.9%); FOLLOWUPS has every one. LAW 5's combo clause unchanged. **Next:
+  item 1 (the close window)**; step A when Q36 is ruled.
   **STEP A STOPPED on question 36** (the away contracts' sign). **STEP C
   BUILT (2026-09-30, uncommitted for its prover; FOLLOWUPS "Every pick
   names its own side"):** the Today card's payout and payout words are
