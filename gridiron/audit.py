@@ -11691,6 +11691,1494 @@ def check_no_replacing_write_on_an_append_only_table(root: Path | None = None) -
             "write against every append-only table, and names every other "
             "upsert in a register that only shrinks):" + _NL2
             + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# THE RULES STAY ON, AND THEIR MARKS STAY PUT (operator questions 25 and 29,
+# ruled 2026-09-28; question 29's reading confirmed by the operator on
+# 2026-09-29; built 2026-09-29)
+# ---------------------------------------------------------------------------
+#
+# Question 25: "yes. The scan also refuses any code that turns the rules off
+# by connection setting or registers a function under a built-in's name."
+# Question 29: "folded into Q25's scan: refuse any code that writes
+# sqlite_sequence, and any multi-row INSERT OR FAIL / OR IGNORE / OR
+# ROLLBACK on an append-only table. No separate item." Its reading, which the
+# operator confirmed: except `gridiron.rebuild`, which carries the mark
+# exactly and is the verified rebuild door, named in a register with its
+# dated reason.
+#
+# WHY A SIBLING OF QUESTION 15'S SCAN. Every rule of the schema is a trigger
+# SQLite runs on the connection that writes, and question 15's scan reads the
+# statements that replace a row. Four things take a rule's refusal away with
+# no replacing statement at all, each measured on a scratch world on
+# 2026-09-29:
+#   * A CONNECTION'S SETTINGS. With `setconfig(SQLITE_DBCONFIG_ENABLE_TRIGGER,
+#     False)` no rule runs: a delete the no-delete rule refuses lands. Seven
+#     settings change what a rule does or reads (`RULE_SETTINGS`), five
+#     `setconfig` switches do (`RULE_DBCONFIG`), and an authorizer hands a
+#     rule's read back as NULL -- a guarded insert landed so.
+#   * A FUNCTION OR A COLLATION UNDER A BUILT-IN'S NAME. A rule calling
+#     `json_valid` asks the connection, and `create_function("json_valid", 1,
+#     ...)`, in any case, answers it in SQLite's place: a value the rule
+#     refused landed. `create_collation("NOCASE", ...)` answers every
+#     comparison made under it.
+#   * THE MARK REWRITTEN. The rules on the number written (questions 13, 15
+#     and 24) read SQLite's own table of AUTOINCREMENT marks, and SQLite
+#     allows no rule on that table, so a statement writing it -- the mark
+#     removed, set back, set forward and back round a move -- is seen by no
+#     rule.
+#   * A STATEMENT STOPPED PART WAY. An insert of several rows under OR FAIL
+#     whose later row fails a NOT NULL keeps the rows before it, and SQLite
+#     never writes the mark back for a statement that stopped: rows 3 and 4
+#     stood above a mark of 2. (OR IGNORE and OR ROLLBACK left none, measured
+#     the same day; the ruling names all three, and an upsert that does
+#     nothing on conflict skips a row as OR IGNORE does.)
+#
+# WHAT IT READS: question 15's scope with its readers -- the package, `tools/`
+# less `tools/guards/`, and `desktop/`; every string the code can hand SQLite
+# (`_sql_strings_in`), read as written and with its template placeholders as
+# parts worked out at run time, and a template filled in with constants alone
+# read again whole (the roster scan's `_roster_filled_in`); every `.sql` file
+# in the package; and each Python file's syntax tree for the calls that set a
+# connection's switches or register a function. Tests and plantings are
+# outside it, as they are outside question 15's: they are how the rules are
+# proved.
+#
+# WHAT IT REFUSES, each by file, line and function:
+#   1. A SETTING OF ONE OF `RULE_SETTINGS` -- `=` or `(...)` after its name,
+#      whatever the value; a name followed by a part worked out at run time,
+#      or ending a string not handed whole to `execute`, counts as set -- and
+#      a setting whose name the scan cannot read. A `setconfig` of one of
+#      `RULE_DBCONFIG` to the value that does it or to one worked out at run
+#      time, and a `setconfig` of a switch the scan cannot read. An
+#      authorizer.
+#   2. A `create_function`, `create_aggregate`, `create_window_function` or
+#      `create_collation` whose name, in any case, SQLite itself lists on a
+#      fresh connection (`function_list`, `collation_list`) -- never a hand
+#      list -- or whose name the scan cannot read; an extension loaded or
+#      allowed (`load_extension`, `enable_load_extension`, and the SQL
+#      function), whose registrations no scan can read; and any of those
+#      calls reached by another name, bound or looked up by a string.
+#   3. A WRITE OF SQLITE'S SEQUENCE STORE: an insert, a REPLACE, an update or
+#      a delete whose table is it however spelled -- case, quotes, brackets, a
+#      schema's prefix, or a string literal, which SQLite takes as a write's
+#      table (measured) -- or a name partly worked out at run time whose
+#      written letters, three or more, could be it; a verb worked out at run
+#      time where a statement begins counts as a write; and the bare name,
+#      which the scan cannot place, counts as one, as does this module's own
+#      value holding it named anywhere but this scan. The one exception is
+#      `SEQUENCE_WRITES_REGISTERED`: the rebuild door's two statements, each
+#      with its dated reason, frozen on 2026-09-29 so that it may only shrink.
+#   4. AN INSERT OF SEVERAL ROWS under OR FAIL, OR IGNORE or OR ROLLBACK, or
+#      with an upsert that does nothing on conflict, aimed at an append-only
+#      table -- question 15's set, read from the schema: a table a rule
+#      refuses a delete or an update on, one its table's rules write, and one
+#      the scan cannot read. Several rows: a VALUES list of two or more or
+#      with more rows after it (`VALUES (1) UNION ALL SELECT 2`), a SELECT, a
+#      VALUES part worked out at run time or a string that ends before its
+#      rows; and, in Python, a statement handed to `executemany`,
+#      or not handed whole to `execute` or `executescript`, which the scan
+#      cannot see run once. And a key of an append-only table declared to
+#      fail, ignore or roll back on conflict, under which every plain insert
+#      of several rows runs so (question 15's precedent: a key declared to
+#      replace).
+#
+# LEFT AS THEY ARE, and why (the shipped code on 2026-09-29): `foreign_keys`
+# (the rebuild door's and the migrations' own setting, off while a table is
+# renamed aside so no child is repointed -- schema ruling 2; a key is not a
+# rule, and a key's action is question 15's to read), `legacy_alter_table`
+# (whether a rename rewrites the rules naming the table, which the rebuild
+# door keeps from happening -- not how a rule runs), `query_only` (refuses
+# writes and runs every rule), `defer_foreign_keys`, their `setconfig` twins,
+# and `SQLITE_DBCONFIG_DEFENSIVE`, which only forbids more. The switches for
+# double-quoted strings are left too: no rule of the schema holds a
+# double-quoted word (measured).
+#
+# WHAT THE SHIPPED CODE DID, measured before the scan was written
+# (2026-09-29): no setting of these, no `setconfig`, no function, collation,
+# authorizer or extension; the rebuild door's two writes of the sequence
+# store and nothing else; and two inserts of several rows under OR IGNORE --
+# `db.widen_taken_for_packages` copying `picks_taken` (append-only) back, and
+# `db._finish_widening_table` copying back a table worked out when it runs
+# (`factors`, append-only, is one of the five it can be) -- each a
+# migration's recovery copy, which can run on no record without a
+# half-finished widening (the record held none, read through the read-only
+# door). Both are plain inserts now, to the same effect -- `db.set_meta`'s
+# precedent under question 15 -- tested side by side.
+#
+# AND FROM ITS PROVER (2026-09-29), each measured getting past the scan as
+# first built, which named none of them:
+#   * `journal_mode` OFF is a connection setting that turns a rule's refusal
+#     off: with no rollback journal, a statement a rule refuses inside a
+#     transaction keeps its rows -- the refused row among them, above the
+#     mark (measured on a DELETE and on a WAL file). It is refused at OFF or
+#     at a value the scan cannot read (`RULE_SETTING_VALUES`); the schema's
+#     own WAL is not.
+#   * A LOOKUP OF THE CALLS BY A STRING THE SCAN CAN RENDER: joined in pieces,
+#     a template filled in with constants, a bytes literal, another case, a
+#     string handed to `exec` -- every word of every string is read, and one
+#     that is a call's name, or whose written letters (three or more) around
+#     a part worked out at run time could be one, is a lookup by name. And
+#     this module's own values holding the calls' names (`_REGISTERING_CALLS`,
+#     `_RULE_SWITCH_CALLS`), named anywhere but this scan, are the call
+#     reached by another name (the roster scan's precedent).
+#   * A SWITCH NAMED BY A DISGUISE -- the trigger switch imported under the
+#     harmless switch's name, or a class attribute of that name holding its
+#     number: a switch's name is read only off the driver itself
+#     (`sqlite3.X`, the module imported as itself and never rebound) or from
+#     a name imported from it unaliased and never bound again; any other is a
+#     switch the scan cannot read, and a statement binding one of the
+#     driver's switch names (an assignment, `setattr`) is refused.
+#   * A SETTING'S NAME WRITTEN WHOLE, ITS VERB WORKED OUT OR KEPT APART
+#     (`verb + " recursive_triggers = 1"`, the verb in two pieces): a listed
+#     name followed by a value, a part worked out at run time or the end of a
+#     string not handed whole to `execute`, with no verb before it, is a
+#     setting; so are this module's values holding the settings' names.
+#   * THE SQL FUNCTION THAT LOADS AN EXTENSION, CALLED BY A QUOTED NAME
+#     (`"load_extension"(?)`: SQLite calls a function by a quoted name).
+#   * THE STORE'S NAME KEPT APART FROM ITS VERB: at the start of a string with
+#     its condition after it (`"sqlite_sequence WHERE ..."`), after a FROM or
+#     INTO that begins a string, or after a verb in pieces (a word holding a
+#     part worked out at run time where a statement could begin) -- each a
+#     name the scan cannot place, or a verb worked out, counted as a write;
+#     and this module's value holding it looked up by a string in pieces.
+#   * AN INSERT OF SEVERAL ROWS WHOSE VERB IS IN PIECES OR KEPT APART
+#     (`head + "RT OR FAIL INTO ..."`, `"INSERT " + "OR IGNORE INTO ..."`,
+#     `"INSERT OR FAIL"` ending a string).
+#   * A RULE RAISING FAIL -- a temporary one the code creates, or one in the
+#     schema -- on an append-only table, or on a table an insert into one
+#     reaches: a plain insert of several rows then stops part way as OR FAIL
+#     does (measured: rows 3 and 4 above a mark of 2). A rule raising FAIL,
+#     IGNORE or ROLLBACK is refused as a key declared so is (question 15's
+#     precedent, read for a rule).
+#   * ONE ROW UNDER A RULED CLAUSE INTO A TABLE WHOSE RULE INSERTS SEVERAL
+#     ROWS INTO AN APPEND-ONLY ONE: SQLite runs a rule's statements under the
+#     clause of the statement that fired it, so the rule's insert stopped
+#     part way under OR FAIL (measured: rows 3 and 4 above a mark of 2). It
+#     is counted as an insert of several rows under that clause.
+#   * THE DOOR'S OWN STATEMENT REWRITTEN (its DELETE widened to every mark):
+#     the register held a verb, so any statement of that verb in the door
+#     passed. Each entry now holds the statement it was made with, as SQLite
+#     reads it (`SEQUENCE_WRITES_AS_MADE_ON_2026_09_29`); another under the
+#     entry is a second door.
+#
+# NOT SEEN (FOLLOWUPS): what a static scan cannot read -- a setting's, a
+# function's or a table's name read from the record, a file or the
+# environment, or built where no string of it is rendered (a list joined at
+# run time), and a setting whose verb and name are both in pieces; a write
+# whose table is wholly worked out at run time (the shipped code's own copies
+# of every table, none of them the store); SQLite reached through `ctypes`; an
+# update of several rows under OR FAIL; a table's mark carried away by SQLite
+# itself when the table is dropped or renamed (a migration's rename aside and
+# copy back sets its mark to the highest number copied); and a connection
+# outside the shipped code -- a test, a planting, the operator's own shell --
+# which is how the rules are proved, not what the gate reads. And beyond the
+# rulings' words (the prover, 2026-09-29, measured): a write that is no
+# statement at all -- `blobopen`, which rewrote a stored row's text in place
+# past its no-update rule, and a backup written into the record's file,
+# which replaces every page with no rule run. No shipped code does either.
+
+#: SQLite's own table of AUTOINCREMENT marks. Written once: every other text
+#: of this scan builds on it, and a value of this module holding it is named
+#: only by the scan itself (`_RULE_WORD_HOLDERS`, proved at import).
+SEQUENCE_STORE = "sqlite_sequence"
+
+#: The word that opens a statement setting (or reading) one of SQLite's
+#: settings. Written once, for the same reason: the word alone, at the end
+#: of a string, is a setting whose name the scan cannot read, and this module
+#: is read by its own scan.
+_SETTING_VERB = "PRAGMA"
+
+#: THE SETTINGS THAT CHANGE HOW THE SCHEMA'S RULES RUN (question 25,
+#: 2026-09-29), by SQLite's own name for each, and what it does to a rule --
+#: each measured on a scratch world that day. A statement setting one is
+#: refused in the shipped code, whatever the value: the rules are written and
+#: measured at SQLite's defaults, and no shipped code sets any of them. Each
+#: name is held, when the scan runs, to SQLite's own list of its settings.
+RULE_SETTINGS: dict[str, str] = {
+    "recursive_triggers": (
+        "on, SQLite runs a table's delete rules for a row it removes to make "
+        "room for a replacing write (measured: a replacing insert the rules "
+        "let through was refused by the delete rule), and a rule's own writes "
+        "run rules again -- the schema's rules, and the replace rules "
+        "questions 13 and 15 wrote because no delete rule runs for a replaced "
+        "row, are written for it off, SQLite's default"),
+    "ignore_check_constraints": (
+        "on, no CHECK of the schema is enforced (measured: a factor's "
+        "activation date that is no date was stored)"),
+    "case_sensitive_like": (
+        "on, LIKE compares letters by their case, inside a rule or a CHECK as "
+        "anywhere (measured: `factors.added_utc`'s CHECK, which reads LIKE, "
+        "refused a date its default accepts)"),
+    "trusted_schema": (
+        "decides which functions a rule may call: on, any the connection "
+        "defines, a built-in's name redefined among them; off, a rule calling "
+        "one is refused (measured both ways)"),
+    "reverse_unordered_selects": (
+        "on, a rule reading one row of several in no stated order reads "
+        "another (measured: a rule's read of the first of two rows read the "
+        "second)"),
+    "writable_schema": (
+        "on, the schema's own table may be written, so a rule is rewritten or "
+        "removed by a statement that names no rule (measured: a no-delete "
+        "rule's row deleted from it)"),
+    "schema_version": (
+        "set, a connection that has read the schema does not read it again, "
+        "so a rule added since does not run there (measured: a second "
+        "connection deleted a row the new no-delete rule refuses)"),
+}
+
+#: THE SETTINGS REFUSED AT ONE VALUE (the prover of questions 25 and 29,
+#: 2026-09-29), by SQLite's own name for each: (the value refused, upper-cased,
+#: and what it does to a rule). A statement setting one of these to that
+#: value, or to a value the scan cannot read, is refused; every other value
+#: keeps a rule's refusal whole -- the schema's own `journal_mode = WAL` among
+#: them -- and a read handed whole to `execute` is no setting. Each name is
+#: held, when the scan runs, to SQLite's own list of its settings.
+RULE_SETTING_VALUES: dict[str, tuple[str, str]] = {
+    "journal_mode": (
+        "OFF",
+        "no rollback journal is kept, so inside a transaction a "
+        "statement a rule refuses keeps the rows it wrote -- the refused row "
+        "among them, above the mark (measured on a scratch world: an insert "
+        "of two rows, the second refused by a rule, left both standing; the "
+        "same from a WAL file, where WAL, MEMORY and TRUNCATE left none)"),
+}
+
+#: THE `setconfig` SWITCHES THAT CHANGE HOW THE RULES RUN (question 25,
+#: 2026-09-29), by the driver's name for each: (the value that does it --
+#: False, True, or None for either -- and what it does). The number each
+#: stands for is read from the driver (`_dbconfig_numbers`), never typed.
+RULE_DBCONFIG: dict[str, tuple[bool | None, str]] = {
+    "SQLITE_DBCONFIG_ENABLE_TRIGGER": (
+        False, "off, no rule of the schema runs on that connection (measured: "
+               "a delete the no-delete rule refuses landed)"),
+    "SQLITE_DBCONFIG_TRUSTED_SCHEMA": (
+        None, "the switch behind the setting `trusted_schema`, which decides "
+              "which functions a rule may call"),
+    "SQLITE_DBCONFIG_WRITABLE_SCHEMA": (
+        True, "the switch behind the setting `writable_schema`: on, a rule is "
+              "rewritten or removed by a statement that names no rule"),
+    "SQLITE_DBCONFIG_RESET_DATABASE": (
+        True, "on, the next VACUUM empties the database, every row gone with no "
+              "rule run (measured)"),
+    "SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION": (
+        True, "on, an extension may be loaded, and what it registers -- "
+              "functions and collations, under any name -- no scan can read"),
+}
+
+#: The calls that register a function or a collation on a connection, and
+#: which of SQLite's own lists a name is held to (2026-09-29).
+_REGISTERING_CALLS = {"create_function": "function",
+                      "create_aggregate": "function",
+                      "create_window_function": "function",
+                      "create_collation": "collation"}
+
+#: The other calls that change what a rule may do or read (2026-09-29).
+_RULE_SWITCH_CALLS = ("setconfig", "set_authorizer", "load_extension",
+                      "enable_load_extension")
+
+#: The conflict clauses question 29 names.
+_RULED_CONFLICTS = ("FAIL", "IGNORE", "ROLLBACK")
+
+#: What a bare name, which the scan cannot place, is counted as.
+_A_NAME_UNPLACED = "a name the scan cannot place"
+
+#: The fewest written letters a name partly worked out at run time must
+#: carry to count as one that could be the sequence store: the roster scan's
+#: measure (three), measured again on the shipped code on 2026-09-29 -- at
+#: one letter a bare `f"{venue}_{word}"` (this module's credential names)
+#: read as the store; at two or more, nothing does.
+_STORE_FRAGMENT_MIN = 3
+
+#: THE REGISTER OF WRITES TO THE SEQUENCE STORE (question 29, ruled
+#: 2026-09-28; its reading confirmed 2026-09-29): keyed (file from the
+#: repository root, the qualified function, the statement's verb), each with
+#: a dated reason in words. One entry per statement.
+SEQUENCE_WRITES_REGISTERED: dict[tuple[str, str, str], str] = {
+    ("gridiron/rebuild.py", "_rebuild_one", "DELETE"): (
+        "2026-09-29: the verified rebuild door (schema ruling 2) carries a "
+        "rebuilt table's mark exactly -- this takes the table's row out of the "
+        "store, the next statement writes back the mark read before the "
+        "rebuild, both inside the rebuild's one transaction, and the mark is "
+        "read again and compared before it commits, a difference refused and "
+        "rolled back (question 29's reading, confirmed by the operator)"),
+    ("gridiron/rebuild.py", "_rebuild_one", "INSERT"): (
+        "2026-09-29: the same door writing back, exactly, the mark it read "
+        "before the rebuild (question 29's reading, confirmed by the "
+        "operator)"),
+}
+
+#: THE REGISTER AS IT WAS MADE (2026-09-29). The ruling's one exception is
+#: the rebuild door's, so an entry not among these fails by name, however it
+#: is dated: the register may only shrink (question 15's precedent). Never
+#: added to.
+SEQUENCE_WRITES_REGISTERED_ON_2026_09_29: frozenset[tuple[str, str, str]] = frozenset({
+    ("gridiron/rebuild.py", "_rebuild_one", "DELETE"),
+    ("gridiron/rebuild.py", "_rebuild_one", "INSERT"),
+})
+
+#: EACH REGISTERED STATEMENT AS IT WAS MADE (the prover, 2026-09-29): an
+#: entry names a place and a verb, so the door's DELETE widened to every
+#: mark passed under it -- a second door inside the first. A write under an
+#: entry whose statement, as SQLite reads it, is not this one fails by name.
+#: Built from `SEQUENCE_STORE`, so the store's name is written once. Never
+#: changed.
+SEQUENCE_WRITES_AS_MADE_ON_2026_09_29: dict[tuple[str, str, str], str] = {
+    ("gridiron/rebuild.py", "_rebuild_one", "DELETE"):
+        f"DELETE FROM {SEQUENCE_STORE} WHERE name = ?",
+    ("gridiron/rebuild.py", "_rebuild_one", "INSERT"):
+        f"INSERT INTO {SEQUENCE_STORE} (name, seq) VALUES (?, ?)",
+}
+
+#: EVERY VALUE OF THIS MODULE HOLDING A WORD THIS SCAN LOOKS FOR, by its own
+#: name, and what it is counted as named anywhere but this scan's own
+#: functions (the roster scan's precedent, 2026-09-29): the store's name,
+#: which the scan cannot place, a write of it; the setting's word, or a
+#: listed setting's name, a setting the scan cannot read; a registering or
+#: switching call's name, the call reached by another name (the last two
+#: from the prover, 2026-09-29: `getattr(conn, _RULE_SWITCH_CALLS[0])` set the
+#: trigger switch off unnamed). The strings inside each holder's own
+#: assignment are this scan's words and are not read as code. Proved
+#: complete at import.
+_RULE_WORD_HOLDERS = {"SEQUENCE_STORE": "store", "_SETTING_VERB": "setting",
+                      "SEQUENCE_WRITES_AS_MADE_ON_2026_09_29": "store",
+                      "RULE_SETTINGS": "setting", "RULE_SETTING_VALUES": "setting",
+                      "_REGISTERING_CALLS": "call", "_RULE_SWITCH_CALLS": "call"}
+
+#: The functions of this module that ARE this scan -- the only ones that may
+#: name a value holding the store's name, or a registering call by a string
+#: (2026-09-29). One no longer found fails the scan.
+_RULE_SCAN_ITSELF = frozenset({
+    "_names_the_store", "_rule_findings", "_rule_call_faults", "rule_switch_faults",
+    "check_no_code_switches_the_rules_off_or_rewrites_their_marks",
+    "_check_the_rule_scan_names_the_store_once",
+    # the prover's (2026-09-29): the reader of names in a string
+    "_rule_names_in"})
+
+#: A string holding none of these holds no statement, setting or name this
+#: scan reads, and is not tokenised: a quick way past prose, never past SQL.
+#: From the prover (2026-09-29) a listed setting's name alone, and a rule's
+#: RAISE, are enough to be read.
+_RULE_QUICK = re.compile(
+    r"pr[a]gma|insert|replace|update|delete|into|from|conflict|nothing|"
+    r"extension|sqlite|sequence|raise|[\x00{}%$]|"
+    + "|".join(re.escape(name) for name in (*RULE_SETTINGS, *RULE_SETTING_VALUES)),
+    re.I)
+
+
+def _dbconfig_numbers() -> dict[int, str]:
+    """{the number the driver gives a switch of `RULE_DBCONFIG`: its name},
+    read from the driver, so a switch handed over as its number is known."""
+    import sqlite3
+
+    numbers = {
+        sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER: "SQLITE_DBCONFIG_ENABLE_TRIGGER",
+        sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA: "SQLITE_DBCONFIG_TRUSTED_SCHEMA",
+        sqlite3.SQLITE_DBCONFIG_WRITABLE_SCHEMA: "SQLITE_DBCONFIG_WRITABLE_SCHEMA",
+        sqlite3.SQLITE_DBCONFIG_RESET_DATABASE: "SQLITE_DBCONFIG_RESET_DATABASE",
+        sqlite3.SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION:
+            "SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION",
+    }
+    if set(numbers.values()) != set(RULE_DBCONFIG):
+        raise LawViolation(
+            f"A SCANNER IS BLIND: audit._dbconfig_numbers reads "
+            f"{sorted(numbers.values())} from the driver and audit.RULE_DBCONFIG "
+            f"names {sorted(RULE_DBCONFIG)}.")
+    return numbers
+
+
+def _sqlite_own_names() -> tuple[frozenset, frozenset, frozenset]:
+    """(every function, every collation, every setting) SQLite itself lists
+    on a fresh connection, before any code registers anything -- its own
+    names, read from it, case-folded, never a hand list (2026-09-29)."""
+    from . import db
+
+    conn = db.connect(":memory:")
+    try:
+        functions = frozenset(str(r[0]).casefold()
+                              for r in conn.execute("PRAGMA function_list"))
+        collations = frozenset(str(r[1]).casefold()
+                               for r in conn.execute("PRAGMA collation_list"))
+        settings = frozenset(str(r[0]).casefold()
+                             for r in conn.execute("PRAGMA pragma_list"))
+    finally:
+        conn.close()
+    if not (functions and collations and settings):
+        raise LawViolation(
+            "A SCANNER IS BLIND: SQLite listed no functions, collations or "
+            "settings of its own, so no name can be held to them.")
+    return functions, collations, settings
+
+
+def _rule_target(tokens: list[_SqlToken], k: int) -> tuple[str | None, int]:
+    """The table a write names at `tokens[k]`, as SQLite reads it -- a word, a
+    quoted name, or a string literal, which SQLite also takes as a write's
+    table (measured 2026-09-29); a schema's prefix apart; lower-cased -- each
+    part worked out at run time kept as `_UNKNOWN_PART`; None where no letter
+    of it is written. And the index after it."""
+    n = len(tokens)
+
+    def atom(i: int) -> tuple[str, int]:
+        text = ""
+        while i < n and tokens[i].kind in ("word", "name", "literal", "unknown"):
+            tok = tokens[i]
+            if text and tokens[i - 1].end != tok.start:
+                break
+            if tok.kind == "literal":
+                inner = tok.value[1:-1] if len(tok.value) > 1 and tok.value.endswith("'") \
+                    else tok.value[1:]
+                text += inner.replace("''", "'").lower()
+            elif tok.kind == "unknown":
+                text += _UNKNOWN_PART
+            else:
+                text += tok.value
+            i += 1
+        return text, i
+
+    text, i = atom(k)
+    while text and i < n and tokens[i].kind == "other" and tokens[i].value == ".":
+        after_dot, j = atom(i + 1)
+        if not after_dot:
+            break
+        text, i = after_dot, j
+    if not text.replace(_UNKNOWN_PART, ""):
+        return None, i
+    return text, i
+
+
+def _names_the_store(name: str | None) -> bool:
+    """Could `name` be the sequence store? Whole, only the name itself; with
+    parts worked out at run time in it, when its written letters -- at least
+    `_STORE_FRAGMENT_MIN` of them -- fall where the store's name could put
+    them."""
+    if name is None:
+        return False
+    pieces = name.split(_UNKNOWN_PART)
+    if len(pieces) == 1:
+        return name == SEQUENCE_STORE
+    if len("".join(pieces)) < _STORE_FRAGMENT_MIN:
+        return False
+    return re.fullmatch("(?s:.*)".join(re.escape(p) for p in pieces),
+                        SEQUENCE_STORE) is not None
+
+
+def _rule_spans(tokens: list[_SqlToken]) -> list[tuple[int, int, str | None]]:
+    """(index of CREATE, index after its body's END, the table it is on or
+    None where that cannot be read) for every rule one text creates -- a
+    temporary one among them (the prover, 2026-09-29)."""
+    spans = []
+    n = len(tokens)
+    for at, kind, _name, k in _sql_objects(tokens):
+        if kind != "trigger":
+            continue
+        while k < n and tokens[k].word != "ON":
+            k += 1
+        table, k = _read_sql_name(tokens, k + 1)
+        while k < n and tokens[k].word != "BEGIN":
+            k += 1
+        depth, k = 1, k + 1
+        while k < n and depth:
+            if tokens[k].word == "CASE":
+                depth += 1
+            elif tokens[k].word == "END":
+                depth -= 1
+            k += 1
+        spans.append((at, k, table))
+    return spans
+
+
+def _rule_setting_value(tokens: list[_SqlToken], after: int, whole: bool) -> str | None:
+    """What a setting is set to, its name ending at `tokens[after]` (the
+    prover, 2026-09-29): the value upper-cased; "" for none -- a read, the
+    name ending a statement handed whole to `execute`, or anything else after
+    it; None where the scan cannot read it -- a part worked out at run time
+    touching the name or where the value goes, or the string ending there."""
+    n = len(tokens)
+    if after >= n:
+        return "" if whole else None
+    tok = tokens[after]
+    if tok.kind == "unknown":
+        return None
+    if not (tok.kind == "other" and tok.value in ("=", "(")):
+        return ""
+    v = after + 1
+    if v >= n or tokens[v].kind == "unknown":
+        return None
+    value = tokens[v]
+    if v + 1 < n and tokens[v + 1].kind == "unknown" and tokens[v + 1].start == value.end:
+        return None
+    if value.kind == "literal":
+        inner = value.value[1:-1] if len(value.value) > 1 and value.value.endswith("'") \
+            else value.value[1:]
+        return inner.replace("''", "'").upper()
+    return value.value.upper()
+
+
+def _rule_names_in(text: str, names) -> list[tuple[int, str, bool]]:
+    """(offset in the text, the name, whether it is written whole) for every
+    word of one string that is one of `names` -- in any case -- or that,
+    with a part worked out at run time in it, could be one: its written
+    letters, `_STORE_FRAGMENT_MIN` or more, falling where the name puts them
+    (the prover, 2026-09-29). Words touching one another, or a part worked
+    out at run time, are one word; a `.` or anything else parts them. The SQL
+    function that loads an extension, called as one (the name followed by
+    `(`, no `.` before it), is the extension reading's and not counted here."""
+    tokens = _sql_tokens(text)
+    n = len(tokens)
+    wanted = {name.casefold(): name for name in names}
+    found = []
+    j = 0
+    while j < n:
+        if tokens[j].kind == "literal":
+            # A quoted string inside the string -- Python code handed to
+            # `exec` quotes the name it looks up -- is a word of its own.
+            start, j = j, j + 1
+            quoted = tokens[start].value
+            atom = (quoted[1:-1] if len(quoted) > 1 and quoted.endswith("'")
+                    else quoted[1:]).replace("''", "'").casefold()
+        elif tokens[j].kind not in ("word", "name", "unknown"):
+            j += 1
+            continue
+        else:
+            start, atom = j, ""
+            while j < n and tokens[j].kind in ("word", "name", "unknown") and (
+                    j == start or tokens[j - 1].end == tokens[j].start):
+                atom += (_UNKNOWN_PART if tokens[j].kind == "unknown"
+                         else tokens[j].value.casefold())
+                j += 1
+        pieces = atom.split(_UNKNOWN_PART)
+        if len(pieces) == 1:
+            hits = [(wanted[atom], True)] if atom in wanted else []
+        elif len("".join(pieces)) >= _STORE_FRAGMENT_MIN:
+            pattern = "(?s:.*)".join(re.escape(p) for p in pieces)
+            hits = [(name, False) for folded, name in wanted.items()
+                    if re.fullmatch(pattern, folded)]
+        else:
+            hits = []
+        called_in_sql = (atom == _RULE_SWITCH_CALLS[2] and j < n
+                         and tokens[j].kind == "other" and tokens[j].value == "("
+                         and not (start > 0 and tokens[start - 1].kind == "other"
+                                  and tokens[start - 1].value == "."))
+        if not called_in_sql:
+            found.extend((tokens[start].start, name, exact) for name, exact in hits)
+    return found
+
+
+def _rule_findings(tokens: list[_SqlToken], whole: bool) -> list[tuple[int, str, object]]:
+    """(token index, kind, what) for every place one text could switch a
+    rule off or move a mark: ("setting", its name, or None where the scan
+    cannot read it), ("setting apart", a listed name standing with no verb
+    before it), ("store", the verb that writes it), ("rows", (the clauses,
+    the table or None, why several or None for one row)), ("key", (the
+    clause, the table or None)), ("raise", (the clause or None, the rule's
+    table or None)), ("rule rows", (the rule's table, the table its insert of
+    several rows writes, why several)) and ("extension", None). `whole` is
+    whether the text is a statement as SQLite will run it -- a `.sql` file,
+    or a string handed straight to `execute` or `executescript`."""
+    n = len(tokens)
+
+    def word(k: int) -> str | None:
+        return tokens[k].word if 0 <= k < n else None
+
+    def unknown(k: int) -> bool:
+        return 0 <= k < n and tokens[k].kind == "unknown"
+
+    def punct(k: int, text: str) -> bool:
+        return 0 <= k < n and tokens[k].kind == "other" and tokens[k].value == text
+
+    def begins(k: int) -> bool:
+        """Could a statement begin at `k`, as far as the text shows?"""
+        return (k == 0 or punct(k - 1, ";") or punct(k - 1, ")")
+                or word(k - 1) == "BEGIN" or unknown(k - 1))
+
+    def after_parens(k: int) -> int:
+        depth = 0
+        while k < n:
+            if punct(k, "("):
+                depth += 1
+            elif punct(k, ")"):
+                depth -= 1
+                if depth <= 0:
+                    return k + 1
+            k += 1
+        return n
+
+    def statement_end(k: int) -> int:
+        depth = 0
+        while k < n:
+            if punct(k, "("):
+                depth += 1
+            elif punct(k, ")"):
+                depth -= 1
+            elif depth <= 0 and punct(k, ";"):
+                return k
+            k += 1
+        return n
+
+    def created_table(k: int) -> str | None:
+        while k > 0:
+            k -= 1
+            if punct(k, ";"):
+                return None
+            if word(k) == "CREATE":
+                for at, kind, name, _after in _sql_objects(tokens[k:]):
+                    return name if at == 0 and kind == "table" else None
+                return None
+        return None
+
+    def verb_apart(k: int) -> bool:
+        """Could the verb of a write whose INTO, FROM, OR or table stands at
+        `k` be kept apart from it, or be worked out in pieces (the prover,
+        2026-09-29: `"DELE" + "TE FROM ..."`, `head + "RT INTO ..."`)?
+        Nothing before it in the string, or -- an OR and its clause between
+        them skipped -- a word holding a part worked out at run time where a
+        statement could begin."""
+        if k >= 2 and word(k - 2) == "OR" and tokens[k - 1].kind in ("word", "unknown"):
+            k -= 2
+        if k == 0:
+            return True
+        a = k - 1
+        if tokens[a].kind not in ("word", "name", "unknown"):
+            return False
+        while (a > 0 and tokens[a - 1].kind in ("word", "name", "unknown")
+               and tokens[a - 1].end == tokens[a].start):
+            a -= 1
+        return any(tokens[x].kind == "unknown" for x in range(a, k)) and begins(a)
+
+    spans = _rule_spans(tokens)
+
+    def rule_table(k: int) -> str | None:
+        """The table of the rule whose body holds `k`; None where no rule of
+        this text holds it, or its table cannot be read."""
+        holding = [s for s in spans if s[0] <= k < s[1]]
+        return holding[-1][2] if holding else None
+
+    def in_a_rule(k: int) -> bool:
+        return any(s[0] <= k < s[1] for s in spans)
+
+    def set_to_what_is_refused(name: str, after: int) -> bool:
+        """Is the setting `name`, its name ending at `after`, set as refused?
+        A listed setting at any value; one refused at a value, at that value
+        or at one the scan cannot read (the prover, 2026-09-29)."""
+        if name in RULE_SETTINGS:
+            return (punct(after, "=") or punct(after, "(") or unknown(after)
+                    or (after >= n and not whole))
+        value = _rule_setting_value(tokens, after, whole)
+        return value is None or value == RULE_SETTING_VALUES[name][0]
+
+    found: list[tuple[int, str, object]] = []
+    placed: set[int] = set()          # where a write's table was read
+    for i, tok in enumerate(tokens):
+        w = tok.word
+        if w == _SETTING_VERB:
+            name, after = _read_sql_name(tokens, i + 1)
+            if name is None:
+                found.append((i, "setting", None))
+            elif (name in RULE_SETTINGS or name in RULE_SETTING_VALUES) \
+                    and set_to_what_is_refused(name, after):
+                found.append((i, "setting", name))
+        elif (tok.kind in ("word", "name")
+              and (tok.value in RULE_SETTINGS or tok.value in RULE_SETTING_VALUES)):
+            # A LISTED NAME WITH NO VERB BEFORE IT (the prover, 2026-09-29):
+            # the verb worked out when it runs, in pieces, or kept apart.
+            p = i - 2 if (punct(i - 1, ".") and i >= 2
+                          and tokens[i - 2].kind in ("word", "name")) else i
+            if word(p - 1) != _SETTING_VERB and set_to_what_is_refused(tok.value, i + 1):
+                found.append((i, "setting apart", tok.value))
+        elif (tok.kind in ("word", "name") and tok.value == _RULE_SWITCH_CALLS[2]
+              and punct(i + 1, "(")):
+            # By a quoted name too (the prover, 2026-09-29: SQLite calls a
+            # function by one).
+            found.append((i, "extension", None))
+        elif w == "ON" and word(i + 1) == "CONFLICT" and word(i + 2) in _RULED_CONFLICTS:
+            found.append((i, "key", (word(i + 2), created_table(i))))
+        elif w == "RAISE" and punct(i + 1, "(") and (
+                word(i + 2) in _RULED_CONFLICTS or unknown(i + 2)):
+            # A RULE RAISING FAIL, IGNORE OR ROLLBACK (the prover, 2026-09-29).
+            found.append((i, "raise", (word(i + 2) or None, rule_table(i))))
+        # THE SEQUENCE STORE WRITTEN: every place a write's table goes.
+        targets: list[tuple[str, int]] = []
+        if w == "INSERT" or (w == "REPLACE" and word(i - 1) != "OR"):
+            k = i + 1
+            if word(k) == "OR":
+                k += 2
+            elif unknown(k):
+                k += 1
+            if word(k) == "INTO":
+                targets.append((w, k + 1))
+        elif w == "UPDATE":
+            k = i + 1
+            if word(k) == "OR":
+                k += 2
+            targets.append(("UPDATE", k))
+            if unknown(k):
+                targets.append(("UPDATE", k + 1))       # UPDATE {clause} t SET
+        elif w == "DELETE" and word(i + 1) == "FROM":
+            targets.append(("DELETE", i + 2))
+        elif w in ("INTO", "FROM") and verb_apart(i):
+            # A FROM or INTO whose verb is worked out when it runs -- and from
+            # the prover (2026-09-29) one beginning the string, its verb kept
+            # apart, or after a verb in pieces: a DELETE's or an INSERT's.
+            targets.append(("a verb worked out when it runs", i + 1))
+        placed.update(k for _verb, k in targets)
+        for verb, k in targets:
+            if _names_the_store(_rule_target(tokens, k)[0]):
+                found.append((i, "store", verb))
+                break
+        # AN INSERT OF SEVERAL ROWS UNDER A CLAUSE THAT FAILS, IGNORES OR
+        # ROLLS BACK -- its verb whole, or (the prover, 2026-09-29) kept apart
+        # or in pieces before `OR <clause> INTO`.
+        if w == "INSERT":
+            k, clause = i + 1, None
+            if word(k) == "OR":
+                clause, k = word(k + 1), k + 2
+        elif (w == "OR" and word(i + 1) in _RULED_CONFLICTS
+              and word(i - 1) not in ("INSERT", "UPDATE") and verb_apart(i)):
+            k, clause = i + 2, word(i + 1)
+        else:
+            continue
+        if word(k) != "INTO":
+            if clause in _RULED_CONFLICTS and (k >= n or unknown(k)):
+                # `INSERT OR FAIL` ending the string, its table and rows added
+                # when it runs (the prover, 2026-09-29).
+                found.append((i, "rows", ((clause,), None, "rows added when it runs")))
+            continue
+        table, a = _rule_target(tokens, k + 1)
+        if table is not None and _UNKNOWN_PART in table:
+            table = None
+        if word(a) == "AS":
+            a += 2
+        if punct(a, "("):
+            a = after_parens(a)
+        several: str | None = "rows a SELECT gives"
+        if a >= n or unknown(a):
+            several = "rows added when it runs"
+        elif word(a) == "DEFAULT" and word(a + 1) == "VALUES":
+            several = None
+        elif word(a) == "VALUES":
+            b, count, trailing = a + 1, 0, False
+            while punct(b, "("):
+                b, count, trailing = after_parens(b), count + 1, False
+                if not punct(b, ","):
+                    break
+                b, trailing = b + 1, True
+            if count > 1:
+                several = f"a VALUES list of {count}"
+            elif count == 0 or trailing or unknown(b):
+                several = "a VALUES list worked out when it runs"
+            elif not (b >= n or punct(b, ";") or word(b) in ("ON", "RETURNING")):
+                # `VALUES (1) UNION ALL SELECT 2` is two rows (2026-09-29).
+                several = "a VALUES list with more rows after it"
+            else:
+                several = None      # one row, as written: how it is run is judged
+        end = statement_end(a)
+        nothing = any(word(j) == "DO" and word(j + 1) == "NOTHING" for j in range(a, end))
+        clauses = tuple([clause] if clause in _RULED_CONFLICTS else []) + (
+            ("DO NOTHING",) if nothing else ())
+        if clauses:
+            found.append((i, "rows", (clauses, table, several)))
+        elif several is not None and in_a_rule(i):
+            # A RULE'S OWN INSERT OF SEVERAL ROWS (the prover, 2026-09-29):
+            # SQLite runs a rule's statements under the conflict clause of the
+            # statement that fired it, so one row under OR FAIL on the rule's
+            # table is several rows under OR FAIL on this one (measured).
+            found.append((i, "rule rows", (rule_table(i), table, several)))
+    # THE STORE'S NAME WHERE NO VERB IS BEFORE IT: at the start of the string,
+    # or after a word holding a part worked out at run time where a statement
+    # could begin -- where a verb kept apart, worked out or in pieces would
+    # go (`UPD` + `ATE ...`) -- a name the scan cannot place, counted as a
+    # write. The bare name was one; from the prover (2026-09-29) so is one
+    # with its condition after it (`sqlite_sequence WHERE name = ...`). After
+    # a FROM, a JOIN, a `:` or any whole word it is a read or prose, as before.
+    atom_kinds = ("word", "name", "literal", "unknown")
+    for j, tok in enumerate(tokens):
+        if tok.kind not in atom_kinds or j in placed:
+            continue
+        if j > 0 and (punct(j - 1, ".") or (tokens[j - 1].kind in atom_kinds
+                                            and tokens[j - 1].end == tok.start)):
+            continue                     # inside a name that begins earlier
+        if verb_apart(j) and _names_the_store(_rule_target(tokens, j)[0]):
+            found.append((j, "store", _A_NAME_UNPLACED))
+    return found
+
+
+def _sql_statement_end(tokens: list[_SqlToken], k: int) -> int:
+    """The offset where the statement beginning at `tokens[k]` ends: its `;`
+    outside any parentheses and any BEGIN ... END or CASE ... END, or the
+    text's end."""
+    parens = blocks = 0
+    for tok in tokens[k:]:
+        if tok.kind == "other" and tok.value == "(":
+            parens += 1
+        elif tok.kind == "other" and tok.value == ")":
+            parens -= 1
+        elif tok.word in ("BEGIN", "CASE"):
+            blocks += 1
+        elif tok.word == "END":
+            blocks -= 1
+        elif tok.kind == "other" and tok.value == ";" and parens <= 0 and blocks <= 0:
+            return tok.end
+    return tokens[-1].end if tokens else 0
+
+
+def _rule_findings_in(text: str, whole: bool, template: bool) -> list[tuple[int, str, object]]:
+    """(offset in the text, kind, what) for every finding in one text. A
+    string of Python is read twice, as `_replacing_writes_in` reads it: with
+    each template placeholder a part worked out at run time, and as written
+    for anything the first reading finds nothing of at the same place."""
+    if not _RULE_QUICK.search(text):
+        return []
+    tokens = _sql_tokens(text)
+    as_written = [(tokens[i].start, kind, what)
+                  for i, kind, what in _rule_findings(tokens, whole)]
+    if not template:
+        return as_written
+    filled = _sql_tokens(_placeholders_unknown(text))
+    found = [(filled[i].start, kind, what)
+             for i, kind, what in _rule_findings(filled, whole)]
+    places = {(start, kind) for start, kind, _what in found}
+    return found + [f for f in as_written if (f[0], f[1]) not in places]
+
+
+def _how_it_is_run(node: ast.AST, parents: dict) -> str:
+    """"execute" when the string is the statement handed straight to
+    `execute` or `executescript`, "executemany" when handed to
+    `executemany`, and "elsewhere" -- kept, returned, handed to anything
+    else -- otherwise."""
+    parent = parents.get(id(node))
+    if (isinstance(parent, ast.Call) and isinstance(parent.func, ast.Attribute)
+            and parent.args and parent.args[0] is node):
+        if parent.func.attr in ("execute", "executescript"):
+            return "execute"
+        if parent.func.attr == "executemany":
+            return "executemany"
+    return "elsewhere"
+
+
+def _rule_call_faults(where: str, tree: ast.AST, functions: dict,
+                      own_words: bool, sqlite_functions: frozenset,
+                      sqlite_collations: frozenset, numbers: dict,
+                      its_own=lambda node: False) -> list[str]:
+    """The calls in one module that set a rule-changing switch, register a
+    function or a collation under a built-in's name, set an authorizer or
+    load an extension -- and each such call reached by another name. `own_words`
+    is this module, whose own constants name the calls; `its_own(node)` says
+    whether a string there is this scan's own words (the prover, 2026-09-29:
+    in the scan's functions or a holder's assignment, never module level
+    alone)."""
+    faults: list[str] = []
+    prose = _docstring_nodes(tree)
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    every_call = set(_REGISTERING_CALLS) | set(_RULE_SWITCH_CALLS)
+
+    def place(node: ast.AST) -> str:
+        return f"{where}:{node.lineno} ({functions.get(id(node)) or 'module level'})"
+
+    def constant(node: ast.AST | None):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (bool, int)):
+            return bool(node.value)
+        return None
+
+    # A SWITCH IS NAMED ONLY BY THE DRIVER ITSELF (the prover, 2026-09-29): the
+    # trigger switch imported under the harmless switch's name, or a class
+    # attribute of that name holding its number, passed as the harmless one.
+    # A name is read off `sqlite3` (or `sqlite3.dbapi2`) only where the
+    # module imports it as itself and binds that name no other way, and a
+    # bare name only where it is imported from the driver unaliased and bound
+    # no other way; any other is a switch the scan cannot read.
+    driver_imported, from_driver, rebound = False, set(), set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name in ("sqlite3", "sqlite3.dbapi2") and a.asname is None:
+                    driver_imported = True
+                else:
+                    rebound.add(a.asname or a.name.split(".")[0])
+        elif isinstance(n, ast.ImportFrom):
+            for a in n.names:
+                if n.module in ("sqlite3", "sqlite3.dbapi2") and a.asname is None:
+                    from_driver.add(a.name)
+                else:
+                    rebound.add(a.asname or a.name)
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            rebound.add(n.id)
+        elif isinstance(n, ast.arg):
+            rebound.add(n.arg)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            rebound.add(n.name)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            rebound.add(n.name)
+
+    def the_drivers(op: ast.AST | None) -> str | None:
+        if isinstance(op, ast.Attribute) and op.attr.startswith("SQLITE_DBCONFIG_"):
+            base = op.value
+            if isinstance(base, ast.Attribute) and base.attr == "dbapi2":
+                base = base.value
+            if (isinstance(base, ast.Name) and base.id == "sqlite3" and driver_imported
+                    and "sqlite3" not in rebound):
+                return op.attr
+        elif (isinstance(op, ast.Name) and op.id.startswith("SQLITE_DBCONFIG_")
+              and op.id in from_driver and op.id not in rebound):
+            return op.id
+        return None
+
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and node.attr.startswith("SQLITE_DBCONFIG_")
+                and isinstance(node.ctx, (ast.Store, ast.Del))):
+            faults.append(
+                f"{place(node)} binds `{node.attr}`, the driver's name for a "
+                f"connection switch, to something else, so a switch passed by "
+                f"that name may be another -- counted as a switch the scan "
+                f"cannot read (operator question 25).")
+        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+              and node.func.id in ("setattr", "delattr") and len(node.args) >= 2
+              and (_rendered_sql(node.args[1], set()) or "").startswith("SQLITE_DBCONFIG_")):
+            faults.append(
+                f"{place(node)} binds a name of the driver's connection "
+                f"switches by `{node.func.id}`, so a switch passed by that name "
+                f"may be another -- counted as a switch the scan cannot read "
+                f"(operator question 25).")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            attr = node.func.attr
+            if attr == "setconfig":
+                op = node.args[0] if node.args else None
+                name = the_drivers(op)
+                if (isinstance(op, ast.Constant) and isinstance(op.value, int)
+                        and not isinstance(op.value, bool)):
+                    name = numbers.get(op.value, f"the switch numbered {op.value}")
+                value = (True if len(node.args) < 2 else constant(node.args[1]))
+                if name is None:
+                    faults.append(
+                        f"{place(node)} sets a connection switch the scan cannot "
+                        f"read -- worked out when it runs -- so it is counted as "
+                        f"one that turns the rules off. Name the switch.")
+                elif name in RULE_DBCONFIG:
+                    wanted, why = RULE_DBCONFIG[name]
+                    if value is None or wanted is None or value == wanted:
+                        said = ("to a value worked out when it runs" if value is None
+                                else "on" if value else "off")
+                        faults.append(
+                            f"{place(node)} sets the connection switch "
+                            f"`{name}` {said}: {why}. The rules are written and "
+                            f"measured with it at SQLite's default; no shipped "
+                            f"code may set it (operator question 25).")
+            elif attr in _REGISTERING_CALLS:
+                kind = _REGISTERING_CALLS[attr]
+                arg = node.args[0] if node.args else next(
+                    (k.value for k in node.keywords if k.arg == "name"), None)
+                text = _rendered_sql(arg, set()) if arg is not None else None
+                if text is None or _UNKNOWN_PART in text:
+                    faults.append(
+                        f"{place(node)} registers a {kind} (`{attr}`) under a "
+                        f"name the scan cannot read, so it is counted as a "
+                        f"built-in's. Name it in the call, and not as SQLite "
+                        f"names one of its own.")
+                elif text.casefold() in (sqlite_functions if kind == "function"
+                                         else sqlite_collations):
+                    faults.append(
+                        f"{place(node)} registers a {kind} (`{attr}`) under the "
+                        f"name `{text}`, which SQLite lists as its own: a rule "
+                        f"calling it -- as the schema's rules call `json_valid` "
+                        f"-- is answered by the connection in SQLite's place "
+                        f"(measured: a value the rule refused landed). Give it "
+                        f"a name of its own (operator question 25).")
+            elif attr == "set_authorizer":
+                if not (node.args and isinstance(node.args[0], ast.Constant)
+                        and node.args[0].value is None):
+                    faults.append(
+                        f"{place(node)} sets an authorizer, which can hand a "
+                        f"rule's read back as NULL (measured: an insert a rule "
+                        f"refused landed so) -- a rule switched off by a "
+                        f"connection setting (operator question 25).")
+            elif attr == "enable_load_extension":
+                if not (node.args and constant(node.args[0]) is False):
+                    faults.append(
+                        f"{place(node)} lets the connection load an extension, "
+                        f"and what one registers -- functions and collations, "
+                        f"under any name, SQLite's own among them -- no scan "
+                        f"can read (operator question 25).")
+            elif attr == "load_extension":
+                faults.append(
+                    f"{place(node)} loads an extension, and what it registers "
+                    f"-- functions and collations, under any name, SQLite's own "
+                    f"among them -- no scan can read (operator question 25).")
+        elif (isinstance(node, ast.Attribute) and node.attr in every_call
+              and id(node) not in called and not isinstance(node.ctx, ast.Store)):
+            faults.append(
+                f"{place(node)} reaches `{node.attr}` by another name -- bound "
+                f"or handed on -- so the scan cannot read what it sets or "
+                f"registers. Call it where it is named.")
+    # A LOOKUP BY NAME. Every string the module holds is read -- each constant,
+    # each whole string expression as SQLite would be handed it (pieces
+    # joined, a bytes literal decoded), and each template filled in with
+    # constants -- word by word, in any case (the prover, 2026-09-29: the
+    # name in pieces, formatted, as bytes, in capitals lowered, or in a
+    # string handed to `exec`, each looked the call up unnamed). A word that
+    # is a call's name, or that could be one around a part worked out at run
+    # time, is a lookup by name; one place and name is one fault.
+    strings = [(n, n.value) for n in ast.walk(tree)
+               if isinstance(n, ast.Constant) and isinstance(n.value, str)
+               and id(n) not in prose]
+    strings += _sql_strings_in(tree) + _roster_filled_in(tree)
+    looked_up: dict[tuple[int, str], tuple[bool, ast.AST]] = {}
+    for node, text in strings:
+        if own_words and its_own(node):
+            continue
+        for _at, name, exact in _rule_names_in(text, every_call):
+            key = (node.lineno, name)
+            if key not in looked_up or (exact and not looked_up[key][0]):
+                looked_up[key] = (exact, node)
+    for (_line, name), (exact, node) in sorted(looked_up.items(),
+                                               key=lambda item: item[0]):
+        said = f"`{name}`" if exact else (
+            f"what could be `{name}` around a part worked out when it runs")
+        faults.append(
+            f"{place(node)} names {said} in a string -- a lookup by name -- so "
+            f"the scan cannot read what it sets or registers. Call it where it "
+            f"is named (operator question 25).")
+    return faults
+
+
+def rule_switch_faults(root: Path | None = None,
+                       register: dict | None = None,
+                       frozen: frozenset | None = None) -> list[str]:
+    """Every place the shipped code or the schema can switch the schema's
+    rules off or rewrite their marks (operator questions 25 and 29, ruled
+    2026-09-28): a setting or a switch that changes how a rule runs, a
+    function or collation under a name SQLite lists as its own, an
+    authorizer or an extension, a write of the sequence store the register
+    does not name, and an insert of several rows under a clause that fails,
+    ignores or rolls back aimed at an append-only table -- and from its
+    prover (2026-09-29) a rule raising such a clause there, and a registered
+    write whose statement is not the one it was made with -- and every
+    register entry that is stale, doubled, undated or not among those it was
+    made with. Each named by file, line and function. With the module's own
+    register, `frozen` is `SEQUENCE_WRITES_REGISTERED_ON_2026_09_29`."""
+    root = config.PACKAGE_ROOT if root is None else Path(root)
+    if register is None:
+        register = SEQUENCE_WRITES_REGISTERED
+        frozen = SEQUENCE_WRITES_REGISTERED_ON_2026_09_29 if frozen is None else frozen
+    base = root.parent
+    functions_listed, collations_listed, settings_listed = _sqlite_own_names()
+    numbers = _dbconfig_numbers()
+    faults: list[str] = [
+        f"audit.RULE_SETTINGS names `{name}`, which SQLite does not list as a "
+        f"setting of its own: a refusal of a name no statement can set refuses "
+        f"nothing."
+        for name in sorted({*RULE_SETTINGS, *RULE_SETTING_VALUES})
+        if name not in settings_listed]
+    sources = _replace_scan_sources(root)
+    protected, writes = _the_schemas_rules(sources)
+    # EVERY RULE'S OWN INSERT OF SEVERAL ROWS (the prover, 2026-09-29), from
+    # every text the scan reads: {the rule's table, None where it cannot be
+    # read: [(the table the insert writes, or None; why several)]}. One row
+    # under a ruled clause on a table whose rules do this is several rows
+    # under that clause on the table they write.
+    rule_rows: dict[str | None, list[tuple[str | None, str]]] = {}
+    for _where, _kind, texts in sources:
+        for entry in texts:
+            for _i, kind, what in _rule_findings(entry[2], True):
+                if kind == "rule rows":
+                    on, into, how_several = what
+                    rule_rows.setdefault(on, []).append((into, how_several))
+
+    def why_set(name: str) -> str:
+        if name in RULE_SETTINGS:
+            return RULE_SETTINGS[name]
+        value, why = RULE_SETTING_VALUES[name]
+        return f"at {value}, or at a value the scan cannot read: {why}"
+
+    def statement_at(text: str, start: int) -> str:
+        """The statement beginning at `start` in `text`, as SQLite reads it:
+        its words upper-cased, its names lower-cased, one space between."""
+        tokens = _sql_tokens(text)
+        k = next((i for i, t in enumerate(tokens) if t.start >= start), len(tokens))
+        end = _sql_statement_end(tokens, k) if k < len(tokens) else 0
+        return " ".join(t.word or t.value for t in tokens[k:]
+                        if t.start < end and not (t.kind == "other" and t.value == ";"))
+
+    def reached(table: str | None) -> set:
+        """The table and every table its rules write: a rule's own writes
+        carry the conflict clause of the statement that ran it."""
+        seen, queue = {table}, [table]
+        while queue:
+            current = queue.pop()
+            if current is None:
+                continue
+            for written in writes.get(current, ()):
+                if written not in seen:
+                    seen.add(written)
+                    queue.append(written)
+        return seen
+
+    def rules_of(table: str) -> str:
+        return ", ".join(f"`{r}`" for r in sorted(protected[table]))
+
+    #: Every table an insert on an append-only table reaches through its
+    #: rules: a rule on one of these raising FAIL stops that insert too.
+    fed = set().union(*(reached(t) for t in protected)) if protected else set()
+
+    found: dict[tuple[str, str, str], list[str]] = {}
+    scan_itself_found: set[str] | None = None     # None: no audit module read
+
+    def judge(where: str, line: int, function: str, how: str,
+              offset_findings: list, text: str) -> None:
+        for start, kind, what in offset_findings:
+            at = line + text.count("\n", 0, start)
+            place = f"{where}:{at} ({function})"
+            if kind == "setting":
+                if what is None:
+                    faults.append(
+                        f"{place} a setting whose name the scan cannot read -- a "
+                        f"part of it, or all of it, worked out when it runs, or "
+                        f"the string ending where it goes -- so it is counted as "
+                        f"one that changes how the rules run (operator question "
+                        f"25). Name the setting in the statement.")
+                else:
+                    faults.append(
+                        f"{place} sets `{what}`: {why_set(what)}. The rules "
+                        f"are written and measured with it at SQLite's default; "
+                        f"no shipped code may set it (operator question 25).")
+            elif kind == "setting apart":
+                faults.append(
+                    f"{place} sets `{what}` with no verb before it -- the verb "
+                    f"worked out when it runs, in pieces, or kept apart -- so "
+                    f"it is counted as set: {why_set(what)}. No shipped code may "
+                    f"set it (operator question 25; its prover, 2026-09-29).")
+            elif kind == "raise":
+                clause, table = what
+                if table is not None and table not in protected \
+                        and not (reached(table) & set(protected)) and table not in fed:
+                    continue
+                if table is None:
+                    counted = ("a rule whose table the scan cannot read is counted "
+                               "as one on an append-only table")
+                elif table in protected:
+                    counted = (f"`{table}` is append-only: the schema gives it "
+                               f"{rules_of(table)}")
+                elif reached(table) & set(protected):
+                    counted = (f"an insert on `{table}` writes the append-only "
+                               + ", ".join(f"`{t}`" for t in sorted(
+                                   reached(table) & set(protected))))
+                else:
+                    counted = f"an insert on an append-only table writes `{table}`"
+                faults.append(
+                    f"{place} a rule "
+                    f"{'on `' + table + '`' if table else 'whose table the scan cannot read'} "
+                    f"raising {clause or 'a clause worked out when it runs'}, and "
+                    f"{counted}. A rule raising FAIL stops a plain insert of "
+                    f"several rows part way, as OR FAIL does, and keeps the rows "
+                    f"before it above SQLite's mark (measured: rows 3 and 4 above "
+                    f"a mark of 2); the ruling refuses the three clauses alike "
+                    f"(operator question 29; question 15's precedent for a key "
+                    f"declared so, read for a rule by its prover, 2026-09-29).")
+            elif kind == "extension":
+                faults.append(
+                    f"{place} loads an extension from SQL, and what it registers "
+                    f"-- functions and collations, under any name -- no scan can "
+                    f"read (operator question 25).")
+            elif kind == "store":
+                key = (where, function, what)
+                if key in register:
+                    found.setdefault(key, []).append(place)
+                    if len(found[key]) > 1:
+                        faults.append(
+                            f"{place} a second write of `{SEQUENCE_STORE}` under "
+                            f"one register entry (the first is {found[key][0]}). "
+                            f"An entry names one statement; the register only "
+                            f"shrinks.")
+                        continue
+                    # THE STATEMENT IT WAS MADE WITH (the prover, 2026-09-29).
+                    made = SEQUENCE_WRITES_AS_MADE_ON_2026_09_29.get(key)
+                    if made is not None and statement_at(text, start) != statement_at(made, 0):
+                        faults.append(
+                            f"{place} writes `{SEQUENCE_STORE}` ({what}) under its "
+                            f"register entry, and the statement is not the one "
+                            f"the register was made with (`{made}`): the ruling's "
+                            f"one exception is the rebuild door carrying the mark "
+                            f"exactly, and another statement under its entry is a "
+                            f"second door (audit.SEQUENCE_WRITES_AS_MADE_ON_2026_09_29; "
+                            f"the register only shrinks -- ask the operator).")
+                    continue
+                faults.append(
+                    f"{place} writes `{SEQUENCE_STORE}` ({what}): SQLite's own "
+                    f"table of AUTOINCREMENT marks, which the rules on the "
+                    f"number written read and on which SQLite allows no rule, "
+                    f"so a mark removed, set back or set forward round a move "
+                    f"is seen by nothing (operator question 29). Only the "
+                    f"rebuild door writes it (audit.SEQUENCE_WRITES_REGISTERED).")
+            elif kind == "rows":
+                clauses, table, several = what
+                if several is None and how in ("executemany", "elsewhere"):
+                    several = ("a statement handed to executemany, run once a row"
+                               if how == "executemany" else
+                               "a statement not handed whole to execute, which "
+                               "the scan cannot see run once")
+                aimed = reached(table)
+                if several is None:
+                    # ONE ROW, ON A TABLE A RULE OF WHICH INSERTS SEVERAL (the
+                    # prover, 2026-09-29): the rule's insert runs under this
+                    # statement's clause. A rule whose table cannot be read is
+                    # counted as one on every table.
+                    fanned = [(on, into, why) for on, rows in sorted(
+                                  rule_rows.items(), key=lambda item: str(item[0]))
+                              if on is None or on in aimed
+                              for into, why in rows
+                              if into is None or into in protected
+                              or reached(into) & set(protected)]
+                    if not fanned:
+                        continue
+                    on, into, why = fanned[0]
+                    several = (
+                        f"one row, and a rule on "
+                        f"{'`' + on + '`' if on else 'a table the scan cannot read'} "
+                        f"inserts {why} into "
+                        f"{'`' + into + '`' if into else 'a table the scan cannot read'}"
+                        f" under this statement's clause")
+                    aimed = aimed | reached(into)
+                guarded = sorted(t for t in aimed if t is not None and t in protected)
+                if not guarded and None not in aimed:
+                    continue
+                counted = [f"`{t}` is append-only: the schema gives it {rules_of(t)}"
+                           for t in guarded]
+                if None in aimed:
+                    counted.append("a table the scan cannot read is counted as "
+                                   "append-only")
+                faults.append(
+                    f"{place} an insert of several rows ({several}) under "
+                    f"{' and '.join(clauses)} on "
+                    f"{'`' + table + '`' if table else 'a table worked out when it runs'}, "
+                    f"and " + "; ".join(counted) + ". An insert of several rows "
+                    f"that stops part way keeps the rows before the one that "
+                    f"failed above SQLite's mark, where a number read twice "
+                    f"writes over them, and the ruling refuses the three "
+                    f"clauses alike (operator question 29). Write it plainly, "
+                    f"or a row a statement.")
+            elif kind == "key":
+                clause, table = what
+                if table is not None and table not in protected:
+                    continue
+                faults.append(
+                    f"{place} a key of "
+                    f"{'`' + table + '`' if table else 'a table the scan cannot read'} "
+                    f"declared to "
+                    f"{ {'FAIL': 'fail', 'IGNORE': 'ignore', 'ROLLBACK': 'roll back'}[clause] } "
+                    f"whenever an insert meets it, and "
+                    + (f"`{table}` is append-only: the schema gives it "
+                       f"{rules_of(table)}" if table else
+                       "a table the scan cannot read is counted as append-only")
+                    + ". Every plain insert of several rows on it then runs under "
+                    f"that clause for the key (operator question 29; question "
+                    f"15's precedent for a key declared to replace).")
+
+    for path in _shipped_python_files(root):
+        where = path.relative_to(base).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        functions = _qualified_functions(tree)
+        parents = {id(child): node for node in ast.walk(tree)
+                   for child in ast.iter_child_nodes(node)}
+        own_words = where == "gridiron/audit.py"
+        if own_words:
+            scan_itself_found = {f for f in functions.values() if f} & _RULE_SCAN_ITSELF
+
+        def in_a_holder(node: ast.AST) -> bool:
+            """Is `node` inside the assignment of one of this module's values
+            holding a word this scan looks for -- its own words, not code?
+            (An annotated one too: the prover, 2026-09-29.)"""
+            while node is not None:
+                if isinstance(node, ast.Assign):
+                    return any(isinstance(t, ast.Name) and t.id in _RULE_WORD_HOLDERS
+                               for t in node.targets)
+                if isinstance(node, ast.AnnAssign):
+                    return (isinstance(node.target, ast.Name)
+                            and node.target.id in _RULE_WORD_HOLDERS)
+                node = parents.get(id(node))
+            return False
+
+        def its_own(node: ast.AST) -> bool:
+            return (in_a_holder(node) or (functions.get(id(node)) or "").split(".")[0]
+                    in _RULE_SCAN_ITSELF)
+
+        for node, text in _sql_strings_in(tree):
+            if own_words and in_a_holder(node):
+                continue                 # this scan's own words: what it looks for
+            how = _how_it_is_run(node, parents)
+            judge(where, node.lineno, functions.get(id(node)) or "module level", how,
+                  _rule_findings_in(text, how != "elsewhere", True), text)
+        # A TEMPLATE FILLED IN WITH CONSTANTS ALONE, read again whole.
+        for node, text in _roster_filled_in(tree):
+            if own_words and in_a_holder(node):
+                continue
+            how = _how_it_is_run(node, parents)
+            judge(where, node.lineno, functions.get(id(node)) or "module level", how,
+                  [(0, kind, what) for _s, kind, what
+                   in _rule_findings_in(text, how != "elsewhere", False)], text)
+        faults.extend(_rule_call_faults(where, tree, functions, own_words,
+                                        functions_listed, collations_listed, numbers,
+                                        its_own))
+        # A WORD THIS SCAN LOOKS FOR, BY THE NAME OF A VALUE HOLDING IT -- as
+        # Python names it, and (the prover, 2026-09-29) by a string the scan
+        # can render: `getattr(audit, "SEQUENCE" + "_STORE")`.
+        references = list(_roster_references(tree, _RULE_WORD_HOLDERS))
+        for node, text in _sql_strings_in(tree) + _roster_filled_in(tree):
+            references += [(node, name) for _at, name, _exact
+                           in _rule_names_in(text, _RULE_WORD_HOLDERS)]
+        for node, name in references:
+            function = functions.get(id(node)) or "module level"
+            if own_words and (function.split(".")[0] in _RULE_SCAN_ITSELF
+                              or function == "module level"):
+                continue                 # the scan's own words, as the roster's
+            if _RULE_WORD_HOLDERS[name] == "store":
+                faults.append(
+                    f"{where}:{node.lineno} ({function}) names `{name}`, "
+                    f"audit's value holding the sequence store's name, which "
+                    f"the scan cannot place: counted as a write of it "
+                    f"(operator question 29).")
+            elif _RULE_WORD_HOLDERS[name] == "call":
+                faults.append(
+                    f"{where}:{node.lineno} ({function}) names `{name}`, "
+                    f"audit's value holding the names of the calls that set a "
+                    f"connection's switches or register a function: counted as "
+                    f"such a call reached by another name, whose switch or "
+                    f"name the scan cannot read (operator question 25).")
+            else:
+                faults.append(
+                    f"{where}:{node.lineno} ({function}) names `{name}`, "
+                    f"audit's value holding the word that opens a setting, or "
+                    f"the names of the settings it refuses: counted as a "
+                    f"setting whose name the scan cannot read (operator "
+                    f"question 25).")
+    for missing in (sorted(_RULE_SCAN_ITSELF - scan_itself_found)
+                    if scan_itself_found is not None else []):
+        faults.append(
+            f"gridiron/audit.py ({missing}): listed in audit._RULE_SCAN_ITSELF, "
+            f"the scan's own functions, and no longer found: remove it.")
+    for path in sorted(root.rglob("*.sql")):
+        where = path.relative_to(base).as_posix()
+        text = path.read_text(encoding="utf-8")
+        tokens = _sql_tokens(text)
+        objects = _sql_objects(tokens)
+        for start, kind, what in _rule_findings_in(text, True, False):
+            # The object whose statement holds it; a statement after an
+            # object's end is the file's own (2026-09-29).
+            holder = [o for o in objects if tokens[o[0]].start <= start
+                      and start < _sql_statement_end(tokens, o[0])]
+            function = f"{holder[-1][1]} {holder[-1][2]}" if holder else "module level"
+            judge(where, 1, function, "sql", [(start, kind, what)], text)
+
+    for key, reason in sorted(register.items()):
+        where, function, verb = key
+        name = f"{where} ({function}) {verb}"
+        if key not in found:
+            faults.append(
+                f"{name}: registered in audit.SEQUENCE_WRITES_REGISTERED and no "
+                f"longer found. The register only shrinks: remove the entry.")
+        if not re.match(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}: \S", str(reason)):
+            faults.append(
+                f"{name}: registered without a dated reason in words "
+                f"(\"2026-09-29: the verified rebuild door ...\").")
+        if frozen is not None and key not in frozen:
+            faults.append(
+                f"{name}: registered in audit.SEQUENCE_WRITES_REGISTERED and not "
+                f"among the entries it was made with "
+                f"(audit.SEQUENCE_WRITES_REGISTERED_ON_2026_09_29). The ruling's "
+                f"one exception is the rebuild door's; the register may only "
+                f"shrink -- ask the operator.")
+    # One place read two ways (a template's constant argument and the
+    # template filled in) is one fault.
+    return list(dict.fromkeys(faults))
+
+
+def check_no_code_switches_the_rules_off_or_rewrites_their_marks(
+        root: Path | None = None) -> None:
+    """Raise unless no shipped code or schema can switch the rules off or
+    rewrite their marks (operator questions 25 and 29; gate step 2)."""
+    faults = rule_switch_faults(root)
+    if faults:
+        raise LawViolation(
+            f"CODE CAN SWITCH THE RULES OFF OR REWRITE THEIR MARKS (operator "
+            f"question 25, ruled 2026-09-28: the scan refuses code that turns "
+            f"the rules off by a connection setting or registers a function "
+            f"under a built-in's name; question 29, folded into it: code that "
+            f"writes `{SEQUENCE_STORE}` but the rebuild door, and an insert of "
+            f"several rows under OR FAIL, OR IGNORE or OR ROLLBACK on an "
+            f"append-only table):" + _NL2 + _NL2.join(faults))
+
+
+def _check_the_rule_scan_names_the_store_once() -> None:
+    """Every value of this module holding the sequence store's name, or the
+    word alone that opens a setting -- and from the prover (2026-09-29) a
+    listed setting's name or a registering or switching call's name as a
+    whole string -- is one of `_RULE_WORD_HOLDERS`, so no value holding any
+    of them is read by its own name elsewhere past the scan; the store's name
+    is read however it is spelled, and the prover's readings are read."""
+    whole_words = {*RULE_SETTINGS, *RULE_SETTING_VALUES,
+                   *_REGISTERING_CALLS, *_RULE_SWITCH_CALLS}
+
+    def strings_of(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                yield from strings_of(k)
+                yield from strings_of(v)
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            for v in value:
+                yield from strings_of(v)
+
+    holding = set()
+    for name, value in globals().items():
+        if callable(value) or type(value).__name__ == "module":
+            continue
+        shown = repr(value)
+        if (SEQUENCE_STORE in shown or repr(_SETTING_VERB) in shown.upper()
+                or whole_words & set(strings_of(value))):
+            holding.add(name)
+    problems = []
+    if holding != set(_RULE_WORD_HOLDERS):
+        problems.append(f"this module's values holding the store's name or the "
+                        f"setting's word are {sorted(holding)}, and "
+                        f"audit._RULE_WORD_HOLDERS lists {sorted(_RULE_WORD_HOLDERS)}")
+    spelled = ('"' + SEQUENCE_STORE.upper() + '"', "[" + SEQUENCE_STORE + "]",
+               "main.`" + SEQUENCE_STORE + "`", "'" + SEQUENCE_STORE + "'",
+               SEQUENCE_STORE[:7] + _UNKNOWN_PART, _UNKNOWN_PART + SEQUENCE_STORE[6:])
+    for text in spelled:
+        if not _names_the_store(_rule_target(_sql_tokens(text), 0)[0]):
+            problems.append(f"{text!r} is not read as the store")
+    if _names_the_store(_rule_target(_sql_tokens(SEQUENCE_STORE + "_x"), 0)[0]):
+        problems.append("another table read as the store")
+    # THE PROVER'S READINGS (2026-09-29), each a way past the scan as first
+    # built. No setting's or call's name is written here: this function is
+    # read by its own scan.
+    journal = next(iter(RULE_SETTING_VALUES))
+    off = RULE_SETTING_VALUES[journal][0]
+    readings = {
+        "the store's name with its condition after it": (
+            _rule_findings(_sql_tokens(SEQUENCE_STORE + " WHERE seq > 0"), False), "store"),
+        "a FROM beginning a string": (
+            _rule_findings(_sql_tokens("FROM " + SEQUENCE_STORE), False), "store"),
+        "a setting refused at its value": (
+            _rule_findings(_sql_tokens(f"{_SETTING_VERB} {journal} = {off}"), True), "setting"),
+        "a setting's name with no verb before it": (
+            _rule_findings(_sql_tokens(f"{_UNKNOWN_PART} {journal} = {off}"), True),
+            "setting apart"),
+    }
+    for what, (findings, kind) in readings.items():
+        if kind not in {k for _i, k, _w in findings}:
+            problems.append(f"{what} is not read ({findings})")
+    if not {name for _a, name, _e in _rule_names_in(
+            _RULE_SWITCH_CALLS[0][:3] + _UNKNOWN_PART, _RULE_SWITCH_CALLS)} >= {
+            _RULE_SWITCH_CALLS[0]}:
+        problems.append("a switching call's name in pieces is not read")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_rule_scan_names_the_store_once()
+
+
 # THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
 # ---------------------------------------------------------------------------
 #
@@ -12814,7 +14302,12 @@ def _check_the_roster_scan_can_see() -> None:
         ("SELECT n.jersey_number FROM " + t + " n", False, ["reads"]),
         ("select * from MAIN.\"" + t.upper() + "\"", False, ["reads"]),
         ("UPDATE " + t + " SET jersey_number = ?", False, ["writes"]),
-        ("INSERT OR IGNORE INTO main." + t + " VALUES (?)", False, ["writes"]),
+        # OR ABORT, not OR IGNORE (2026-09-29): questions 25 and 29's scan
+        # reads this module, and an insert under OR IGNORE on a table it
+        # cannot read, kept in a tuple rather than handed to `execute`, is one
+        # it counts as run for several rows on an append-only table. The case
+        # proves the same placement: an insert under a conflict clause.
+        ("INSERT OR ABORT INTO main." + t + " VALUES (?)", False, ["writes"]),
         ("DELETE FROM " + t, False, ["writes"]),
         ("SELECT 1 FROM sqlite_master WHERE name = '" + t + "'", False, ["reads"]),
         (t, False, ["reads"]),

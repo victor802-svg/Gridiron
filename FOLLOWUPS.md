@@ -9819,3 +9819,416 @@ pass here (22 passed with the tap, overflow and tab tests).
   touch it (last changed in "prog 6: entry"), so it is here under the queue
   rule, not fixed: a `min-height: 44px` on the field is the likely fix, for
   the re-read.
+
+## The rules stay on, and their marks stay put -- built 2026-09-29 *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
+
+"Q25: yes. The scan also refuses any code that turns the rules off by
+connection setting or registers a function under a built-in's name." "Q29:
+folded into Q25's scan: refuse any code that writes sqlite_sequence, and any
+multi-row INSERT OR FAIL / OR IGNORE / OR ROLLBACK on an append-only table.
+No separate item." The reading the operator confirmed: except
+`gridiron.rebuild`, which carries the mark exactly and is the verified
+rebuild door, named in a register with its dated reason. CLAUDE.md's THE
+RULES STAY ON row says what the guard is; this is how it was built. Built
+uncommitted for its prover; proved and committed locally the same day (ITS
+PROVER, at the end of this section).
+
+### MEASURED FIRST: WHAT THE SHIPPED CODE DID
+
+Read with question 15's own readers over the package, `tools/` less
+`tools/guards/`, and `desktop/`, before anything was written (scratchpad
+`q25/measure.py`, `measure_head.txt`):
+
+- **Settings.** 72 statements naming a setting, every name readable:
+  `foreign_keys` (19 set), `legacy_alter_table` (8), `query_only` (3),
+  `table_info` and its kin with a formatted argument, `integrity_check`,
+  `database_list`, `foreign_key_check`, and `journal_mode` in the schema.
+  None of the seven refused below. No `setconfig`, `getconfig`,
+  `create_function`, `create_aggregate`, `create_window_function`,
+  `create_collation`, `set_authorizer` or extension call anywhere, and no
+  string naming one.
+- **The sequence store.** Written by the rebuild door's two statements in
+  `rebuild._rebuild_one` (the table's row deleted, the mark read before the
+  rebuild inserted back) and nothing else; read by `rebuild._sequence` and
+  by the four rules on the number written in `schema.sql`.
+- **Inserts under OR FAIL, OR IGNORE or OR ROLLBACK.** Eight, all OR
+  IGNORE: three of one row handed straight to `execute` on append-only
+  tables (`db.init` on `meta`, `resolve.void_prediction` on
+  `prediction_voids`, `kalshi.capture_packages` on `venue_packages`); two on
+  tables with no rule (`capture.py`'s `injury_reports` and
+  `lineup_captures`, one row each); the roster scan's own self-check case in
+  `audit`; and TWO OF SEVERAL ROWS ON AN APPEND-ONLY TABLE --
+  `db.widen_taken_for_packages` copying `picks_taken` back from
+  `picks_taken_pre_packages` (INSERT ... SELECT), and
+  `db._finish_widening_table` copying a table worked out when it runs back
+  from its `_narrow` twin (one of `session_seen`, `games`, `factors` --
+  append-only -- `factor_scores`, `model_fits`). No key in the schema is
+  declared with a conflict clause; every RAISE in it is ABORT.
+- **On the record** (read-only through `db.read_the_live_record`,
+  `q25/live_widenings.py`): 268 objects, no `_narrow` or `_pre_packages`
+  table, `picks_taken` already holding `package_id` -- so neither copy can
+  run on it; 13 rows in its sequence store; `recursive_triggers` 0 and
+  `trusted_schema` 1, SQLite's defaults.
+
+### WHAT EACH REFUSED THING DOES, MEASURED ON SCRATCH WORLDS (`q25/measure_settings.py`)
+
+- The trigger switch off: a delete the no-delete rule refuses landed, and so
+  did a value the insert rule refuses.
+- `recursive_triggers` on: a replacing insert that lands with it off was
+  refused by the delete rule.
+- `ignore_check_constraints` on: a CHECK's refusal landed.
+- `case_sensitive_like` on: a LIKE CHECK refused `...t00:00:00Z` its default
+  accepts.
+- `create_function("json_valid", 1, ...)`, as `JSON_VALID` too: a value the
+  rule refused landed; registered with another arity it changed nothing;
+  with `trusted_schema` off the rule refused it as an unsafe use.
+  `create_collation("NOCASE", ...)` made 'a' equal 'b' under NOCASE.
+- An authorizer ignoring the rule's read of its guard table: the guarded
+  insert landed.
+- `reverse_unordered_selects` on: a rule's read of the first of two rows
+  read the second.
+- `writable_schema` on: a no-delete rule's row deleted from the schema
+  table.
+- `schema_version` set back after a rule was added: a second connection,
+  which had read the schema before, deleted a row the rule refuses.
+- The reset switch on, then VACUUM: no table left.
+- Question 29's hole: `INSERT OR FAIL` of three rows, the last NULL in a NOT
+  NULL column, kept rows 3 and 4 above a mark of 2. OR IGNORE skipped the
+  row and wrote the mark (5 over rows up to 5); OR ROLLBACK and OR ABORT
+  kept nothing. `executemany` under OR FAIL, the third row failing, kept
+  rows 1 and 2 with the mark at 2 -- each row its own statement, no hole.
+  An upsert that does nothing on conflict skipped the row and went on.
+- SQLite takes a single-quoted string as a write's table: `DELETE FROM
+  'sqlite_sequence'`, `UPDATE 'sqlite_sequence'`, `INSERT INTO
+  'sqlite_sequence'` all landed.
+
+### BUILT
+
+- **The scan**, `audit.check_no_code_switches_the_rules_off_or_rewrites_their_marks`
+  in gate step 2 after question 15's (`audit.rule_switch_faults`): see the
+  CLAUDE.md row. Its lists: `audit.RULE_SETTINGS` (seven, each name held to
+  SQLite's own `pragma_list` when the scan runs), `audit.RULE_DBCONFIG`
+  (five switches, each number read from the driver), the functions and
+  collations SQLite lists on a fresh connection (`_sqlite_own_names`, read
+  every run -- 151 functions and 3 collations in SQLite 3.49.1), and the
+  register below. It reuses question 15's readers, the roster scan's reader
+  of a template filled in with constants and of a value by another name,
+  and question 15's append-only set and rule-writes map. 7 seconds on this
+  machine.
+- **The register**, `audit.SEQUENCE_WRITES_REGISTERED`: the rebuild door's
+  two statements, keyed (file, function, verb) with a dated reason each,
+  frozen as `SEQUENCE_WRITES_REGISTERED_ON_2026_09_29`. A second statement
+  under an entry, an entry no longer found, an undated one, and one not
+  among those it was made with fail by name.
+- **The two copies it found, plain now** (`db.set_meta`'s precedent under
+  question 15: the same effect, no ruling needed): `widen_taken_for_packages`
+  copies `picks_taken` back with a plain INSERT ... SELECT, and a row the
+  rebuilt table refuses is refused in words, rolled back, the original kept
+  and foreign keys back on (OR IGNORE skipped the row and the count refused;
+  a rule's refusal used to leave by a raw error with foreign keys off);
+  `_finish_widening_table` copies with a plain insert of every narrow row
+  whose key is not already stored (`db._already_stored`: each of the table's
+  unique keys, which for all five is the primary key alone), and any other
+  row the table refuses refuses the copy, where OR IGNORE dropped it and the
+  count let it through whenever the rows stored first made up the number.
+- **The roster scan's self-check** case "an insert under a conflict clause
+  names the table as written" now uses OR ABORT, not OR IGNORE: this scan
+  reads `audit` and counted the case (one row, a table it cannot read, kept
+  in a tuple) as an insert of several rows on an append-only table.
+- **Six plantings**, each escaping on bd90dc3 (no scan, and question 15's
+  names none of the planted places) and caught here, place by place, with a
+  lawful neighbour named by nothing (`q25/plant_head.txt`,
+  `q25/plant_fix.txt`).
+- **`tests/test_rules_stay_on.py`**: every measurement above as a test, the
+  names read from SQLite, the scan on 109 readings, the schema read, the
+  scope, the register four ways, and the two copies side by side against
+  the OR IGNORE statements they replace. On bd90dc3 122 of its 143 tests
+  fail (every scan test, and the narrow copy's refusal: the OR IGNORE copy
+  dropped the row and passed); the 21 that pass there are the measurements
+  of SQLite and the copies whose effect did not change.
+- **The rehearsal** (`q25/rehearse.py`, `rehearse.txt`), on ONE verified
+  copy of the record (`rebuild.verified_backup`, 21:27:35-21:28:20Z, 1.09 GB,
+  integrity ok, 64 tables proved equal) in the q25 scratch folder: `db.init`
+  of this tree added, removed and changed no object (268 before and after),
+  moved no table's checksums and no sequence mark, and left 0 differences
+  from a fresh build of this tree (an empty register); a second open changed
+  nothing. Gate step 2's rows, dry, with that copy as the gate's copy (the
+  harness answered by a stub; `plant.py` run whole on its own: 390/390): PASS,
+  the new row among them. The copy's folder was then deleted (1.09 GB).
+
+### READINGS TAKEN *(the conservative default each time; none breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **"Any PRAGMA that changes how rules run"** is read as the seven settings
+  measured to change what a rule does, reads or may call, or whether the
+  connection sees it at all; a setting of one is refused whatever its value
+  (setting a default back is still a statement that decides it), and a
+  setting whose name the scan cannot read counts as one. A READ of a listed
+  setting handed whole to `execute` is not refused; one kept in a string,
+  where the rest may be added later, is. Left as they are, with the reason
+  in the audit's comment: `foreign_keys`, `legacy_alter_table`,
+  `query_only`, `defer_foreign_keys`, their switches, the defensive switch
+  and the double-quoted-string switches.
+- **An authorizer** is a connection setting that switched a rule off
+  (measured), so `set_authorizer` is refused unless it takes one off
+  (`None`). **An extension** registers functions under names no scan can
+  read, so allowing or loading one is refused, and so is the SQL function.
+- **A function under a built-in's name** is any name `function_list` gives
+  on a fresh connection, both SQLite's core and the extensions compiled into
+  it (`fts5`, `match`, `rtreenode` ...), whatever the arity (an override
+  bites only at its own arity; a rule calls a function at the arity it
+  wrote, and a second arity is one statement away); the operators `->` and
+  `->>` are on the list and so refused. Collations are held to
+  `collation_list`.
+- **"The register"** of question 29's reading is a register of this scan's
+  own, made with the rebuild door's two statements and frozen that day.
+  Question 15's register holds upserts on tables with no rule and was frozen
+  on 2026-09-27; it was never asked to hold this. The reading's contingency
+  ("otherwise the operator is asked") is for a scan whose register cannot
+  admit the door; this one's is made to, and admits nothing else.
+- **"Multi-row"** is a VALUES list of two or more or with more rows after it
+  (a compound), a SELECT, rows worked out
+  at run time, a string that ends before its rows, a statement handed to
+  `executemany` (the brief's own list, though measured to leave no hole: each
+  row is its own statement), and a statement not handed whole to `execute`
+  or `executescript`, which the scan cannot see run once. An upsert that
+  does nothing on conflict is OR IGNORE's skip for its key and is counted
+  with it. A key of an append-only table declared to fail, ignore or roll
+  back on conflict is refused in the schema -- question 15's precedent for a
+  key declared to replace. OR IGNORE and OR ROLLBACK are refused though
+  neither left a row above the mark when measured: the ruling names all
+  three.
+- **"However spelled"** takes in a string literal for the table (SQLite reads
+  one there) and a name partly worked out at run time with three written
+  letters or more that could be the store's (the roster scan's measure,
+  measured again: at one letter the audit's own `f"{venue}_{word}"` would
+  read as it; at two or more nothing does). A verb worked out where a
+  statement begins, before FROM or INTO the store, counts as a write. The
+  bare name counts as a write, as the roster scan counts it as a read, and
+  the audit's own value holding it (`SEQUENCE_STORE`), and the word that
+  opens a setting (`_SETTING_VERB`), named anywhere but this scan, count as
+  a write and an unreadable setting (the roster scan's prover's finding,
+  applied before anyone had to find it here). A statement whose table is
+  WHOLLY worked out at run time is not counted (below).
+- **The two copies were rewritten, not registered**: the ruling admits one
+  exception, the rebuild door's, and it is for the sequence store.
+
+### NOT SEEN *(recorded; none is in the shipped code today)*
+
+- A name -- a setting's, a function's, a table's -- read from the record, a
+  file or the environment, or built where no string of it is rendered (a
+  list joined at run time, a reversal); the audit's own helpers returning a
+  name (only its values are read by their names).
+- A write whose table is wholly worked out at run time: `rebuild._copy_rows`,
+  `db._finish_widening_table`'s copy and `tools/dbcopy.copy_facts` copy
+  every table by a name they are handed, none of them the store.
+- SQLite reached through `ctypes` (`sqlite3_db_config` straight).
+- A rule of the schema raising FAIL or IGNORE (none does), which makes a
+  plain insert of several rows stop part way as OR FAIL does -- REFUSED from
+  its prover (below); an update of several rows under OR FAIL (no shipped
+  statement has one).
+- A connection outside the shipped code: a test, a planting, the operator's
+  own shell. No rule can see any of these; the scan keeps them out of the
+  code that runs on the record.
+
+### ITS PROVER (2026-09-29)
+
+Alone in the worktree, the change uncommitted as built. Scratch evidence in
+`scratchpad\q25\prover\`: `head\` is `git archive` of bd90dc3, `first\` the
+change as first built; `probe.py` plants a form in a copy of a tree's
+package and says which place the scan names (`probes_round1.py` to
+`probes_round3.py`, each run on `first` and on the fix).
+
+**MEASURED FIRST, on scratch worlds** (`measure_paths.py`, `measure_more.py`,
+`measure_journal.py`, SQLite 3.49.1, Python 3.12.10):
+
+- `PRAGMA journal_mode = OFF` -- from a DELETE journal and from a WAL file --
+  then, inside a transaction, `INSERT INTO p (v) VALUES ('c'), ('bad')`
+  refused by an AFTER INSERT rule: rows 3 'c' and 4 'bad' stood, the mark at
+  2; a later refused insert kept its first row too. In autocommit the
+  refusal held (the pages never left the cache). WAL, MEMORY, TRUNCATE and
+  DELETE kept every refusal whole. A connection setting that turns a rule's
+  refusal off.
+- A rule raising FAIL -- a temporary one on `main.a`, and one in the schema
+  -- stopped a plain `INSERT ... VALUES ('three'), ('four'), ('stop')` and an
+  INSERT ... SELECT part way: rows 3 and 4 above a mark of 2, as under OR
+  FAIL.
+- SQLite calls a function by a quoted name: `SELECT "abs"(-1)`, `[abs](-1)`
+  and `` `abs`(-1) `` each answered 1, so `"load_extension"(?)` is the
+  extension function.
+- `getattr(conn, "set" + "config")` is `conn.setconfig`, and `getattr(conn,
+  "create_" + "function")("json_valid", 1, ...)` answered a rule's
+  `json_valid` in SQLite's place.
+- `PRAGMA 'recursive_triggers' = 1` (the name as a literal) sets it; the
+  scan as first built already read that as a setting it cannot read.
+- Not ways round: `setconfig` takes no keyword arguments and refuses a
+  switch the driver does not know (`setconfig(1019, True)`: "unknown
+  config"); the trigger-depth limit set to 0 refuses every rule's run ("too
+  many levels of trigger recursion") rather than skipping it; `->`, `->>`,
+  `coalesce`, `iif`, `unlikely` are on `function_list`, and overriding them
+  does answer SQLite's own calls, so the list is the right one.
+
+**WHAT GOT PAST THE SCAN AS FIRST BUILT, and is caught now** (each named by
+nothing on `first`, `probes_round1_first.txt`, `probes_round3_first.txt`,
+`plant_first.txt`; caught on the fix, `probes_round*_fix.txt`,
+`plant_fix.txt`):
+
+- Settings: `journal_mode = OFF` in the code and in the schema; a listed
+  setting whose verb is worked out (`verb + " recursive_triggers = 1"`), in
+  two pieces (`"PRAG" + "MA recursive_triggers = 1"`), or kept apart
+  (`"writable_schema = ON"`).
+- The calls looked up by a string the scan can render: in pieces, a
+  template filled in with constants, a bytes literal decoded, capitals
+  lowered, a string handed to `exec` (quoted or not), partly worked out
+  (`f"set{x}"`); and by the audit's own values holding the calls' names
+  (`from gridiron.audit import _RULE_SWITCH_CALLS`, `_REGISTERING_CALLS`),
+  which the first scan exempted wherever they stood at the audit's module
+  level.
+- The trigger switch passed under the defensive switch's name (an aliased
+  import, a class attribute of that name): the first scan trusted any name
+  beginning `SQLITE_DBCONFIG_`.
+- `SELECT "load_extension"(?)`.
+- The store: its name kept with its condition (`"sqlite_sequence WHERE
+  name = 'predictions'"`), after a FROM beginning a kept string (`"FROM
+  sqlite_sequence WHERE ..."`), after a verb in pieces (`"DELE" + "TE FROM
+  ..."`, `"INSE" + "RT INTO ..."`, `"UPD" + "ATE sqlite_sequence SET ..."`,
+  under OR IGNORE too), and the audit's value holding it looked up by a
+  string in pieces (`getattr(audit, "SEQUENCE" + "_STORE")`).
+- The rebuild door's own DELETE widened to `DELETE FROM sqlite_sequence`
+  (every mark) or its INSERT given a second row: the register named a place
+  and a verb, so any statement of that verb in `_rebuild_one` passed. The
+  door's own check compares only the rebuilt table's mark.
+- Several rows with the insert's verb in pieces (`head + "RT OR FAIL INTO
+  predictions ..."`) or kept apart (`"INSERT " + "OR IGNORE INTO
+  recommendations ..."`, `"INSERT OR FAIL"` ending a string, which question
+  15's scan also names on an append-only table).
+- A rule raising FAIL on an append-only table: a temporary one the code
+  creates (`CREATE TEMP TRIGGER ... ON main.predictions ... RAISE(FAIL,
+  ...)`), one in the schema, one on a view whose rule writes one, and one
+  whose clause is worked out when it runs.
+- One row under OR FAIL into a table whose rule inserts several rows into an
+  append-only table. SQLite runs a rule's statements under the conflict
+  clause of the statement that fired it, so `INSERT OR FAIL INTO feed
+  VALUES (1)`, `feed`'s rule copying three rows of which the last is NULL
+  into `records`, kept `records` rows 3 and 4 above a mark of 2; OR IGNORE,
+  OR ROLLBACK, OR ABORT and a plain insert left none above the mark
+  (`measure_inherited.py`). The first scan judged "several" on the outer
+  statement alone. (Question 15 already reads a replacing write as aimed at
+  the tables its table's rules write; this is the same reading for the
+  number of rows.)
+
+**BUILT** (audit.py, "AND FROM ITS PROVER"; each a test in
+`test_rules_stay_on.py` and a form of `plant_a_rule_switch_the_first_scan_missed`
+or `plant_a_mark_or_a_stopped_insert_the_first_scan_missed`):
+
+- `audit.RULE_SETTING_VALUES`: `journal_mode`, refused at OFF or at a value
+  the scan cannot read (`_rule_setting_value`), held to `pragma_list`.
+- A listed setting's name with no verb before it, followed by a value, a
+  part worked out, or the end of a kept string: "sets `...` with no verb
+  before it".
+- `_rule_names_in`: every word of every string the module holds -- each
+  constant, each whole string expression as rendered, each template filled
+  in with constants, and each quoted string inside one -- in any case; a
+  word that is a call's name, or could be one around a part worked out at
+  run time (three written letters or more, the roster scan's measure), is a
+  lookup by name. The same reader finds the audit's holders by a string in
+  pieces.
+- `_RULE_WORD_HOLDERS` gains `_REGISTERING_CALLS`, `_RULE_SWITCH_CALLS`,
+  `RULE_SETTINGS`, `RULE_SETTING_VALUES` and
+  `SEQUENCE_WRITES_AS_MADE_ON_2026_09_29`; the strings inside a holder's own
+  assignment (annotated ones too) are the scan's words, and nothing else of
+  the audit's module level is exempt; the import-time proof now requires
+  every value holding a call's or a listed setting's name as a whole string
+  to be a holder, and reads four of the prover's forms.
+- A switch's name read only off the driver (`sqlite3.X`, the module
+  imported as itself and never rebound, or `sqlite3.dbapi2.X`) or a name
+  imported from it unaliased and bound no other way; a statement binding a
+  driver's switch name (`sqlite3.SQLITE_DBCONFIG_... = `, `setattr`,
+  `delattr`) is refused.
+- The extension function read by a quoted name.
+- `verb_apart` (inside `_rule_findings`): a FROM, an INTO, an OR and its
+  clause, or the store's name with nothing before it in the string, or after
+  a word holding a part worked out at run time where a statement could
+  begin, has its verb kept apart or in pieces -- a write of the store, or an
+  insert of several rows. The store's name after a whole word (a read after
+  FROM or JOIN, prose after `:`) is not counted, as before.
+- `_rule_spans` and the "raise" reading: a RAISE of FAIL, IGNORE, ROLLBACK or
+  a clause worked out, in a rule on an append-only table, on a table whose
+  rules write one, or on a table an insert on one reaches -- or with no rule
+  of its string around it -- is refused.
+- `SEQUENCE_WRITES_AS_MADE_ON_2026_09_29`: each register entry's statement
+  as SQLite reads it (words upper-cased, names lower-cased, one space); a
+  write under an entry whose statement is another fails, as a second door.
+- The "rule rows" reading: every rule's own insert of several rows, from
+  every text the scan reads (the schema, and a temporary rule in a string),
+  keyed by the rule's table; one row under OR FAIL, OR IGNORE or OR ROLLBACK
+  into that table, or into one whose rules reach it, is an insert of several
+  rows under that clause when the rule's insert writes an append-only table
+  (or one the scan cannot read). A rule whose table cannot be read is
+  counted as one on every table. No rule of the schema writes another table
+  today, so nothing shipped is named.
+
+**NEUTRALISED IN A COPY** (`neutralise.py`, `neutralise.txt`): each part of
+the scan -- the implementer's and the prover's, twenty-seven in all (the
+switch at the value that does it, a switch it cannot read, a switch named
+only off the driver, an authorizer, a lookup by name, a listed setting, a
+setting it cannot read, a setting with no verb before it, `journal_mode` at
+its value, a built-in's name, a function's name it cannot read, an
+extension allowed or loaded, the extension's SQL function, the store written
+by its verb, the store's name unplaced, a verb kept apart or in pieces, the
+audit's holders named, the holders named by a string in pieces, a second
+write under one entry, an entry no longer found, an entry not among those it
+was made with, the statement it was made with, several rows, several rows
+with the verb apart, a key declared to fail, one row through a rule's insert
+of several, a rule raising FAIL) -- was switched off in a copy of the fixed
+tree, with the import-time proof off so the planting is what refuses it, and
+in every copy the planting holding that part escaped, naming that part's
+places as missing and nothing else. With the import-time proof left on, six
+of the twenty-seven copies already refused
+to load (a listed setting, a setting with no verb before it, `journal_mode`
+at its value, the store written by its verb, the store's name unplaced, a
+verb kept apart or in pieces).
+
+**THE TESTS**: `test_rules_stay_on.py` holds 212 (143 as first built; 160
+readings, 109 as first built). On bd90dc3 182 fail and the 30 that pass are
+measurements of SQLite and the copies whose effect did not change
+(`tests_on_head.txt`); on the change as first built 49 fail, every one a
+reading or a test of the prover's (`tests_on_first.txt`); here all pass. The
+module's register is read by `getattr` so the file collects on a tree
+without the scan.
+
+**NOT SEEN, beyond the rulings' words** (the queue rule: none breaks LAW 1
+or LAW 3 in fact -- no shipped code does it and nothing on the record moved
+-- and none makes a gate count false; for the operator at the re-read):
+
+- **A write that is no statement.** `Connection.blobopen` rewrote a stored
+  row's text column in place ('home' to 'away') past its no-update rule, no
+  rule run (`measure_more.py`). A backup written INTO a database file
+  (`source.backup(record)`) replaced every page -- two rows the no-delete
+  rule keeps were gone -- with no rule run (`measure_journal.py`). The
+  shipped code opens no blob and backs up only out of the record
+  (`db.back_up`). A scan
+  refusing `blobopen`, `deserialize` and a backup whose target is not a new
+  file would be one more row of this scan, if ruled.
+- **The roster scan (released, 4df9153 on) misses its own holder looked up
+  by a string in pieces**: `getattr(audit, "ROSTER_NUMBERS" + "_TABLE")` in
+  the calibration read `player_numbers` and was named by nothing, where the
+  whole name `"ROSTER_NUMBERS_TABLE"` is named (`roster_probe.py`,
+  `roster_probe.txt`, on bd90dc3). This scan's reader of names in a string
+  (`_rule_names_in`) would close it; the roster ruling is its own.
+- A setting whose verb AND name are both in pieces (`"PRAG" + "MA
+  recursive_" + rest`), a call's name reversed (`"gifnoctes"[::-1]`) or
+  joined at run time from a list: no string of either is rendered.
+- A table's mark carried by SQLite itself: `DROP TABLE` removes a table's
+  row from the store, and a migration's rename aside and copy back sets the
+  mark to the highest number copied (`db._widen_market_type` /
+  `_finish_widening` on `predictions`, run only on a record whose table is
+  narrower than the schema; the rebuild door carries the mark exactly). No
+  statement of the store is written, so the ruling's words do not reach it.
+- A clause or an upsert's action worked out when it runs on an insert of
+  several rows (`INSERT OR {clause} INTO predictions ...`, `ON CONFLICT DO
+  {action}`): not read by this scan, and refused by question 15's, which
+  counts either as a replacing write on an append-only table.
+- For question 26 (next): `capture.py`'s two OR IGNORE inserts into
+  `injury_reports` and `lineup_captures` are one row each, handed straight
+  to `execute`; if those tables get their rules, this scan holds them as
+  they are.

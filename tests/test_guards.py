@@ -587,6 +587,17 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_replacing_write_reaching_an_append_only_table_by_a_key",
         "plant_a_replacing_write_reaching_a_table_the_scan_cannot_read",
         "plant_an_upsert_registered_after_the_register_was_frozen",
+        # OPERATOR QUESTIONS 25 AND 29 (ruled 2026-09-28, built 2026-09-29):
+        # no code switches the rules off or rewrites their marks.
+        "plant_a_connection_switch_that_turns_the_rules_off",
+        "plant_a_setting_that_changes_how_the_rules_run",
+        "plant_a_function_registered_under_a_built_ins_name",
+        "plant_a_write_to_the_sequence_store",
+        "plant_a_second_door_to_the_sequence_store",
+        "plant_an_insert_of_several_rows_that_can_stop_part_way",
+        # its prover (2026-09-29): the forms the scan as first built missed
+        "plant_a_rule_switch_the_first_scan_missed",
+        "plant_a_mark_or_a_stopped_insert_the_first_scan_missed",
         # OPERATOR QUESTION 24 (ruled 2026-09-28): no recommendation moved
         # above every number given out, where a new one could be written
         # over it -- question 15's basis, applied to question 13's table.
