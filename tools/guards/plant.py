@@ -21551,6 +21551,621 @@ def plant_a_mark_or_a_stopped_insert_the_first_scan_missed() -> Result:
     })
 
 
+# ---------------------------------------------------------------------------
+# APPEND-ONLY HISTORY (operator question 26, ruled 2026-09-28: "each of the
+# five tables either gets the rules or its description changes to what the
+# code does"; built 2026-09-29). Measured first: the shipped code only ever
+# inserts into factor_scores, llm_calls, injury_reports and lineup_captures
+# and writes nothing to weather_observed, so all five got the rules. Three
+# plantings, one per kind of write the rules refuse -- a delete, an update,
+# a replacement -- each run on all five tables of one planted world, each
+# escaping on 3c36861 (no rule on any of the five) and caught here.
+# ---------------------------------------------------------------------------
+
+LAW_HISTORY = "APPEND-ONLY HISTORY (question 26)"
+
+#: Each table as the three plantings write it (2026-09-29): the number its
+#: rows are kept under (`id`, or the rowid SQLite keeps for a table with no
+#: number of its own), its columns, three stored rows, a newcomer another
+#: write would put in a stored row's place, a stored value an update would
+#: rewrite, and -- for the tables keyed by what they record -- the one key
+#: column rows 1 and 2 differ in (so an update of it moves row 2 onto row
+#: 1's key) and a row carrying row 1's key with other values.
+_HISTORY_TABLES: dict[str, dict] = {
+    "factor_scores": {
+        "number": "id",
+        "columns": ("sport", "computed_utc", "factor", "window", "n", "brier",
+                    "log_loss", "note"),
+        "rows": [("nfl", f"2026-09-0{i}T00:00:00Z", "planted_factor",
+                  "since_activation", 10 * i, 0.2, 0.6, None) for i in (1, 2, 3)],
+        "newcomer": ("nfl", "2026-09-09T00:00:00Z", "planted_factor",
+                     "season:2026", 99, 0.9, 0.9, "a newcomer"),
+        "value": ("brier", 0.01),
+    },
+    "llm_calls": {
+        "number": "id",
+        "columns": ("called_utc", "day_utc", "purpose", "model", "input_tokens",
+                    "output_tokens", "usd", "game_id", "ok", "error"),
+        "rows": [(f"2026-09-0{i}T00:00:00Z", f"2026-09-0{i}", "reasoning",
+                  "planted-model", 100, 10, 0.01 * i, "g1", 1, None)
+                 for i in (1, 2, 3)],
+        "newcomer": ("2026-09-09T00:00:00Z", "2026-09-09", "reasoning",
+                     "planted-model", 1, 1, 0.0, "g1", 1, None),
+        "value": ("usd", 99.0),
+    },
+    "injury_reports": {
+        "number": "rowid",
+        "columns": ("sport", "season", "week", "team", "player_name",
+                    "player_id", "position", "report_status",
+                    "practice_status", "captured_utc"),
+        "rows": [("nfl", 2026, 1, "KC", f"Player {i}", f"p{i}", "WR",
+                  "Questionable", "LP", "2026-09-01T00:00:00Z") for i in (1, 2, 3)],
+        "newcomer": ("nfl", 2026, 1, "KC", "Player 9", "p9", "WR", "Out",
+                     "DNP", "2026-09-09T00:00:00Z"),
+        "value": ("report_status", "Out"),
+        "moved": ("player_name", "Player 1"),
+        "collides": ("nfl", 2026, 1, "KC", "Player 1", "p1", "WR", "Out", "DNP",
+                     "2026-09-01T00:00:00Z"),
+    },
+    "lineup_captures": {
+        "number": "rowid",
+        "columns": ("game_id", "side", "slot", "player_id", "player_name",
+                    "captured_utc", "source"),
+        "rows": [("g1", "home", i, 100 + i, f"Batter {i}",
+                  "2026-09-01T00:00:00Z", "live") for i in (1, 2, 3)],
+        "newcomer": ("g1", "away", 9, 999, "Somebody else",
+                     "2026-09-09T00:00:00Z", "live"),
+        "value": ("player_id", 999),
+        "moved": ("slot", 1),
+        "collides": ("g1", "home", 1, 999, "Somebody else",
+                     "2026-09-01T00:00:00Z", "live"),
+    },
+    "weather_observed": {
+        "number": "rowid",
+        "columns": ("game_id", "observed_utc", "source", "temp_f", "wind_mph",
+                    "precip_pct"),
+        "rows": [("g1", f"2026-09-0{i}T00:00:00Z", "planted", 60.0 + i, 5.0, 0.0)
+                 for i in (1, 2, 3)],
+        "newcomer": ("g1", "2026-09-09T00:00:00Z", "planted", -40.0, 90.0, 100.0),
+        "value": ("temp_f", -40.0),
+        "moved": ("observed_utc", "2026-09-01T00:00:00Z"),
+        "collides": ("g1", "2026-09-01T00:00:00Z", "planted", -40.0, 90.0, 100.0),
+    },
+}
+
+
+class _HandedTwice:
+    """A function the connection defines, answering its first call -- the
+    rules' reading of a number named in a one-row insert -- with `first` and
+    every later one -- the row's -- with `then` (read twice: measured on
+    3.49.1, question 13's prover, again 2026-09-29 on these tables)."""
+
+    def __init__(self, first, then):
+        self.first, self.then, self.calls = first, then, 0
+
+    def __call__(self):
+        self.calls += 1
+        return self.first if self.calls == 1 else self.then
+
+
+def _history_world(stored: bool = True) -> tuple[sqlite3.Connection, dict]:
+    """A scratch record built by this tree's `db.init`, holding a game, a
+    factor and three rows of each of the five tables -- none of them when
+    `stored` is False (2026-09-29, the prover: the tables as a fresh build
+    has them, and `weather_observed` as the record has it) -- and the
+    functions that read a number twice, registered on it."""
+    conn = db.connect(":memory:")
+    db.init(conn)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1, 'R',"
+        " 'AAA', 'BBB', '2026-10-01T23:00:00Z', 'scheduled', '2026-10-01')")
+    conn.execute(
+        "INSERT INTO factors (name, sport, added_utc, rationale) VALUES"
+        " ('planted_factor', 'nfl', '2026-08-31T00:00:00Z',"
+        " 'a factor planted only so that a score of it can be written')")
+    for table, spec in _HISTORY_TABLES.items():
+        marks = ", ".join("?" for _ in spec["columns"])
+        for row in spec["rows"] if stored else ():
+            conn.execute(f"INSERT INTO {table} ({', '.join(spec['columns'])})"
+                         f" VALUES ({marks})", row)
+    conn.commit()
+    handed = {"handed_nothing_then_1": _HandedTwice(None, 1),
+              "handed_free_then_2": _HandedTwice(99, 2),
+              "handed_nothing_then_3": _HandedTwice(None, 3)}
+    for name, function in handed.items():
+        conn.create_function(name, 0, function)
+    return conn, handed
+
+
+def _history_state(conn: sqlite3.Connection, table: str) -> list[tuple]:
+    number = _HISTORY_TABLES[table]["number"]
+    return [tuple(r) for r in conn.execute(
+        f"SELECT {number}, * FROM {table} ORDER BY {number}")]
+
+
+def _history_attempt(conn, handed, table, statement, params=()):
+    """The refusal's words, or None; and the table as the statement left it.
+    Rolled back either way."""
+    for function in handed.values():
+        function.calls = 0
+    try:
+        conn.execute(statement, params)
+        words = None
+    except sqlite3.Error as exc:
+        words = f"{type(exc).__name__}: {exc}"
+    after = _history_state(conn, table)
+    conn.rollback()
+    return words, after
+
+
+def _history_insert(table: str, verb: str, number: str | None = None,
+                    tail: str = "") -> str:
+    """An insert of one row of values into `table` under `verb`; `number`,
+    if given, is "column=expression" -- the name the number is written
+    under (`id`, `rowid`, `oid`) and the SQL that gives it -- and `tail`
+    follows the values (an upsert's clause)."""
+    spec = _HISTORY_TABLES[table]
+    marks = ", ".join("?" for _ in spec["columns"])
+    if number is None:
+        return (f"{verb} INTO {table} ({', '.join(spec['columns'])})"
+                f" VALUES ({marks}){tail}")
+    column, value = number.split("=", 1)
+    return (f"{verb} INTO {table} ({column}, {', '.join(spec['columns'])})"
+            f" VALUES ({value}, {marks}){tail}")
+
+
+def _history_forms(kind: str) -> list[tuple[str, str, str, tuple, bool]]:
+    """(table, label, statement, parameters, proves its rule) for one kind
+    of write -- 'delete', 'update' or 'replace' -- on each of the five
+    tables. The last is False for a form another rule would also refuse
+    with this one dropped (an upsert's update half meets the update rule)."""
+    forms = []
+    for table, spec in _HISTORY_TABLES.items():
+        n = spec["number"]
+        new = spec["newcomer"]
+        value_column, value = spec["value"]
+        if kind == "delete":
+            forms += [
+                (table, "a stored row deleted by its number",
+                 f"DELETE FROM {table} WHERE {n} = 2", (), True),
+                (table, "every stored row deleted",
+                 f"DELETE FROM {table}", (), True),
+                (table, "the newest row deleted by oid",
+                 f"DELETE FROM {table} WHERE oid = 3", (), True),
+            ]
+        elif kind == "update":
+            forms += [
+                (table, f"a stored row's {value_column} rewritten",
+                 f"UPDATE {table} SET {value_column} = ? WHERE {n} = 1",
+                 (value,), True),
+                (table, "a stored row moved to a number above every other",
+                 f"UPDATE {table} SET {n} = 90 WHERE {n} = 1", (), True),
+                (table, "a stored row moved by oid",
+                 f"UPDATE {table} SET oid = 91 WHERE {n} = 2", (), True),
+                (table, "UPDATE OR REPLACE moving row 2 onto row 1's number by _rowid_",
+                 f"UPDATE OR REPLACE {table} SET _rowid_ = 1 WHERE {n} = 2", (), True),
+            ]
+            if "moved" in spec:
+                column, onto = spec["moved"]
+                forms.append(
+                    (table, f"UPDATE OR REPLACE moving row 2 onto row 1's key by {column}",
+                     f"UPDATE OR REPLACE {table} SET {column} = ? WHERE {n} = 2",
+                     (onto,), True))
+        else:
+            forms += [
+                (table, f"INSERT OR REPLACE naming row 1's number as {n}",
+                 _history_insert(table, "INSERT OR REPLACE", f"{n}=1"), new, True),
+                (table, "REPLACE naming row 2's number as rowid",
+                 _history_insert(table, "REPLACE", "rowid=2"), new, True),
+                (table, "INSERT OR REPLACE naming row 1's number as the text '1'",
+                 _history_insert(table, "INSERT OR REPLACE", f"{n}='1'"), new, True),
+                (table, "INSERT OR REPLACE naming the newest row's number as oid",
+                 _history_insert(table, "INSERT OR REPLACE", "oid=3"), new, True),
+                (table, "INSERT OR REPLACE ... SELECT naming row 2's number",
+                 f"INSERT OR REPLACE INTO {table} ({n}, {', '.join(spec['columns'])})"
+                 f" SELECT 2, {', '.join('?' for _ in spec['columns'])}", new, True),
+                (table, "an upsert naming row 1's number that would rewrite it",
+                 _history_insert(table, "INSERT", f"{n}=1",
+                                 f" ON CONFLICT DO UPDATE SET {value_column}"
+                                 f" = excluded.{value_column}"), new, False),
+                (table, "INSERT OR REPLACE whose number reads as nothing to the "
+                 "rules and row 1's to the row",
+                 _history_insert(table, "INSERT OR REPLACE",
+                                 f"{n}=handed_nothing_then_1()"), new, True),
+                (table, "REPLACE whose number reads as a free 99 to the rules and "
+                 "row 2's to the row",
+                 _history_insert(table, "REPLACE", f"{n}=handed_free_then_2()"),
+                 new, True),
+            ]
+            if n == "id":
+                # THE NEWEST, READ TWICE: held by the mark on a table SQLite
+                # numbers with AUTOINCREMENT. A table it numbers without one
+                # keeps no mark, and this form on the newest row there is
+                # NOT SEEN (FOLLOWUPS; `schema.sql`, the history tables).
+                forms.append(
+                    (table, "INSERT OR REPLACE whose number reads as nothing to "
+                     "the rules and the newest row's to the row",
+                     _history_insert(table, "INSERT OR REPLACE",
+                                     "id=handed_nothing_then_3()"), new, True))
+            if "collides" in spec:
+                forms += [
+                    (table, "INSERT OR REPLACE on row 1's key, a new number",
+                     _history_insert(table, "INSERT OR REPLACE"),
+                     spec["collides"], True),
+                    (table, "REPLACE on row 1's key, a new number",
+                     _history_insert(table, "REPLACE"), spec["collides"], True),
+                    (table, "an upsert on row 1's key that would rewrite it",
+                     _history_insert(table, "INSERT", None,
+                                     f" ON CONFLICT DO UPDATE SET {value_column}"
+                                     f" = excluded.{value_column}"),
+                     spec["collides"], False),
+                ]
+    return forms
+
+
+#: Each kind's rules, the words their refusal says, and the rules whose
+#: dropping must let a form land to prove them.
+_HISTORY_KINDS = {
+    "delete": ("never deleted", ("{t}_no_delete",)),
+    "update": ("never rewritten", ("{t}_no_update",)),
+    "replace": ("never replaced", ("{t}_never_replaced",
+                                   "{t}_never_replaced_by_the_number_written")),
+}
+
+
+def _history_lawful_writes(conn: sqlite3.Connection) -> list[str]:
+    """Each table's own writer on the planted world, as the shipped code
+    writes it -- and a capture repeated in the same second, which the rules
+    would refuse if the writer did not leave a stored key out itself. The
+    faults, in words; empty when every write landed and the repeat wrote
+    nothing and raised nothing."""
+    from gridiron import capture as _capture
+    from gridiron.model import llm as _llm
+
+    faults: list[str] = []
+    before = {t: len(_history_state(conn, t)) for t in _HISTORY_TABLES}
+    season = config.SPORT_CURRENT_SEASON.get("nfl", config.CURRENT_SEASON)
+    conn.execute(
+        "INSERT INTO injuries (season, week, team, player_id, player_name,"
+        " position, report_status, practice_status) VALUES"
+        " (?, 1, 'KC', 'p1', 'Player 1', 'WR', 'Questionable', 'LP')", (season,))
+    conn.execute(
+        "INSERT INTO mlb_lineups (game_id, side, slot, player_id, player_name,"
+        " recorded_utc, source) VALUES ('g1', 'home', 1, 101, 'Batter 1',"
+        " '2026-09-29T11:00:00Z', 'live')")
+    conn.commit()
+    stamp = "2026-09-29T12:00:00Z"
+    kept = _capture.utcnow
+    _capture.utcnow = lambda: stamp
+    try:
+        for label, write, expected in (
+                ("factor_scores through store.record_factor_score",
+                 lambda: store.record_factor_score(
+                     conn, "nfl", "planted_factor", "season:2026", 40, 0.21, 0.61), 1),
+                ("llm_calls through llm.record_call",
+                 lambda: _llm.record_call(
+                     conn, purpose="reasoning", model="planted-model",
+                     input_tokens=5, output_tokens=5, usd=0.001, game_id="g1"), 1),
+                ("injury_reports through capture.capture_injuries",
+                 lambda: _capture.capture_injuries(conn, "nfl"), 1),
+                ("the same injury capture again in the same second",
+                 lambda: _capture.capture_injuries(conn, "nfl"), 0),
+                ("lineup_captures through capture.capture_lineups",
+                 lambda: _capture.capture_lineups(conn), 1),
+                ("the same lineup capture again in the same second",
+                 lambda: _capture.capture_lineups(conn), 0),
+                ("weather_observed, a new observation (no writer yet)",
+                 lambda: conn.execute(
+                     "INSERT INTO weather_observed (game_id, observed_utc,"
+                     " source, temp_f) VALUES ('g1', ?, 'planted', 55.0)",
+                     (stamp,)).rowcount, 1)):
+            try:
+                got = write()
+                conn.commit()
+            except sqlite3.Error as exc:
+                conn.rollback()
+                faults.append(f"{label} was refused: {exc}")
+                continue
+            if isinstance(got, int) and expected == 0 and got != 0:
+                faults.append(f"{label} wrote {got} rows, where the first "
+                              f"capture's row was already stored")
+    finally:
+        _capture.utcnow = kept
+    after = {t: len(_history_state(conn, t)) for t in _HISTORY_TABLES}
+    for table in _HISTORY_TABLES:
+        if after[table] != before[table] + 1:
+            faults.append(f"{table} went from {before[table]} rows to "
+                          f"{after[table]} through its own writer, where one "
+                          f"new row was written")
+    return faults
+
+
+def _history_minus_one(drop: tuple[str, ...] = ()) -> dict[str, tuple]:
+    """THE ONE NUMBER THE INSERT RULE CANNOT LOOK UP (2026-09-29, question
+    26's prover). The insert rule is shown -1 when SQLite chooses a number,
+    so it passes over a row stored under -1. On each table of a world that
+    holds none of the five tables' rows (as a fresh build has them, and
+    `weather_observed` as the record has it): a first row named -1, then a
+    one-row INSERT OR REPLACE naming -1 with the newcomer -- a plain number,
+    read once. Measured on the rules as first built: the second wrote over
+    the first on the three tables with no mark of their own. Per table:
+    what each statement said (None if taken) and the stored rows the second
+    removed; rolled back, `drop` naming rules dropped first."""
+    conn, _handed = _history_world(stored=False)
+    try:
+        for rule in drop:
+            conn.execute(f"DROP TRIGGER IF EXISTS {rule}")
+        out: dict[str, tuple] = {}
+        for table, spec in _HISTORY_TABLES.items():
+            said: list[str | None] = []
+            first: list[tuple] = []
+            for verb, row in (("INSERT", spec["rows"][0]),
+                              ("INSERT OR REPLACE", spec["newcomer"])):
+                try:
+                    conn.execute(_history_insert(
+                        table, verb, f"{spec['number']}=-1"), row)
+                    said.append(None)
+                except sqlite3.Error as exc:
+                    said.append(f"{type(exc).__name__}: {exc}")
+                if verb == "INSERT":
+                    first = _history_state(conn, table)
+            gone = [r for r in first if r not in _history_state(conn, table)]
+            out[table] = (said[0], said[1], gone)
+            conn.rollback()
+        return out
+    finally:
+        conn.close()
+
+
+def _history_mark_moved(drop: tuple[str, ...] = ()) -> dict[tuple[str, str], tuple]:
+    """THE MARK SET BACK OR REMOVED FIRST (2026-09-29, question 26's prover:
+    each part of the rules neutralised in turn, the rule on the number
+    written's "below any stored one" on the two numbered tables let no form
+    through, since the mark alone refused every one). Question 24's shape:
+    on each table SQLite numbers with AUTOINCREMENT, its mark set back to 0,
+    or its row in the sequence store removed, by a statement first, then a
+    one-row INSERT OR REPLACE whose number reads as nothing to the rules and
+    row 1's to the row -- held by "below any stored one" alone. Per (table,
+    form): what the insert said (None if taken) and the stored rows it
+    removed; rolled back, `drop` naming rules dropped first."""
+    conn, handed = _history_world()
+    try:
+        for rule in drop:
+            conn.execute(f"DROP TRIGGER IF EXISTS {rule}")
+        out: dict[tuple[str, str], tuple] = {}
+        for table, spec in _HISTORY_TABLES.items():
+            if spec["number"] != "id":
+                continue
+            for label, first in (
+                    ("the mark set back to 0 first, then the number read as "
+                     "nothing to the rules and row 1's to the row",
+                     "UPDATE sqlite_sequence SET seq = 0 WHERE name = ?"),
+                    ("the mark's row removed first, then the number read as "
+                     "nothing to the rules and row 1's to the row",
+                     "DELETE FROM sqlite_sequence WHERE name = ?")):
+                stored = _history_state(conn, table)
+                for function in handed.values():
+                    function.calls = 0
+                conn.execute(first, (table,))
+                try:
+                    conn.execute(_history_insert(table, "INSERT OR REPLACE",
+                                                 "id=handed_nothing_then_1()"),
+                                 spec["newcomer"])
+                    said = None
+                except sqlite3.Error as exc:
+                    said = f"{type(exc).__name__}: {exc}"
+                out[(table, label)] = (
+                    said, [r for r in stored if r not in _history_state(conn, table)])
+                conn.rollback()
+        return out
+    finally:
+        conn.close()
+
+
+def _history_planting(kind: str, violation: str) -> Result:
+    words, rules = _HISTORY_KINDS[kind]
+    guard = ("SQL triggers " + ", ".join(
+        r.format(t=t) for t in _HISTORY_TABLES for r in rules))
+    try:
+        conn, handed = _history_world()
+    except sqlite3.Error as exc:
+        return Result(LAW_HISTORY, violation, guard, False,
+                      f"NOT CAUGHT - the planted world could not be built: {exc}")
+    forms = _history_forms(kind)
+    faults: list[str] = []
+    unproved: list[str] = []
+    first: str | None = None
+    taken = 0
+    try:
+        stored = {t: _history_state(conn, t) for t in _HISTORY_TABLES}
+        for table, label, statement, params, _proves in forms:
+            said, after = _history_attempt(conn, handed, table, statement, params)
+            if said is None:
+                taken += 1
+                gone = [r[0] for r in stored[table] if r not in after]
+                came = [r[0] for r in after if r not in stored[table]]
+                faults.append(
+                    f"{table}: {label} was taken ("
+                    + (f"stored row(s) {gone} gone, row(s) {came} written in "
+                       f"their place or beside them" if gone or came
+                       else "the table as stored") + ")")
+            elif words not in said or "APPEND-ONLY HISTORY" not in said:
+                faults.append(f"{table}: {label} was refused, but not by its "
+                              f"rule: {said}")
+            elif first is None:
+                first = f"{table}: {label}: {said}"
+            if _history_state(conn, table) != stored[table]:
+                faults.append(f"{table}: after {label} the table was not as stored")
+        if kind == "replace":
+            faults += _history_lawful_writes(conn)
+            # THE -1 FORM, ON EACH TABLE HELD EMPTY (2026-09-29, the prover):
+            # a first row named -1, then OR REPLACE naming -1. CAUGHT means
+            # no stored row removed on any of the five, each refusal in the
+            # replace rules' words.
+            for table, (said_first, said_then, gone) in _history_minus_one().items():
+                if gone:
+                    taken += 1
+                    faults.append(
+                        f"{table}: a first row stored under -1, the one number "
+                        f"the insert rule cannot look up, then written over by "
+                        f"a one-row INSERT OR REPLACE naming -1 (row {gone} "
+                        f"gone)")
+                for said in (said_first, said_then):
+                    if said is not None and (words not in said
+                                             or "APPEND-ONLY HISTORY" not in said):
+                        faults.append(f"{table}: the -1 form was refused, but "
+                                      f"not by its rule: {said}")
+            # THE MARK SET BACK OR REMOVED FIRST, on the two numbered tables
+            # (2026-09-29, the prover): held by "below any stored one".
+            for (table, label), (said, gone) in _history_mark_moved().items():
+                if said is None:
+                    taken += 1
+                    faults.append(f"{table}: {label} was taken (stored row(s) "
+                                  f"{[r[0] for r in gone]} gone)")
+                elif words not in said or "APPEND-ONLY HISTORY" not in said:
+                    faults.append(f"{table}: {label} was refused, but not by "
+                                  f"its rule: {said}")
+            conn.close()
+            conn, handed = _history_world()
+            # THE RULE READING THE NUMBER WRITTEN IS WHAT STOPS THE FORMS
+            # READ TWICE: with it alone dropped, each lands -- and the -1
+            # form on every table held empty (on the two numbered tables it
+            # is the mark that rule reads which stops it).
+            for table in _HISTORY_TABLES:
+                conn.execute(f"DROP TRIGGER IF EXISTS "
+                             f"{table}_never_replaced_by_the_number_written")
+            unproved += [f"{table}: {label}" for table, label, statement, params, _p
+                         in forms if "handed_" in statement
+                         and _history_attempt(conn, handed, table, statement,
+                                              params)[1] == stored[table]]
+            unproved += [f"{table}: the -1 form on the table held empty"
+                         for table, (_a, _b, gone) in _history_minus_one(drop=tuple(
+                             f"{t}_never_replaced_by_the_number_written"
+                             for t in _HISTORY_TABLES)).items() if not gone]
+            unproved += [f"{table}: {label}"
+                         for (table, label), (_s, gone) in _history_mark_moved(drop=tuple(
+                             f"{t}_never_replaced_by_the_number_written"
+                             for t in _HISTORY_TABLES)).items() if not gone]
+        for table in _HISTORY_TABLES:
+            for rule in rules:
+                conn.execute(f"DROP TRIGGER IF EXISTS {rule.format(t=table)}")
+        unproved += [f"{table}: {label}" for table, label, statement, params, proves
+                     in forms if proves
+                     and _history_attempt(conn, handed, table, statement,
+                                          params)[1] == stored[table]]
+    finally:
+        conn.close()
+    # The -1 form counts once a table, and the mark moved twice a numbered
+    # table (2026-09-29, the prover).
+    total = len(forms) + (len(_HISTORY_TABLES) + 2 * sum(
+        1 for s in _HISTORY_TABLES.values() if s["number"] == "id")
+        if kind == "replace" else 0)
+    if faults:
+        return Result(LAW_HISTORY, violation, guard, False,
+                      f"NOT CAUGHT - {taken} of {total} forms taken: "
+                      + "; ".join(faults) + ". The five tables question 26 "
+                      "names are history, and a row written there is what was "
+                      "captured, scored or spent at the time")
+    if unproved:
+        return Result(LAW_HISTORY, violation, guard, False,
+                      f"the planting did not test the rules: with them dropped "
+                      f"these still changed nothing: {unproved}")
+    proved = sum(1 for form in forms if form[4])
+    return Result(LAW_HISTORY, violation, guard, True,
+                  f"{len(forms)} forms on five tables, each refused by its "
+                  f"rule, and {proved} landing once it was dropped"
+                  + ("" if proved == len(forms) else
+                     " (an upsert's update half meets the update rule instead)")
+                  + ("; and the -1 form on each table held empty and the mark "
+                     "set back or removed on each numbered table, refused, "
+                     "landing once the rule on the number written was dropped"
+                     if kind == "replace" else "")
+                  + f"; the first: {first}")
+
+
+def plant_a_deleted_row_of_the_append_only_history() -> Result:
+    """Delete a row of each of question 26's five tables.
+
+    Operator question 26, ruled 2026-09-28: "each of the five tables either
+    gets the rules or its description changes to what the code does." Found
+    by question 15's scan: `factor_scores` and `llm_calls` (CLAUDE.md,
+    "Append-only history") and `injury_reports`, `lineup_captures` and
+    `weather_observed` ("append-only and stamped", `schema.sql`) had no
+    delete or update rule. Measured on 2026-09-29, the shipped code only ever
+    inserts into them, so each got the rules.
+
+    THE FORMS, on three stored rows of each table, each rolled back: one row
+    deleted by its number, every row, and the newest by oid. CAUGHT means
+    every form refused in the rule's words with the table exactly as stored,
+    and, with each table's delete rule dropped, every form landing -- proof
+    that the delete is real and that the rule is what stopped it. On
+    3c36861, the commit before the rules, every form lands.
+    """
+    return _history_planting("delete", "a row of the append-only history deleted")
+
+
+def plant_an_updated_row_of_the_append_only_history() -> Result:
+    """Rewrite a row of each of question 26's five tables.
+
+    THE FORMS, on three stored rows of each table, each rolled back: a value
+    rewritten; the row's number moved above every other, by its own name
+    and by oid (a rule naming a column is not run for rowid, oid or
+    _rowid_: question 13, measured -- the update rules name none); UPDATE
+    OR REPLACE moving row 2 onto row 1's number by _rowid_, and, for the
+    three tables keyed by what they record, onto row 1's key -- each of
+    which removes row 1 and runs no delete rule. CAUGHT means every form
+    refused in the update rule's words with the table exactly as stored,
+    and, with each table's update rule dropped, every form landing. On
+    3c36861 every form lands.
+    """
+    return _history_planting("update", "a row of the append-only history rewritten")
+
+
+def plant_a_replaced_row_of_the_append_only_history() -> Result:
+    """Replace a row of each of question 26's five tables, by every insert
+    that can.
+
+    THE FORMS, on three stored rows of each table, each rolled back: INSERT
+    OR REPLACE and REPLACE naming a stored number -- as the number, as
+    rowid, as the text '1', the newest as oid, from a SELECT -- and, for the
+    three tables keyed by what they record, a stored key under a new number
+    (SQLite runs no delete rule for the row a replacement removes); an
+    upsert naming a stored number or key, whose update half would rewrite
+    it; and the number read twice -- a function the connection defines,
+    showing the rules nothing or a free number and the row a stored one's
+    (onto row 1, row 2, and on the two numbered tables the newest, held by
+    SQLite's mark: on the three with no mark the newest is NOT SEEN,
+    FOLLOWUPS). CAUGHT means every form refused in the replace rules' words
+    with the table exactly as stored; each table's own writer still writing
+    -- `store.record_factor_score`, `llm.record_call`, the two captures, and
+    a new observation -- and a capture repeated in the same second writing
+    nothing and raising nothing (the writers leave a stored key out
+    themselves: OR IGNORE's duplicate is refused by the rule); with only the
+    rule on the number written dropped, the forms read twice landing; and,
+    with both replace rules dropped, every other form but the upserts
+    landing (the update rule refuses those). On 3c36861 every form lands.
+
+    AND THE -1 FORM (2026-09-29, question 26's prover, measured getting
+    past the rules as first built): on each table held empty -- as a fresh
+    build has all five, and the record `weather_observed` -- a first row
+    named -1, the number the insert rule is shown when SQLite chooses one
+    and so cannot look up, then a one-row INSERT OR REPLACE naming -1. As
+    first built the second wrote over the first on the three tables with
+    no mark; the rule on the number written now refuses a row landing
+    under -1 there (on the two numbered tables SQLite's mark, written at 0,
+    already held it). CAUGHT means no stored row removed on any table;
+    with the rule on the number written dropped, the form lands on all
+    five. On 3c36861 and on the rules as first built it lands. AND THE MARK
+    MOVED FIRST (the prover, question 24's shape): on the two numbered
+    tables, the mark set back to 0 or its row removed, then a number read
+    as nothing to the rules and row 1's to the row -- which only the rule on
+    the number written's "below any stored one" holds (each part of the
+    rules neutralised in turn, that clause was the one no form needed).
+    """
+    return _history_planting("replace", "a row of the append-only history replaced")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -21689,6 +22304,12 @@ def main() -> int:
     # ITS PROVER (2026-09-29): the forms the scan as first built missed.
     results.append(plant_a_rule_switch_the_first_scan_missed())
     results.append(plant_a_mark_or_a_stopped_insert_the_first_scan_missed())
+    # OPERATOR QUESTION 26 (ruled 2026-09-28, built 2026-09-29): the five
+    # tables said to be append-only get the rules -- no delete, no update,
+    # no replacement -- each planted on all five, escaping on 3c36861.
+    results.append(plant_a_deleted_row_of_the_append_only_history())
+    results.append(plant_an_updated_row_of_the_append_only_history())
+    results.append(plant_a_replaced_row_of_the_append_only_history())
     # OPERATOR QUESTION 24 (ruled 2026-09-28): question 13's rules had the
     # hole question 15's prover closed on predictions -- a recommendation
     # moved above every number given out, out of reach of the rule on the

@@ -156,6 +156,55 @@
   text past its no-update rule, and a backup written into a database file
   replaced every page with no rule run; and the roster scan (released)
   misses its own holder looked up by a string in pieces.
+  **Q26 BUILT (2026-09-29), NOT COMMITTED -- left in the worktree for its
+  prover, on top of Q25's local commit 3c36861:** measured first, table by
+  table (the shipped code with question 15's readers; the record read-only
+  through `db.read_the_live_record`): the code only ever INSERTS into
+  `factor_scores` (`store.record_factor_score`, no caller yet; 0 rows),
+  `llm_calls` (`llm.record_call`; 1,000 rows, ids 1-1000, no gap),
+  `injury_reports` and `lineup_captures` (the two captures, one row at a
+  time under OR IGNORE; 143,580 and 810 rows, no gap) and writes nothing to
+  `weather_observed` (0 rows); nothing updates or deletes any of them. SO ALL
+  FIVE GOT THE RULES and their words stand, now true: twenty triggers, four
+  a table (no delete; no update, naming no columns; an insert naming a
+  stored number or primary key; the number written, read after it lands),
+  refusing as "GRIDIRON APPEND-ONLY HISTORY"; the append-only set is 29.
+  The captures' OR IGNORE would have been refused by the rule on a second
+  capture in the same second, so both now insert plainly and leave a stored
+  key out in the same statement -- the same rows, tested side by side.
+  `mlb_people` (upserted by `load_people` at each load) got words saying so
+  in `schema.sql` and the docstring, and stays in the upsert register (there
+  since 2026-09-27). Rehearsed on one verified copy (00:40Z): exactly the
+  twenty rules, no checksum or mark moved, 0 differences; gate step 2's rows
+  PASS; the copy deleted. Three plantings (15, 23, 51 forms), each escaping
+  on 3c36861 and caught; 144 tests, 75 failing on 3c36861; `plant.py` whole
+  395/395; the suite 2540 passed, 4 skipped. Readings below
+  ("Rulings taken in your absence (2026-09-29, Q26)"); FOLLOWUPS, "The
+  history tables hold to their words" (with two findings for the re-read:
+  the newest row of the three rowid tables replaced by a rowid read twice,
+  which no rule sees and no shipped code can write, and the injury capture
+  filing the NFL report under all five sports).
+  **Q26 PROVED (2026-09-29) AND COMMITTED LOCALLY on `repair` (one commit,
+  "Q26: five tables get their rules or true words; mlb_people's words say
+  what the code does"; not pushed, not released).** Its prover got one form
+  past the rules as first built, within the ruling's words, and closed it:
+  THE -1 FORM -- the insert rule is shown -1 when SQLite chooses a rowid, so
+  on a table holding no row (the three with no mark on a fresh build;
+  `weather_observed` on the record) a first row named -1 landed and a
+  one-row OR REPLACE naming -1, a plain number, wrote over it; the rule on
+  the number written now refuses a row landing under -1 on those three
+  (`factor_scores` and `llm_calls` were held by SQLite's mark, measured).
+  Each of the change's 38 parts, neutralised in a copy, now lets a planting
+  escape (as first built, the numbered tables' "below any stored one" was
+  proved by no form: the replace planting now moves the mark first,
+  question 24's shape). The replace planting 60 forms (51 and nine), escaping
+  on 3c36861 and on the change as first built and caught; 158 tests (84 fail
+  on 3c36861, 3 on the change as first built). For the re-read (FOLLOWUPS,
+  "ITS PROVER", by the queue rule): the newest row read twice needs only the
+  built-in `random()`, in plain SQL; and a row named at the largest rowid
+  makes every later capture refused, loudly (no writer names a number).
+  Rehearsed again on a fresh verified copy; the evidence is in the
+  scratchpad's `q25\q26p\`.
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
@@ -1131,6 +1180,11 @@ depend on the answer.
     **RULED 2026-09-28:** each of the five gets the rules or words
     saying what the code does; mlb_people's words change and it joins
     the upsert register; one commit.
+    **BUILT 2026-09-29 (START HERE has it):** the code only inserts into
+    four of the five and writes nothing to the fifth, so all five got the
+    rules; mlb_people's words say it is upserted at each load, and its
+    upsert stays registered. **PROVED and committed locally the same day**
+    (its prover closed the -1 form on the three tables with no mark).
 27. **Sixteen NFL week-3 reasoning totals stand on their early pass, written
     after their final pass. (Found by Q15's measurement.)** `final:nfl` run
     2052 wrote the finals on 23 September at 19:30Z; `predict:nfl` run 2336
@@ -1344,6 +1398,39 @@ depend on the answer.
     to the minute covers that minute. (B) Read to the second: a pass
     written after hh:mm:00 is after the start (the stricter reading, LAW
     1's spirit). Default until ruled: (A), unchanged.
+
+## Rulings taken in your absence (2026-09-29, Q26)
+
+Each the conservative default, reversible in a line; none breaks LAW 1 or
+LAW 3 or makes a gate count false (FOLLOWUPS, "The history tables hold to
+their words", READINGS TAKEN, has each in full).
+- **`weather_observed` gets the rules** though nothing writes it: its words
+  say append-only and nothing contradicts them, so the stricter reading
+  holds it to them before a writer arrives. Reversal: drop its four rules
+  and say "nothing writes it" in its comment.
+- **"The rules"** are four a table; the update rule refuses every update
+  (no table of the five has a lawful one), which covers question 13's
+  update rule and question 24's move above the mark as well.
+- **"Never replaced" where a table has no number of its own** reads SQLite's
+  rowid and the primary key; the rule on the number written reads "below
+  any stored one", as SQLite keeps no mark without AUTOINCREMENT (the newest
+  row read twice is NOT SEEN: FOLLOWUPS).
+- **The two captures were rewritten plainly** to the rows OR IGNORE wrote
+  (`db.set_meta`'s precedent), not the rule loosened: a rule refusing a
+  stored key under any clause is question 13's and 15's shape.
+- **`mlb_people`'s register entry and its reason stay as written** (true as
+  they stand; the register only shrinks); its words changed in `schema.sql`
+  and `load_people`'s docstring.
+- **Its prover (2026-09-29).** "Gets the rules" is read to hold "never
+  replaced" for the one number the insert rule cannot look up (-1, what it
+  is shown when SQLite chooses): a row landing under -1 is refused on the
+  three tables with no mark -- the narrowest refusal that closes the -1
+  form; any other number below 1 is looked up like any other. Reversal:
+  drop `NEW.rowid = -1 OR` from the three rules on the number written. Two
+  findings went to FOLLOWUPS by the queue rule, neither in shipped code:
+  the newest row read twice (NOT SEEN: no rule can see it) needs only the
+  built-in `random()`; and a row at the largest rowid makes every later
+  capture refused (a refusal, not a replacement).
 
 ## Rulings taken in your absence (2026-09-29, Q25 + Q29)
 

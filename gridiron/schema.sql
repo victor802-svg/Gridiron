@@ -335,7 +335,21 @@ CREATE INDEX IF NOT EXISTS mlb_lineups_player ON mlb_lineups (player_id);
 --
 -- Fetched in BATCHES: `/people?personIds=a,b,c,...` takes 300 ids in one
 -- request, so every player in the record costs about five requests rather than
--- fifteen hundred. Handedness does not change, so a row is written once.
+-- fifteen hundred.
+--
+-- A CACHE OF THE SOURCE, UPSERTED AT EACH LOAD, NOT APPEND-ONLY (operator
+-- question 26, ruled 2026-09-28: "mlb_people's description changes"; these
+-- words 2026-09-29). Until this date this comment said a row is written
+-- once, because handedness does not change; mlb_loader.load_people has
+-- always upserted it. Each load asks the league's API for every player the
+-- record holds that has no batting side and no throwing hand stored here (a
+-- player with either is not asked again) and upserts each one returned: a
+-- new player is inserted, and a stored one has its name, sides and position
+-- overwritten from the answer, its fetched_utc left as first written. No
+-- rule refuses its update or its delete, and the upsert is registered in
+-- audit.UPSERTS_REGISTERED as a cache of the source (2026-09-27). On the
+-- record on 2026-09-29: 1,613 players, none with both hands unknown, so a
+-- load writes only players new to it.
 CREATE TABLE IF NOT EXISTS mlb_people (
     player_id   INTEGER PRIMARY KEY,
     full_name   TEXT,
@@ -803,6 +817,119 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     error         TEXT
 );
 CREATE INDEX IF NOT EXISTS llm_day ON llm_calls (day_utc);
+
+-- ---------------------------------------------------------------------------
+-- APPEND-ONLY HISTORY, BY RULE (operator question 26, ruled 2026-09-28:
+-- "each of the five tables either gets the rules or its description changes
+-- to what the code does". Built 2026-09-29.)
+--
+-- CLAUDE.md has always said factor_scores and llm_calls are never updated,
+-- and until this date no rule said so: neither table had a delete or an
+-- update rule, so question 15's scan read both as ordinary tables.
+-- MEASURED FIRST, 2026-09-29, with question 15's readers: the shipped code
+-- only ever inserts into either -- factors.store.record_factor_score, one
+-- row, plainly (nothing calls it yet), and model.llm.record_call, one row
+-- per paid call, plainly, committed at once -- and updates and deletes
+-- neither; the rebuild door copies factor_scores whole when a newly
+-- declared sport widens it, before its rules are put back, and the recovery
+-- of a half-finished widening copies it back plainly. On the record, read
+-- through the read-only door: factor_scores holds no row; llm_calls holds
+-- 1,000, numbered 1 to 1000 with no gap and its mark at 1000, so none was
+-- ever removed. So both get the rules and the words become true.
+--
+-- THE RULES, questions 13 and 15's shape. No delete. No update at all:
+-- neither table has a lawful one, so the rule names no columns, and a rule
+-- naming none is run for an update naming rowid, oid or _rowid_ as well
+-- (question 13, measured) -- it also refuses every UPDATE OR REPLACE,
+-- every move of a number and the update half of every upsert. An insert
+-- naming a stored number, whatever its conflict clause, since a rule cannot
+-- see one (not the -1 SQLite shows when it chooses the number: question
+-- 13's prover). And, after the insert, the number the row landed under,
+-- refused at or below the mark SQLite had given out when the statement
+-- began, or below any stored one: SQLite works the number of a one-row
+-- insert out twice, once for the rules and once for the row (measured
+-- again on 3.49.1 the same day, onto the newest row too), so a number that
+-- answers differently the second time is only seen after it lands, and the
+-- abort takes the whole statement back. Neither table has another key.
+-- No writer changes: each leaves the number to SQLite.
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS factor_scores_no_delete
+BEFORE DELETE ON factor_scores
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a factor score is never deleted; a '
+        || 'score found wrong stays, and a later one is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS factor_scores_no_update
+BEFORE UPDATE ON factor_scores
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a factor score is never rewritten; a '
+        || 'later score is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS factor_scores_never_replaced
+BEFORE INSERT ON factor_scores
+FOR EACH ROW
+WHEN NEW.id <> -1
+ AND EXISTS (SELECT 1 FROM factor_scores s WHERE s.id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a factor score is never replaced. An '
+        || 'insert may not name the number of one already stored');
+END;
+
+CREATE TRIGGER IF NOT EXISTS factor_scores_never_replaced_by_the_number_written
+AFTER INSERT ON factor_scores
+FOR EACH ROW
+WHEN NEW.id <= (SELECT seq FROM sqlite_sequence WHERE name = 'factor_scores')
+  OR EXISTS (SELECT 1 FROM factor_scores s WHERE s.id > NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a factor score is never replaced. A new '
+        || 'one is written under a number above every one already given out, '
+        || 'never at or below one');
+END;
+
+CREATE TRIGGER IF NOT EXISTS llm_calls_no_delete
+BEFORE DELETE ON llm_calls
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a paid call in the ledger is never '
+        || 'deleted; what was spent, and on what, stays');
+END;
+
+CREATE TRIGGER IF NOT EXISTS llm_calls_no_update
+BEFORE UPDATE ON llm_calls
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a paid call in the ledger is never '
+        || 'rewritten; a later call is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS llm_calls_never_replaced
+BEFORE INSERT ON llm_calls
+FOR EACH ROW
+WHEN NEW.id <> -1
+ AND EXISTS (SELECT 1 FROM llm_calls c WHERE c.id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a paid call in the ledger is never '
+        || 'replaced. An insert may not name the number of one already stored');
+END;
+
+CREATE TRIGGER IF NOT EXISTS llm_calls_never_replaced_by_the_number_written
+AFTER INSERT ON llm_calls
+FOR EACH ROW
+WHEN NEW.id <= (SELECT seq FROM sqlite_sequence WHERE name = 'llm_calls')
+  OR EXISTS (SELECT 1 FROM llm_calls c WHERE c.id > NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a paid call in the ledger is never '
+        || 'replaced. A new one is written under a number above every one '
+        || 'already given out, never at or below one');
+END;
 
 -- Fitted statistical model coefficients, kept so a prediction can always be
 -- re-explained with the exact weights that produced it.
@@ -2561,7 +2688,9 @@ CREATE TABLE IF NOT EXISTS ufc_ratings (
 -- and `weather_forecasts` keep their shape and their meaning -- current state,
 -- which is what the factors read. What was missing is HISTORY, and history
 -- gets its own tables, append-only and stamped, so a row can never be
--- overwritten by a later capture of the same thing.
+-- overwritten by a later capture of the same thing. (Append-only in words
+-- until 2026-09-29, and by rule from then: operator question 26, the rules
+-- after the third table below.)
 --
 -- WHY NOT WIDEN THE PRIMARY KEYS INSTEAD: it would rebuild a 55,554-row table
 -- to answer a question about rows written from today onward, and every row
@@ -2630,6 +2759,190 @@ CREATE TABLE IF NOT EXISTS weather_observed (
     precip_pct   REAL,
     PRIMARY KEY (game_id, observed_utc)
 );
+
+-- ---------------------------------------------------------------------------
+-- THE HISTORY TABLES ARE APPEND-ONLY BY RULE (operator question 26, ruled
+-- 2026-09-28; built 2026-09-29). The words above these three tables have
+-- said "append-only and stamped" since they were declared, and until this
+-- date no rule said so. MEASURED FIRST, 2026-09-29, with question 15's
+-- readers: the shipped code only ever inserts into injury_reports and
+-- lineup_captures (capture.capture_injuries and capture.capture_lineups,
+-- one row at a time) and writes nothing to weather_observed
+-- (capture.capture_weather stores no observation, by design: no observed
+-- weather source is wired in); nothing updates or deletes any of the three.
+-- On the record, read through the read-only door: injury_reports 143,580
+-- rows and lineup_captures 810, each numbered from 1 with no gap and in the
+-- order of their stamps; weather_observed none. So all three get the rules,
+-- and weather_observed is held to its words before anything writes it.
+--
+-- THE RULES. No delete. No update, naming no columns (question 13's
+-- measurement: a rule naming a column is not run for an update naming
+-- rowid, oid or _rowid_). An insert naming a stored rowid -- not the -1
+-- SQLite shows when it chooses one -- or a stored key (the table's primary
+-- key, its only unique one), whatever its conflict clause: a plain
+-- duplicate is refused here by name before the key refuses it, and so is a
+-- duplicate under OR IGNORE (measured: a rule's refusal is not a conflict
+-- the clause resolves), which is why the two capture writers now leave out
+-- a stored key themselves, in the same statement -- the same rows under the
+-- same rowids as OR IGNORE wrote (capture.py). The key's values are worked
+-- out once, so the rule reads what lands (measured). And, after the
+-- insert, a rowid below any stored one: SQLite works a rowid named in a
+-- one-row insert out twice, once for the rules and once for the row
+-- (measured), so a rowid that answers nothing to the rules and a stored
+-- row's to the row is only seen after it lands.
+--
+-- AND NEVER UNDER -1 (2026-09-29, question 26's prover). The insert rule is
+-- shown -1 when SQLite chooses the rowid, so it cannot look up a row
+-- stored under -1. On a table holding no row above -1 -- an empty one:
+-- each of the three on a fresh build, and weather_observed on the record --
+-- a first row named -1 landed, and a one-row OR REPLACE naming -1 then
+-- wrote another row over it, a plain number read once (measured on this
+-- rule as first built). So the rule on the number written also refuses a
+-- row landing under -1, and no stored row is ever under the one number the
+-- insert rule cannot look up. No writer names a rowid. (factor_scores and
+-- llm_calls need no such clause: SQLite's mark is written at 0 or above by
+-- any insert, so a row under -1 there is at or below it: measured.)
+--
+-- NOT SEEN (FOLLOWUPS): these three number their rows without
+-- AUTOINCREMENT, so SQLite keeps no mark for them. A one-row insert under
+-- OR REPLACE whose rowid reads as nothing to the rules and as the NEWEST
+-- row's to the row writes over the newest row, and nothing stored tells it
+-- from a newcomer (measured). It needs no function of the connection's
+-- own: the built-in random() does it, in plain SQL (the prover,
+-- 2026-09-29: 13 to 19 times in 64). No shipped code can write it:
+-- question 15's scan refuses OR REPLACE and REPLACE on an append-only
+-- table, which each of these is from this date.
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER IF NOT EXISTS injury_reports_no_delete
+BEFORE DELETE ON injury_reports
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: an injury report as captured is never '
+        || 'deleted; a later capture is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS injury_reports_no_update
+BEFORE UPDATE ON injury_reports
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: an injury report as captured is never '
+        || 'rewritten; a later capture is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS injury_reports_never_replaced
+BEFORE INSERT ON injury_reports
+FOR EACH ROW
+WHEN (NEW.rowid <> -1
+      AND EXISTS (SELECT 1 FROM injury_reports r WHERE r.rowid = NEW.rowid))
+  OR EXISTS (SELECT 1 FROM injury_reports r
+              WHERE r.sport = NEW.sport AND r.season = NEW.season
+                AND r.week = NEW.week AND r.team = NEW.team
+                AND r.player_name = NEW.player_name
+                AND r.captured_utc = NEW.captured_utc)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: an injury report as captured is never '
+        || 'replaced. An insert may not name the rowid, or the player, week '
+        || 'and stamp, of one already stored');
+END;
+
+CREATE TRIGGER IF NOT EXISTS injury_reports_never_replaced_by_the_number_written
+AFTER INSERT ON injury_reports
+FOR EACH ROW
+WHEN NEW.rowid = -1
+  OR EXISTS (SELECT 1 FROM injury_reports r WHERE r.rowid > NEW.rowid)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: an injury report as captured is never '
+        || 'replaced. A new one is written under a rowid above every one '
+        || 'stored, never below one and never under -1');
+END;
+
+CREATE TRIGGER IF NOT EXISTS lineup_captures_no_delete
+BEFORE DELETE ON lineup_captures
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a lineup as captured is never deleted; '
+        || 'a later capture is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS lineup_captures_no_update
+BEFORE UPDATE ON lineup_captures
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a lineup as captured is never '
+        || 'rewritten; a later capture is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS lineup_captures_never_replaced
+BEFORE INSERT ON lineup_captures
+FOR EACH ROW
+WHEN (NEW.rowid <> -1
+      AND EXISTS (SELECT 1 FROM lineup_captures l WHERE l.rowid = NEW.rowid))
+  OR EXISTS (SELECT 1 FROM lineup_captures l
+              WHERE l.game_id = NEW.game_id AND l.side = NEW.side
+                AND l.slot = NEW.slot AND l.captured_utc = NEW.captured_utc)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a lineup as captured is never '
+        || 'replaced. An insert may not name the rowid, or the game, slot and '
+        || 'stamp, of one already stored');
+END;
+
+CREATE TRIGGER IF NOT EXISTS lineup_captures_never_replaced_by_the_number_written
+AFTER INSERT ON lineup_captures
+FOR EACH ROW
+WHEN NEW.rowid = -1
+  OR EXISTS (SELECT 1 FROM lineup_captures l WHERE l.rowid > NEW.rowid)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a lineup as captured is never '
+        || 'replaced. A new one is written under a rowid above every one '
+        || 'stored, never below one and never under -1');
+END;
+
+CREATE TRIGGER IF NOT EXISTS weather_observed_no_delete
+BEFORE DELETE ON weather_observed
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a weather observation is never deleted; '
+        || 'a later reading is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS weather_observed_no_update
+BEFORE UPDATE ON weather_observed
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a weather observation is never '
+        || 'rewritten; a later reading is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS weather_observed_never_replaced
+BEFORE INSERT ON weather_observed
+FOR EACH ROW
+WHEN (NEW.rowid <> -1
+      AND EXISTS (SELECT 1 FROM weather_observed w WHERE w.rowid = NEW.rowid))
+  OR EXISTS (SELECT 1 FROM weather_observed w
+              WHERE w.game_id = NEW.game_id
+                AND w.observed_utc = NEW.observed_utc)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a weather observation is never '
+        || 'replaced. An insert may not name the rowid, or the game and '
+        || 'stamp, of one already stored');
+END;
+
+CREATE TRIGGER IF NOT EXISTS weather_observed_never_replaced_by_the_number_written
+AFTER INSERT ON weather_observed
+FOR EACH ROW
+WHEN NEW.rowid = -1
+  OR EXISTS (SELECT 1 FROM weather_observed w WHERE w.rowid > NEW.rowid)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON APPEND-ONLY HISTORY: a weather observation is never '
+        || 'replaced. A new one is written under a rowid above every one '
+        || 'stored, never below one and never under -1');
+END;
 
 -- ---------------------------------------------------------------------------
 -- VENUE QUOTES (operator ruling D3, 2026-09-06): Kalshi's published prices,
