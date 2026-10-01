@@ -48,7 +48,30 @@
   statsapi's warm-up 'Live'); NFL and NCAAF closes were already the last
   firing's read. The schedule is unchanged (the ruling names no lead): a
   :00/:30 start's last read is 25 minutes out; moving it is one installer
-  line, the operator's call. Question 38 below. **Q35 building.**
+  line, the operator's call. Question 38 below.
+  **Q35 released as 3508c7f (2026-10-01 07:01Z; gate 4/4, 409/409, first
+  run; commits 3cb376e Q35, 3508c7f a UFC category counts its own card's
+  voids -- the first of Q34's counts, done first because Q35's voids would
+  otherwise have put false void counts on the Record page):** starts are
+  stored to the second (`db.stored_start`) and compared as instants
+  (`db.instant`; a gate scan names any text comparison of a start); every
+  pass at or after its start is refused (`predict.PassAtOrAfterTheStart`).
+  WHY THE UFC FINAL PASS RAN AT THE START: Gridiron-Final-UFC fired daily at
+  12:00 local (19:00Z); the 5 Sep card's main bouts were listed '19:00Z' to
+  the minute; ufc.next_slate and the question check compared starts as
+  text (':' sorts below 'Z'), so the card read as still to come and 18 final
+  passes were written at 19:00:02-03Z; 12:00 local was also never the
+  declared three hours before the first bout. THE 18 VOIDED on the live
+  record at 07:01:54Z by `tools/void_passes_written_at_the_start.py --write
+  --live` (dry run first: exactly 1014-1031; MLB 105-110 already withdrawn,
+  left); Q27's rule stands their early passes 520-537 (same
+  probabilities); UFC ranker split 53/0 -> 47/6 per market; UFC settled
+  378 -> 360 with '18 withdrawn'; Fight Night's void count 6, the other
+  cards 0. THE SCHEDULE MOVED (07:02Z, the one task only, its action and
+  settings unchanged): Gridiron-Final-UFC now a time trigger from 00:20 local
+  every 30 minutes (as NearStart), writing only inside the 180 minutes
+  before its card's first start still ahead (`tasks.final_pass_window`).
+  **Next: the entry check, step 1.**
   **Q35 BUILT AND PROVEN (2026-10-01, on a9c5193; committed locally on
   `repair` by its prover, not pushed; next: its gate and release; FOLLOWUPS
   "A pass written at or after the start is not blind; a start is an
