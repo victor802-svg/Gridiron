@@ -41,6 +41,14 @@
   **Next: item 1's gate and release** (built fresh on the released code,
   `item1-held` read as a reference; proven and committed locally on
   2026-10-01 -- ITEM 1 below), then Q35.
+  **ITEM 1 released as e159be2 (2026-10-01 01:37Z; gate 4/4, 405/405,
+  first run; before 15 Oct):** every game with an open recommendation or a
+  drift row is kept until its LISTED START INSTANT, whatever its status
+  says; only MLB showed the 35-minute gap (14 of 19 measured closes,
+  statsapi's warm-up 'Live'); NFL and NCAAF closes were already the last
+  firing's read. The schedule is unchanged (the ruling names no lead): a
+  :00/:30 start's last read is 25 minutes out; moving it is one installer
+  line, the operator's call. Question 38 below. **Q35 building.**
   Q36 (ii) (the 269 stored claims and 54 recommendations:
   void, label or leave) and (iii) (what the page draws for a row priced off
   one) are not ruled: until they are, the stored rows stay as written and
@@ -1814,6 +1822,28 @@ depend on the answer.
       October 00:15Z) reads "MODEL'S PICK · ATLANTA +2.5 · 32% · 48c · 2.06x
       · $15" with the outline, and buys New Orleans -2.5 (68%, 51.5c). Still
       nothing built for this question.
+
+38. **A game that really starts before its listed start: its in-play reads
+    can now be claimed, and a finished pick priced from one. (Found by item
+    1's prover, 2026-10-01; a pick-number finding, so it joins the queue
+    first by the amended rule -- but it needs a ruling.)** Item 1 (ruled 30
+    Sep: "the near-start run keeps every game until its start") keeps a game
+    and claims its reads until its LISTED start instant, whatever its status
+    says -- the status refusal it removed is what cut MLB closes to 35
+    minutes out (statsapi reports warm-up as 'Live', mapped to 'in'). If a
+    game actually begins BEFORE its listed start (a stale listing), its
+    in-play reads before the listed start can now be claimed, and
+    `recommend.for_predictions` (which skips only 'in', so it still prices a
+    FINISHED game's pick) could draw that pick's side, price and edge from an
+    in-play read. The status refusal only ever protected the ten minutes the
+    live poll sees before a listed start. Not seen on the record.
+    - **(A)** A game's start is the EARLIER of its listed start and the first
+      poll that sees it truly under way (a score or a period recorded; MLB's
+      warm-up 'Live' before the listed start does not count); reads and
+      claims after it are never a close or a claim. Recommended.
+    - **(B)** The listed start only, as item 1 built it (the ruling's words
+      read as "its listed start").
+    Default until ruled: (B), as built; nothing more.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 
