@@ -12443,3 +12443,469 @@ untouched. The copy was deleted, with its -wal and
 `scratchpad/item1`. Nothing was written to the live record; no network but
 the suite's own marked test; the main checkout, the live app, every
 scheduled task and `.env` untouched.
+
+## A pass written at or after the start is not blind; a start is an instant -- built 2026-10-01 *(operator question 35, ruled 2026-09-30, docs/briefs/2026-09-30-rulings.md; the re-read's G3, docs/closeouts/2026-09-29-the-re-read.md; built on a9c5193, item 1 released as e159be2; uncommitted for its prover)*
+
+The ruling: "Q35: a pass written at or after the start is not blind. Store
+and compare starts as instants, never as text. The 18 are voided by
+append-only rows under the existing void rule, and Q27's standing rule then
+falls back to their early passes. Report why a final pass ran at the start
+time and move that schedule so every final pass lands before its start."
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-10-01T01:40:24Z to 01:41:09Z: integrity ok, 64 tables, none mismatched; read only through `db.read_only`; scratchpad `q35/measure1.py` to `measure3.py`, outputs beside them)*
+
+**How every start is stored.** No start is NULL and every one is read by
+`db.instant`; every one is UTC and says so with a Z.
+
+| sport | games | stored form | still to start |
+|---|---|---|---|
+| NFL | 3,033 | to the second, `2026-09-27T17:00:00Z` | 224 |
+| MLB | 9,720 | to the second | 2 |
+| NBA | 6,120 | to the second | 1,200 |
+| NCAAF | 2,654 | to the second | 562 |
+| UFC | 2,783 | TO THE MINUTE, `2026-09-05T19:00Z` (as ESPN's core API sends it) | 63 |
+
+The UFC source tables are to the minute too (`ufc_bouts.bout_utc` 2,783,
+`ufc_events.event_utc` 269). Every other instant the starts are compared
+with is to the second: 3,660 forecasts, 1,789 claims at the venue's line,
+35,676 venue reads, 1,489 rung claims, 117 recommendations.
+
+**Where a start was compared as text** (the new scan run on a9c5193): 67
+places in the shipped code and one schema rule -- the standing clause's
+order and both its tests (`<=`), the at-the-line window, the
+recommendation's claim window and `correction_instant`, every sport's
+`next_slate` and the college repo's (`kickoff_utc > ?`), the predict path's
+question check (`kickoff_utc <= now`) and its horizon (`MIN`), the
+missed-slate reads, the opening read, the live window, the lineup capture,
+the college factors' bounds and orders (form, rest, ratings, swing), the
+UFC fighter history and rating order, the slates' orders and first starts on
+four pages, the recount's four Python comparisons, the board's sort,
+`views.next_start_utc`'s `min`, the college weather's past-or-future,
+`is_sanctioned_card`, `audit.pick_contracts`, three tools, and the schema's
+`recommendation_close_is_a_later_read_of_its_own_contract`. Item 1 had
+already made the near-start selection, the claim writer, the close and the
+closer read instants.
+
+**Every forecast written at or after its start, by the instant: 24.** Six
+MLB early passes (105-110, written 2026-08-29T19:17:55Z after first pitches
+of 17:05-19:07Z) withdrawn at 19:19:07Z that day for that reason, and the
+18 (1014-1031), withdrawn by nothing. None was written at its start's own
+second. Compared as text the record finds 6 (the re-read's "24 where the
+text comparison finds 6").
+
+**WHY THE FINAL PASS RAN AT THE START TIME (the report the ruling asks
+for).** `Gridiron-Final-UFC`, read read-only from the scheduler: a daily
+trigger, start boundary 2026-09-05T12:00:00-07:00, `pythonw -m gridiron.cli
+task final:ufc`, WakeToRun, last run 30 September 12:00:01 local, next 1
+October 12:00:00 -- the installer's "Final-UFC at 12:00 local", registered
+by the audit of 2026-09-05 (until then no UFC task was registered), whose
+first firing was 5 September. 12:00 local is 19:00Z while the machine is on
+summer time. That day's card, UFC Fight Night: Hooker vs. Parnasse (Paris),
+listed its eight prelims at 16:00Z and its six main-card bouts at 19:00Z,
+to the minute. Run 131 began at 19:00:01Z: the slate selection
+(`ufc.next_slate`, `kickoff_utc > ?`) and the question check
+(`kickoff_utc <= now`) each compared "2026-09-05T19:00Z" with a clock to the
+second as text, where a colon sorts below a Z, so the main card read as
+still to come; the prelims (16:00Z) were correctly skipped; eighteen final
+passes were written at 19:00:02-03Z and the run finished 19:00:04Z, "ok,
+re-forecast 18 questions ... close to start". And 12:00 local was never the
+declared three hours before the first bout (`config.FINAL_PASS["ufc"]`, 180
+minutes, not measured): of the 103 cards of 2025-2026, 18 list their first
+bout before 12:00 local (Riyadh, London, Baku, Abu Dhabi, Shanghai, Paris,
+Doha, Perth, Macau, Belgrade) and 2 at it; every other 'ok' final pass, 6
+to 30 September, was written 23 to 73 hours before its card's first start
+still ahead (runs 159, 225, 1566, 1676, 1848, 2049, 3359, 5401, 8510; 8510
+wrote 54 for 3 October at 19:00:01Z on 30 September). The other card listed
+at 19:00Z exactly (UFC Fight Night: Rosas Jr. vs. Barcelos, 26 September)
+was not written at its start only because its final passes were already
+written (run 4383 at 19:00:01Z: "found nothing new to write"). The other
+sports' final passes all landed before their starts: the least lead MLB 4.6
+minutes, NCAAF 59.1, NFL 123.2, NBA 30,060 (pre-season).
+
+### BUILT
+
+- **STORED (`db.stored_start`, `db.stored_instant`, `db.INSTANT_FORM`).**
+  Every loader writes a start to the second: the NFL, MLB, NBA and college
+  loaders, the UFC loader's card (`event_utc`) and bout (`bout_utc`), and
+  the UFC mirror into `games`. A stamp a feed sends that cannot be read is
+  kept as sent -- never guessed, never NULL -- and every reader of a start
+  refuses it by name. THE RECORD'S 2,783 UFC STARTS reach the form through
+  the loader's own door, not a rewrite tool: `ufc.mirror_bouts` rewrites
+  every bout's start on every refresh (`kickoff_utc = excluded.kickoff_utc`,
+  as it always has), so the first UFC refresh after the release writes each
+  as the same instant to the second (rehearsed below). No schema rule on the
+  column's form (the tests' and plantings' worlds, and item 1's unreadable-
+  start guards, store other forms on purpose), and no separate rewrite of
+  stored values is needed: every comparison reads an instant meanwhile.
+  (`ufc_bouts`/`ufc_events` rows of seasons the loader no longer reads keep
+  the feed's minute; every reader compares them as instants.)
+- **COMPARED: `db.instant` in Python; in SQL `julianday(<start>)` against
+  `julianday(<instant>)`, the one expression.** Every place above, the 67.
+  The standing clause and its order read "before the start" STRICTLY (`<`):
+  a pass at the start's own second is not before it. A first start is the
+  earliest instant (`ORDER BY julianday(...) LIMIT 1`, or
+  `strftime(<the stored form>, MIN(julianday(...)))` where grouped). A start
+  that cannot be read is before nothing (`julianday` NULL) and is never
+  guessed: `correction_instant` takes it as begun (the claim's own instant),
+  the board sorts it last, the college weather reads no wind.
+- **THE SCHEMA: `recommendation_close_is_read_before_the_start_instant`**,
+  a rule beside `recommendation_close_is_a_later_read_of_its_own_contract`
+  (whose text compares as text and is never replaced on a record that holds
+  it -- the precedent written beside it): a close whose read was taken at or
+  after its game's start, each read by `julianday()`, is refused. It reaches
+  the record through `db.init` exactly as a fresh build has it (rehearsed
+  below). The old rule's text is held in `audit.START_TEXT_COMPARISONS_HELD`,
+  dated, frozen on 2026-10-01; the register only shrinks.
+- **NEVER WRITTEN AT OR AFTER THE START (`predict.PassAtOrAfterTheStart`,
+  `predict.not_before_its_start`).** On a live record `write_prediction`
+  reads the row's stamp once and refuses the row when it is at or after its
+  game's listed start, read as an instant, or the start cannot be read; the
+  row is stamped with that same instant. `predict_slate` asks each question
+  by the clock now (it read a clock once, when the run began), before the
+  reasoning pass is paid for, and names each question it did not write. A
+  backtest is not asked.
+- **THE SCHEDULE: the UFC final pass fires by its lead.**
+  `config.FinalPass.fires_by_lead` (True for UFC alone; the 180 minutes
+  unchanged and still "not measured"); `tasks.final_pass_window` is the
+  window -- 180 minutes before the slate's first start still ahead, read as
+  an instant (the main card's once the prelims have begun), until it;
+  `_run_final_pass` writes nothing outside it and records a noop saying when
+  it opens; the installer's Final-UFC fires every thirty minutes from 00:20
+  local (clear of NearStart's :05 and :35). So the pass lands 150 to 180
+  minutes before the card's first bout wherever the card is, and no pass
+  lands at or after its start whatever fires it. The other sports keep
+  their wall-clock triggers (their passes all landed before their starts)
+  and are held by the same refusal.
+- **THE GATE.** `audit.check_every_start_is_compared_as_an_instant` (step 2;
+  `audit.start_text_comparison_faults`): every string the shipped code
+  hands SQLite (question 15's readers), every `.sql` file, and every Python
+  comparison, sort key, `min` and `max`; a start compared, ordered or taken
+  the least or greatest of as text, or read as an instant and compared with
+  a value that is not one, is named by file, line and function or rule; a
+  day taken off a start (`substr(start, 1, 10)`) and an upsert's `SET start
+  = excluded.start` are not comparisons. Proved at import
+  (`_check_the_start_scan_can_see`). And `audit.check_the_final_pass_stands`
+  asks every door again on a world whose start is stored to the minute
+  (`STANDING_PASS_WORLD_TO_THE_MINUTE`).
+- **THE 18: `tools/void_passes_written_at_the_start.py`.** Selects BY RULE
+  every forecast written at or after its game's start (`julianday` and
+  `db.instant`, which must agree) that no void withdraws, with any this
+  ruling's reason already withdraws (so a second run selects the same set);
+  writes one `prediction_voids` row each, dated when written, its reason in
+  words ("written at or after its game's start, read as an instant: the
+  bout's start was stored to the minute and compared as text, so this pass
+  stood as one written before it. A pass written at or after the start is
+  not blind (operator ruling on question 35, 2026-09-30)"); only when the
+  selection is exactly `RULED` (1014-1031) and no recommendation stands on
+  one; refused on the record without `--live` and `--live` on anything else
+  (`db.is_the_live_record_file`); refused on a backtest; one transaction;
+  idempotent. Listed beside them and left: the six MLB passes already
+  withdrawn for their own reason. Its read of `recommendations` round the
+  door is registered (`audit.RECOMMENDATION_DOOR_EXEMPT`, dated).
+
+### THE REHEARSALS *(the copy; never the record)*
+
+- **The void tool** on a scratch copy of the verified copy (`voided.db`):
+  dry, it lists the 24 and the ruled 18, "--write would void 18"; written,
+  "wrote 18 void(s) at 2026-10-01T02:09:01Z"; again, "wrote 0 void(s) ... 18
+  already voided by this ruling"; `--live` on the copy refused.
+- **The mirror** (`mirror_rehearsal.py`, on `mirrored.db`): 2,783 bouts
+  mirrored; 2,783 UFC `kickoff_utc` values changed, every one to the same
+  instant in the stored form; no other column of any row changed; every one
+  of the 24,310 starts then 20 characters, to the second.
+- **The schema** (`schema_rehearsal.py`, on `migrated.db`): this tree's
+  `db.init` on the copy added exactly one object, the new rule; no object
+  lost or changed; no table's rows or column checksums moved; the gate's
+  tree row (the migrated copy against this tree built from nothing): 0
+  differences, 9 cosmetic; its release row (the copy against master,
+  e159be27f663, built from nothing): 0 differences.
+
+### THE NUMBERS THAT MOVE *(every payload of every sport -- the Record page, learning, record line, meta, factors, tier tables, over time, calendar, versions, timing, digest, every slate both forecasters standing and early, history, the closing line and kill on the first clean read, the recommendation doors, empty bar, every correction's measurement, the eighteen re-scored -- built by a9c5193's `git archive` and by this tree on the copy, the clock held at 01:40:24Z; `measure.py`, `flatten_diff.py`; 2,956,332 figures)*
+
+- **This tree against a9c5193, before the voids: 11,041 figures move**, all
+  UFC and all the 5 September slate's eighteen questions: the standing rows
+  of those questions are their early passes (520-537) for their final passes
+  (1014-1031) in the clause, the recount, the outlook's door and the slate's
+  card (the 5 September slate's cards, Today blocks and board rows: 9,135
+  figures for the model, 864 each on the reasoning pass's board, standing
+  and early view); and THE UFC RANKER SPLIT in each of moneyline, rounds and
+  distance, "53 settled on the shortlist and 0 off it" -> "47 settled on the
+  shortlist and 6 off it" (the re-read's 49/0 -> 43/6, four more settled
+  since), with the shortlisted scores (moneyline Brier 0.2362 -> 0.2416,
+  rounds 0.2628 -> 0.2598, distance 0.2511 -> 0.2515) and the outranked
+  side's first figures (0 -> 6 each). NO CURVE, PRICED, DRIFT, CORRECTION
+  OR OUTLOOK COUNT OR SCORE MOVES: each early pass carries its final pass's
+  probability exactly (18 of 18), and the curve's n counts one row per
+  question either way. And the correction measurements' agreement check
+  names the early pass, not the final, as the blind rule's row for the 18.
+- **The 18 voided, on top: 623 more.** UFC 378 settled -> 360 (198-180 ->
+  189-171, "18 withdrawn") on the record line, the sport tabs, the sign-in
+  page, every slate's "yesterday" line; the calendar's 5 September 102 ->
+  84 settled, "18 withdrawn"; the digest 378 -> 360 resolved, its 50-60%
+  bucket 294 -> 279 and 60-70% 60 -> 57 ("43 more before calibration
+  speaks"); the weeks chooser 102 -> 84; the timing comparison 133 -> 115
+  games; each UFC correction category's forecasts 93 -> 87 (its questions
+  unmoved); the slate's "superseded" label 18 -> 0; and the void count
+  beside each UFC curve (FOUND, below).
+- **The voids alone, on a9c5193, end in the same pages** as this tree with
+  the voids: of 2,948,928 figures none differs between the two. The
+  comparison is what keeps the next one out.
+- **The mirror's rewrite (the first UFC refresh after the release), on top
+  of this tree: 2,802 figures, all strings** -- the UFC starts on the slates
+  written to the second, and each UFC slate's glance now places its games in
+  kickoff windows (14 slates said "windows unknown": `reference.eastern_hour`
+  could not read a minute stamp). No count moves.
+
+### FOUND, NOT BUILT *(none is LAW 1, LAW 3 or a false gate count; the first is for the orchestrator)*
+
+- **THE VOID COUNT BESIDE A UFC CURVE IS THE MARKET'S, ACROSS EVERY CARD.**
+  `calibration.curve` hands the card to `resolved` and not to `void_count`,
+  so once the 18 are voided the Record page reads "6 withdrawn" beside the
+  Contender Series and the Numbered card curves of each UFC market, none of
+  whose forecasts is withdrawn (the Numbered card's void rate 1.0 on 0
+  settled), as well as beside Fight Night's, which is right. Latent until
+  now (no UFC forecast was voided); drawn (`app.js`, the curve's line and the
+  category table's cell). Question 34's ground ("every UFC count is per
+  card tier") -- running the void tool before it is built puts the false
+  count on the page.
+- **The UFC final pass's pre-pass refresh reads the NFL schedule.**
+  `tasks._refresh_one_sport` has no UFC arm and falls to the NFL loader, so
+  the final pass forecasts the card as the four-hourly refresh last left it.
+- **`ufc_bouts` never updates a bout's start** (its upsert sets status and
+  result only), so a bout moved after it was first loaded keeps its first
+  start, and the mirror copies it.
+- **The standing clause's backtest fallback** stands a question's latest row
+  when nothing of it was written before its start -- on a live record too,
+  where such a row is not a forecast. None on the record once the 18 are
+  voided (the six MLB rows are withdrawn), and the write refusal keeps any
+  new one out; Q27's reading kept the fallback as it was.
+- **A start the feed has not set** (item 1's prover: 292 college games listed
+  at midnight Eastern) is stored as the placeholder instant; a UFC bout's
+  start is its segment's. Neither is in the ruling's words.
+- **The other sports' final passes fire by the wall clock**: MLB's 14:30
+  local serves the evening card (its day games get none, as declared), NFL
+  and college 08:00, NBA 15:00. All landed before their starts; any that
+  would not is refused now.
+
+### THE CHECKS
+
+- **Tests**: `tests/test_starts_are_instants.py`, 24 -- all 24 fail on
+  a9c5193 (the file laid over its `git archive`), the behaviour ones for the
+  right reason (the early pass not standing, the in-play claim pricing the
+  pick, `correction_instant` None, `next_slate` 20260905, the passes written).
+- **Plantings** (`tools/guards/plant.py`, `LAW_STARTS_ARE_INSTANTS`, in
+  `main()` and `tests/test_guards.py`'s list): `plant_a_start_compared_as_
+  text` (the standing order put back as released in a copy of the package,
+  and a slate bound, a first start by MIN, a card order, the question check
+  in Python and a schema rule, each in its own function or rule: each named,
+  the shipped tree clean, step 2 making the call), `plant_a_pass_written_at_
+  the_start_standing` (the eighteen's world: every door keeps the early pass
+  over a final pass two seconds after a minute start and one at its second,
+  the final pass a second before stands, no claim thirty seconds into the
+  game stands, and the gate's check names the clause put back as released),
+  `plant_a_final_pass_written_after_its_start` (the harness league as a live
+  record, week 17 listed to the minute: the task `final:nfl` a second after
+  the start, the pass run on the slate a second after it, and the pass asked
+  a second before it whose rows would be stamped a second after; nothing
+  written after the start, every question named). ALL THREE ESCAPE on
+  a9c5193 (`run_plantings.py`): "there is no scan for a start compared as
+  text ..."; "the standing clause kept forecast 2 for EIGHTEEN where 1
+  stands ... the at-the-line window kept claim 4 for EIGHTEEN where 1
+  (before the start) stands ..."; "(A) 12 forecasts written at or after
+  their start ... (B) ... (C) ..." -- and all three are CAUGHT here.
+- **Gate step 2's rows**, dry-run on this tree on the copy (`step2_dry.py`,
+  not `tools/verify.py` whole; `GRIDIRON_VERIFYING` set, every record row
+  through a read-only handle on the copy, an empty scratch file for the env
+  file): 110 of 112 pass, none fails; the two schema rows were run apart
+  (`schema_rehearsal.py`, above: 0 differences each). The first dry run
+  found two rows failing on the change as first built, both in this
+  change's own audit code and both mended: the side-in-prose scan on a fault
+  sentence naming a claim's raw subject, and the replacing-write scan on the
+  start scan's own upsert fixture (now an UPDATE).
+- **`plant.py` whole**: 408/408 planted violations caught, exit 0,
+  2026-10-01T02:55:50Z to 03:05:54Z.
+- **The full suite**: 2,356 passed, 4 skipped, none failed, exit 0, with a
+  dummy non-secret `GRIDIRON_ACCESS_TOKEN` and TMP and TEMP at their
+  defaults, 03:06:08Z to 03:32:47Z; no file of the tree edited while it ran
+  (every changed file's hash the same before and after); the only test that
+  reached the network is the suite's own marked one. (A shakedown run during
+  the build failed two: the harness, on the replacing-write fixture above,
+  and `test_the_schema_matches.py::test_the_normaliser_is_the_one_door`,
+  whose `inspect.getsource` read `audit.py` while it was being edited; both
+  pass in the run above.)
+- **The copies**: the ONE verified copy (made 2026-10-01T01:40:24Z to
+  01:41:09Z) and the three scratch copies made from it through `db.back_up`
+  for the rehearsals (`voided.db`, `mirrored.db`, `migrated.db`; never from
+  the record) were deleted, with their -wal and -shm, at 03:33:11Z, and the
+  fresh builds of the schema rehearsal with them. No copy of the record
+  remains under `scratchpad/q35`. Nothing was written to the live record; no
+  network; the main checkout, the live app, every registered scheduled task
+  (read only) and `.env` untouched.
+
+### THE PROVER *(2026-10-01; ONE verified copy of the record through `rebuild.verified_backup`, made 03:45:01Z to 03:45:48Z, integrity ok, 64 tables, read only through `db.read_only`; four scratch copies of it through `db.back_up` for the rehearsals; every one deleted after, below)*
+
+**MEASURED AGAIN, and the build's measurement stands.** Every start is read
+by `db.instant` and by `julianday()` as the same instant (24,310 of 24,310;
+none NULL, none empty, none unreadable); UFC's 2,783 games, `ufc_bouts`'
+2,783 and `ufc_events`' 269 to the minute, every other sport's to the
+second. 24 forecasts written at or after their start by the instant -- MLB
+105-110, withdrawn on 29 August, and the 18 (1014-1031), withdrawn by
+nothing -- and none at its start's own second; read as text, 6. Run 131
+began 19:00:01Z and ended 19:00:04Z ("re-forecast 18 questions"), its 18
+written 19:00:02-03Z on bouts stored "2026-09-05T19:00Z" (the card's eight
+prelims "...T16:00Z"); their early passes 520-537 were written on 4
+September at 02:04-02:05Z. Run 4383 (26 September, 19:00:01Z, a card listed
+at 19:00Z) wrote nothing because its finals already existed. The registered
+`Gridiron-Final-UFC`, read read-only: one daily trigger, start boundary
+2026-09-05T12:00:00-07:00, `pythonw -m gridiron.cli task final:ufc` from the
+main checkout, WakeToRun, last run 30 September 12:00:01 local, next 1
+October 12:00:00. Of the 103 cards of 2025-2026, 18 list their first bout
+before 12:00 local and 2 at it. No recommendation, claim or taken pick on
+any of the 18.
+
+**HUNTED: no start is compared as text anywhere in the shipped code.**
+Every one of the 380 lines of the package, `tools/` (less `tools/guards/`)
+and `desktop/` that names a start, read by hand, and three scans of the
+prover's own beside the gate's (scratchpad `q35/prover_hunt.py`, `_hunt2`,
+`_hunt3`): every ordering comparison, sort, `min` and `max` in a function
+naming a start; every ordering comparison of anything named like a time,
+whoever holds it; and every mention of a start column in every string the
+shipped code hands SQLite, and every `.sql` file, that is not plainly
+harmless. What is left is the held rule. `app.js` compares no start: it
+reads one only to format it, through `Date`. The final pass writes through
+`predict.write_prediction` alone (the only writer of `predictions` outside
+the gate's probe worlds and `tools/board_shots.py`'s scratch world), which
+refuses a pass at or after its start on a live record; the live record's
+meta kind is `live`.
+
+**FOUND AND FIXED (each measured on the change as first built, with a test
+and a planting form):**
+
+- **A START NOBODY CAN READ STOOD A QUESTION ON ITS EARLY PASS.**
+  `julianday()` of a start it cannot read -- an empty one, or a feed's text
+  that `db.stored_start` keeps as sent ("TBD") -- is NULL, so
+  `calibration.standing_pass_order`'s first term was NULL for a final pass
+  on such a game and 0 for an early pass, and `ORDER BY ... DESC` puts NULL
+  last: the clause (and the outlook's door through it) stood the question's
+  latest EARLY pass, where the recount (`recount._before_the_start`, False)
+  and the rule's own fallback -- nothing shown to come before the start, so
+  the latest row stands -- keep the final. On a9c5193 the stored text kept
+  it right by accident (every stamp sorts before "TBD"; an empty start
+  failed every `<=`). The term is `IFNULL(julianday(...) < julianday(...),
+  0)`. None on the record: no start is unreadable. Test:
+  `test_starts_are_instants.py::test_a_start_nobody_can_read_stands_its_
+  latest_row_in_the_clause_and_the_recount` (an empty start and "TBD", each
+  with an early pass and a later final pass; fails on the change as first
+  built: the clause kept both early passes). Planting: a form in
+  `plant_a_pass_written_at_the_start_standing` (a game of the next week
+  listed "TBD"; "the standing clause kept forecast 7 ... where its latest
+  row, 8, stands; the outlook's door kept forecast 7" on the change as first
+  built; caught here).
+- **THE GATE'S SCAN SAW A START ONLY BY ITS OWN NAME, AND ONLY BARE.** Each
+  of these got past `audit.start_text_comparison_faults` as first built,
+  which said nothing: in Python, a start handed to a local of another name
+  (`listed = row["kickoff_utc"]; listed <= now`) or to a loop over a list
+  of starts, `str()` or a string method of one (`.replace`, `.rstrip`
+  ...), and one cut short anywhere but at its day (`kickoff[:16] <=
+  now[:16]`, in the comparison or through a local); in SQL, a start inside
+  a call that keeps it text -- `COALESCE`, `IFNULL`, `datetime`, a `substr`
+  short of the day -- compared, ordered, or taken the greatest of, a start
+  in brackets compared, and a scalar subquery whose only column is a start
+  compared with a stamp. Now named (`audit._start_handed_on`,
+  `_start_text_ordered`, `_start_keeps_text`, `_start_text_wrapped`, proved
+  at import by fourteen SQL and ten Python fixtures more); not named, as before:
+  a day cut off a start (`substr(start, 1, 10)`, `start[:10]`, `date()`), a
+  count of starts, a start handed on and then read as an instant, and
+  `julianday()` of what keeps it text compared with another instant. The
+  strengthened scan finds nothing in the shipped tree, and on a9c5193 the
+  same 67 and the one rule the scan as first built found. Test:
+  `::test_the_scan_names_a_start_compared_by_another_road` (ten forms named
+  and the lawful forms not; fails on the change as first built). Planting:
+  four forms in `plant_a_start_compared_as_text` (`planted_handed_on`,
+  `planted_cut_short`, `planted_wrapped_bound`, `planted_subquery_start`:
+  on the change as first built "not named: ['(planted_handed_on)',
+  '(planted_cut_short)', '(planted_wrapped_bound)',
+  '(planted_subquery_start)']", with the order's anchor as first built;
+  caught here).
+
+**FOUND, NOT BUILT** *(none LAW 1, LAW 3 or a false gate count; none a number
+on a pick)*:
+
+- **THE EIGHTEEN EARLY PASSES ARE LABELLED SUPERSEDED IN THE SLATE'S
+  PAYLOAD.** With the clause standing 520-537, each of those cards on the 5
+  September slate carries `is_early_view: true` and a `pass_note` ending "A
+  later forecast stands in its place." -- false: no later forecast stands.
+  `views._superseded_ids` reads no start and no withdrawal (question 30,
+  ruled 29 September: FOLLOWUPS), so the voids do not clear it (measured on
+  the copy before and after the voids). The board draws neither field (no
+  reader in `board.py` or `app.js`); the slate's `superseded` count goes 18
+  -> 0 with the voids, as the build measured.
+- **THE POOLED UFC VOID COUNT, as the build found it, measured again**:
+  after the voids, each UFC market's Contender Series category reads
+  "voided 6, void rate 0.3", the Numbered card's "voided 6, void rate 1.0"
+  on no settled forecast, Fight Night's "voided 6, void rate 0.1333" (the
+  right one), and the headline's "voided 6". Question 34's ground.
+- The build's other findings stand as written above (the UFC pre-pass
+  refresh loading the NFL schedule; `ufc_bouts` never moving a start; the
+  standing clause's backtest fallback; unset starts; the other sports'
+  wall-clock final passes).
+
+**THE REHEARSALS** *(scratch copies of the verified copy; never the record)*:
+
+- **The void tool**: dry, it lists the 24 and the ruled 18, MLB 105-110 left
+  as withdrawn for their own reason, "--write would void 18" (exit 0);
+  `--write --live` on the copy refused ("--live names the operator's
+  record ... not the same file", exit 2); `--write`, "wrote 18 void(s) at
+  2026-10-01T04:01:34Z"; again, "wrote 0 void(s) ... 18 already voided by
+  this ruling"; dry again, "--write would void 0". Before the voids and
+  after, the standing clause stands 18 of 520-537 and none of 1014-1031.
+- **The schema** (`db.init` of this tree on a copy): exactly one object
+  added, `recommendation_close_is_read_before_the_start_instant`, appended
+  after every object the record holds, whose order is unchanged; none lost
+  or changed; no row or column checksum of the 63 tables moved; `meta`
+  unchanged. Gate step 2's tree row (the migrated copy against this tree
+  built from nothing): 0 differences (9 cosmetic). Its release row (the
+  verified copy against master, e159be27f663, built from nothing): 0
+  differences.
+- **The mirror** (`ufc.mirror_bouts`, the first UFC refresh after the
+  release): 2,783 bouts mirrored; only `games` moved, only its UFC
+  `kickoff_utc`, 2,783 values, each the same instant in the stored form;
+  every one of the 24,310 starts then 20 characters.
+
+**THE NUMBERS** *(every payload of every sport, the build's harness, the
+clock held at 03:45:01Z; released a9c5193 against this tree with the
+prover's fixes)*: the fix alone moves 11,041 of 2,956,332 figures (UFC
+10,940, the eighteen's own re-scoring 101): the UFC ranker split "53
+settled on the shortlist and 0 off it" -> "47 ... and 6 off it" in each of
+moneyline, rounds and distance, shortlisted Brier 0.2362 -> 0.2416, 0.2628
+-> 0.2598, 0.2511 -> 0.2515, and the 5 September slate's cards on their
+early passes; the voids on top move 623 of 2,949,288 (UFC 378 -> 360
+settled, "198-180" -> "189-171", "18 withdrawn"; the calendar's 5
+September 102 -> 84; the digest; the weeks chooser 102 -> 84; the timing
+comparison 133 -> 115; each UFC correction category's forecasts 93 -> 87;
+the slate's superseded count 18 -> 0; the pooled void counts above); the
+voids alone on a9c5193 against this tree with the voids: 0 of 2,948,928.
+The same counts as the build's: the prover's fixes move nothing on the
+record.
+
+**THE CHECKS**: the three plantings each escape on a9c5193's archive and
+are caught here; the prover's forms escape on the change as first built
+(its copy, scratchpad `q35/prover_asbuilt`); `plant.py` whole 408/408,
+exit 0, 04:11:07Z to 04:21:19Z; gate step 2's rows dry-run on this tree on
+the copy (`GRIDIRON_VERIFYING` set, every record row through a read-only
+handle, an empty scratch file for the env file): 110 of 112 pass, none
+fails, the two schema rows run in the rehearsal above (0 differences each);
+`audit.prose_reaching_the_raw_side()` is `[]`. The full suite: 2,358
+passed (the build's 2,356 and the prover's two), 4 skipped, none failed,
+exit 0, with a dummy non-secret `GRIDIRON_ACCESS_TOKEN` and TMP and TEMP
+at their defaults, 04:23:27Z to 04:50:29Z; no file of the change edited
+while it ran (every changed file's hash the same before and after); the
+only test that reached the network is the suite's own marked one.
+
+**THE COPIES**: the verified copy and its four scratch copies
+(`prover_voided`, `prover_voidtest`, `prover_migrated`, `prover_mirrored`),
+each with its -wal and -shm, and the rehearsal's fresh builds
+(`gridiron-fresh-2u73uxbr`), were deleted at 04:21:46Z, and the raw payload
+dumps with them. Nothing was written to the live record; no network; the
+main checkout, the live app, every registered task (read only) and `.env`
+untouched.

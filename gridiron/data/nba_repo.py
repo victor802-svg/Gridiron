@@ -60,7 +60,8 @@ def game_date(conn: sqlite3.Connection, game_id: str) -> str | None:
 def games_in_week(conn: sqlite3.Connection, season: int, week: int) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM games WHERE sport = 'nba' AND season = ? AND week = ?"
-        " ORDER BY kickoff_utc, id",
+        # In start order, read as instants (operator question 35, 2026-10-01).
+        " ORDER BY julianday(kickoff_utc), id",
         (season, week),
     ).fetchall()
 

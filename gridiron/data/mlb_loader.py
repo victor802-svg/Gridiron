@@ -37,7 +37,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 from .. import config
-from ..db import utcnow
+from ..db import stored_start, utcnow
 from . import sources
 
 STATSAPI = "https://statsapi.mlb.com/api/v1"
@@ -208,7 +208,9 @@ def _write_game(conn, game, season: int, day_index: dict, counts: dict,
         " league_date=excluded.league_date",
         (
             game_id, season, day_index.get(official, 0), "REG",
-            game.get("gameDate"), home_abbr, away_abbr,
+            # STORED AS AN INSTANT, TO THE SECOND (operator question 35,
+            # 2026-10-01), through the one door every loader writes a start by.
+            stored_start(game.get("gameDate")), home_abbr, away_abbr,
             "final" if final else "scheduled", home_runs, away_runs,
             # `officialDate` is the league's own calendar date and is what every
             # game log is keyed on. It is NOT the UTC date: a night game on the

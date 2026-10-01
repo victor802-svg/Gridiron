@@ -3236,6 +3236,33 @@ BEGIN
         || 'from, and its closing-line value is the difference between them');
 END;
 
+-- AND THE CLOSE IS READ BEFORE THE START, BOTH READ AS INSTANTS (operator
+-- question 35, ruled 2026-09-30: "Store and compare starts as instants, never
+-- as text"; built 2026-10-01). The later-read rule above compares the read's
+-- stamp with the stored start as TEXT, and a start stored to the minute
+-- (every UFC start loaded before that date, "...T19:00Z") sorts after a read
+-- thirty seconds into the bout ("...T19:00:30Z") and after a read at the
+-- start's own second, since a colon sorts below a Z: that rule lets either be
+-- a close. Its text is never replaced on a record that holds it (the
+-- precedent of the rule just above), so this one stands beside it: a close
+-- whose read was taken at or after its game's start, each read by
+-- julianday(), is refused. A start not recorded, or one that cannot be read,
+-- is left to the rule above, never guessed here.
+CREATE TRIGGER IF NOT EXISTS recommendation_close_is_read_before_the_start_instant
+BEFORE INSERT ON recommendation_closes
+FOR EACH ROW
+WHEN NEW.close_quote_id IS NOT NULL
+ AND EXISTS (
+     SELECT 1 FROM venue_quotes c, recommendations r, games g
+      WHERE c.id = NEW.close_quote_id AND r.id = NEW.recommendation_id
+        AND g.id = r.game_id
+        AND julianday(c.fetched_utc) >= julianday(g.kickoff_utc))
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a close is a read taken before the game started, the read '
+        || 'and the start each read as an instant, never as text');
+END;
+
 -- ---------------------------------------------------------------------------
 -- A RECOMMENDATION WITHDRAWN (operator ruling 1, 2026-09-24).
 --

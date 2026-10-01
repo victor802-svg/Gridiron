@@ -35,7 +35,8 @@ def games_for_week(
         " c.div_game, c.stadium, c.temp_f, c.wind_mph"
         " FROM games g LEFT JOIN game_conditions c ON c.game_id = g.id"
         " WHERE g.sport = ? AND g.season = ? AND g.week = ?"
-        " ORDER BY g.kickoff_utc, g.id",
+        # In start order, read as instants (operator question 35, 2026-10-01).
+        " ORDER BY julianday(g.kickoff_utc), g.id",
         (sport, season, week),
     ).fetchall()
 
@@ -50,9 +51,11 @@ def next_unplayed_week(
     # were the one still to come.
     from ..db import utcnow
 
+    # STARTED IS READ AS AN INSTANT (operator question 35, 2026-10-01):
+    # `julianday()` on both sides, never the stored text.
     row = conn.execute(
         "SELECT MIN(week) AS w FROM games WHERE sport = ? AND season = ?"
-        " AND status = 'scheduled' AND kickoff_utc > ?",
+        " AND status = 'scheduled' AND julianday(kickoff_utc) > julianday(?)",
         (sport, season, utcnow()),
     ).fetchone()
     if row is not None and row["w"] is not None:

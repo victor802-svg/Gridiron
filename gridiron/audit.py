@@ -8309,6 +8309,11 @@ RECOMMENDATION_DOOR_EXEMPT = {
         "the tool that writes the withdrawals reads every recommendation on "
         "the tainted forecasts, withdrawn or not, to prove the set is exactly "
         "the four the ruling names",
+    # 2026-10-01 (operator question 35): the same shape as `void_fs5`'s.
+    "tools/void_passes_written_at_the_start.py:_recommended":
+        "the tool that voids the passes written at or after their start reads "
+        "every recommendation on them, withdrawn or not, to refuse a void the "
+        "ruling did not name -- the ruling names no recommendation",
 }
 
 #: THE READERS THAT KEEP THE RECORD RATHER THAN MEASURE IT (operator
@@ -9728,27 +9733,61 @@ STANDING_PASS_WORLD = (
 _STANDING_PASS_START = "2025-12-01T18:00:00Z"
 _STANDING_PASS_FITTED = "2025-12-02T06:00:00Z"
 
+#: AND A WORLD WHOSE START IS STORED TO THE MINUTE, AS EVERY UFC START WAS
+#: (operator question 35, ruled 2026-09-30: "a pass written at or after the
+#: start is not blind. Store and compare starts as instants, never as text";
+#: built 2026-10-01). Each door that chooses a question's row is asked again
+#: on it: a final pass written two seconds after the start (the eighteen of
+#: 5 September), one written AT the start's own second, one withdrawn two
+#: seconds after it, and one written a second before it, which stands. A
+#: third look, at the start, carries a claim on every early pass thirty
+#: seconds into the game, which no window may keep. Compared as text with
+#: `<=`, the first two finals stood and the in-play claims were read as
+#: written before the start.
+STANDING_PASS_WORLD_TO_THE_MINUTE = (
+    ("EIGHTEEN", (("early", "fsA", -41, False), ("final", "fsA", 2 / 3600, False)),
+     0, False),
+    ("ATSTART", (("early", "fsA", -10, False), ("final", "fsA", 0, False)),
+     0, False),
+    ("WITHDRAWNLATE", (("early", "fsA", -10, False),
+                       ("final", "fsA", 2 / 3600, True)), 0, True),
+    ("JUSTBEFORE", (("early", "fsA", -10, False), ("final", "fsA", -1 / 3600, False)),
+     1, True),
+)
+_STANDING_PASS_START_TO_THE_MINUTE = "2025-12-01T18:00Z"
+#: The looks at the venue, as (hours from the start, hours its claims are
+#: written at): the world's two before the start, and Q35's at the start
+#: with claims thirty seconds into the game.
+_STANDING_PASS_LOOKS = ((-3, -2.9), (-1, -0.9))
+_STANDING_PASS_LOOKS_TO_THE_MINUTE = ((-3, -2.9), (-1, -0.9), (0, 30 / 3600))
+
 
 def _hours_from(stamp: str, hours: float) -> str:
+    """`stamp` moved by `hours`, to the whole second, written in the one
+    stored form; the stamp read as an instant, to the second or to the
+    minute (operator question 35, 2026-10-01)."""
     from datetime import datetime, timedelta
 
-    moment = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
-    return (moment + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return (moment + timedelta(seconds=round(hours * 3600))).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
 
 
-def _standing_pass_world(probe) -> dict[str, list[int]]:
-    """Write `STANDING_PASS_WORLD` into an empty database: one settled NFL
-    game, each question's rows, their withdrawals, two near-start looks at
-    the venue and the claims the near-start reader would have written on
-    them. Returns each subject's forecast ids in the world's order."""
-    start = _STANDING_PASS_START
+def _standing_pass_world(probe, world=STANDING_PASS_WORLD,
+                         start: str = _STANDING_PASS_START,
+                         looks=_STANDING_PASS_LOOKS) -> dict[str, list[int]]:
+    """Write `world` into an empty database: one settled NFL game listed at
+    `start` (stored as given), each question's rows, their withdrawals, the
+    near-start looks at the venue and the claims the near-start reader would
+    have written on them. Returns each subject's forecast ids in the world's
+    order."""
     probe.execute(
         "INSERT INTO games (id, sport, season, week, game_type, home, away,"
         " kickoff_utc, status, league_date, home_score, away_score)"
         " VALUES ('probe_q27', 'nfl', 2025, 13, 'REG', 'AAA', 'BBB', ?,"
         " 'final', '2025-12-01', 27, 20)", (start,))
     ids: dict[str, list[int]] = {}
-    for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+    for subject, rows, _stands, _corrected in world:
         for pass_kind, factor_set, hours, _withdrawn in rows:
             cur = probe.execute(
                 "INSERT INTO predictions (sport, created_utc, game_id,"
@@ -9760,27 +9799,28 @@ def _standing_pass_world(probe) -> dict[str, list[int]]:
                 (_hours_from(start, hours), subject, pass_kind, factor_set,
                  _hours_from(start, 4)))
             ids.setdefault(subject, []).append(cur.lastrowid)
-    for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+    for subject, rows, _stands, _corrected in world:
         for i, (_p, _f, _h, withdrawn) in enumerate(rows):
             if withdrawn:
                 probe.execute(
                     "INSERT INTO prediction_voids (prediction_id, voided_utc,"
                     " reason) VALUES (?, ?, 'withdrawn in the probe world')",
                     (ids[subject][i], _hours_from(start, 5)))
-    # TWO LOOKS BEFORE THE START, and a claim per forecast at each, in the
-    # order of their numbers -- as the near-start reader writes them -- so
-    # the claim written last is on whichever pass has the higher number.
-    looks = []
-    for hours in (-3, -1):
+    # THE LOOKS -- two before the start, and in Q35's world one at it -- and
+    # a claim per forecast at each, in the order of their numbers -- as the
+    # near-start reader writes them -- so the claim written last is on
+    # whichever pass has the higher number.
+    taken = []
+    for hours, claim_hours in looks:
         cur = probe.execute(
             "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
             " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
             " fetched_utc, read_kind) VALUES ('kalshi', ?, 'PROBE', 'nfl',"
             " 'probe_q27', 'total', 'total', 44.5, 'over', 0.5, 0.52, ?,"
             " 'near_start')", (f"PROBE-{hours}", _hours_from(start, hours)))
-        looks.append((cur.lastrowid, _hours_from(start, hours + 0.1)))
-    for quote_id, claimed in looks:
-        for subject, rows, _stands, _corrected in STANDING_PASS_WORLD:
+        taken.append((cur.lastrowid, _hours_from(start, claim_hours)))
+    for quote_id, claimed in taken:
+        for subject, rows, _stands, _corrected in world:
             for i, (_p, _f, hours, _w) in enumerate(rows):
                 if _hours_from(start, hours) >= claimed:
                     continue
@@ -9811,7 +9851,32 @@ def standing_pass_faults() -> list[str]:
     drift doors do), the at-the-line window and its recount (a claim stands
     for its forecast's pass), the slate's card (`views.week`) and the
     correction's measurement (`correction.holdout_questions`, by pass alone,
-    on the questions with no row after the start)."""
+    on the questions with no row after the start).
+
+    AND AGAIN ON A WORLD WHOSE START IS STORED TO THE MINUTE (operator
+    question 35, ruled 2026-09-30; built 2026-10-01:
+    `STANDING_PASS_WORLD_TO_THE_MINUTE`): a pass written at or after the
+    start, read as an instant, stands in no door -- not two seconds after a
+    start stored to the minute, not at the start's own second -- and no
+    window keeps a claim written thirty seconds into the game."""
+    return (_standing_pass_faults_on(STANDING_PASS_WORLD, _STANDING_PASS_START,
+                                     _STANDING_PASS_LOOKS, "")
+            + _standing_pass_faults_on(STANDING_PASS_WORLD_TO_THE_MINUTE,
+                                       _STANDING_PASS_START_TO_THE_MINUTE,
+                                       _STANDING_PASS_LOOKS_TO_THE_MINUTE,
+                                       "with the start stored to the minute: "))
+
+
+def _offset_words(hours: float) -> str:
+    """An offset from the start as the world states it: whole hours as hours
+    ("+1h"), anything finer in seconds ("+2s", "+0s")."""
+    if float(hours).is_integer() and hours:
+        return f"{hours:+g}h"
+    return f"{round(hours * 3600):+d}s"
+
+
+def _standing_pass_faults_on(world, start: str, looks, label: str) -> list[str]:
+    """`standing_pass_faults` on one world: each fault opens with `label`."""
     from . import calibration, correction, db as _db, horizon, recount, views
     from .market import at_the_line
 
@@ -9819,12 +9884,13 @@ def standing_pass_faults() -> list[str]:
     probe = _db.connect(":memory:")
     try:
         _db.init(probe)
-        ids = _standing_pass_world(probe)
+        ids = _standing_pass_world(probe, world, start, looks)
         want = {subject: ids[subject][stands]
-                for subject, _rows, stands, _c in STANDING_PASS_WORLD}
+                for subject, _rows, stands, _c in world}
         passes = {i: (subject, rows[n][0], rows[n][2])
-                  for subject, rows, _s, _c in STANDING_PASS_WORLD
+                  for subject, rows, _s, _c in world
                   for n, i in enumerate(ids[subject])}
+        before_the_start = _db.instant(start)
 
         def said(door: str, kept: dict, only=None) -> None:
             for subject in sorted(only if only is not None else want):
@@ -9832,22 +9898,35 @@ def standing_pass_faults() -> list[str]:
                 if got == want[subject]:
                     continue
                 if got is None:
-                    faults.append(f"{door}: question {subject} has no standing "
-                                  f"row, where forecast {want[subject]} stands")
+                    faults.append(f"{label}{door}: question {subject} has no "
+                                  f"standing row, where forecast "
+                                  f"{want[subject]} stands")
                     continue
                 _s, pass_kind, hours = passes[got]
                 _s, want_pass, want_hours = passes[want[subject]]
                 faults.append(
-                    f"{door}: question {subject} stands on its {pass_kind} "
-                    f"pass written {hours:+g}h from the start (forecast {got}), "
-                    f"where the ruled row is its {want_pass} pass written "
-                    f"{want_hours:+g}h (forecast {want[subject]})")
+                    f"{label}{door}: question {subject} stands on its "
+                    f"{pass_kind} pass written {_offset_words(hours)} from the "
+                    f"start (forecast {got}), where the ruled row is its "
+                    f"{want_pass} pass written {_offset_words(want_hours)} "
+                    f"(forecast {want[subject]})")
+
+        def in_play(door: str, claims) -> None:
+            # NO CLAIM WRITTEN AT OR AFTER THE START STANDS (operator question
+            # 35, 2026-10-01): read as instants, whatever the start's form.
+            for c in claims:
+                if _db.instant(c["created_utc"]) >= before_the_start:
+                    question = passes[c["prediction_id"]][0]
+                    faults.append(
+                        f"{label}{door}: question {question} stands on a "
+                        f"claim written at {c['created_utc']}, at or after "
+                        f"its game's start ({start})")
 
         cell = dict(sport="nfl", predictor="statistical")
         said("calibration.standing_row_clause",
              {r.subject: r.id for r in calibration.resolved(
                  probe, market_type="total", **cell)})
-        one_set = {s for s, rows, _st, _c in STANDING_PASS_WORLD
+        one_set = {s for s, rows, _st, _c in world
                    if {f for _p, f, _h, _w in rows} == {"fsA"}}
         said("calibration.standing_row_clause within one factor set",
              {r.subject: r.id for r in calibration.resolved(
@@ -9860,17 +9939,18 @@ def standing_pass_faults() -> list[str]:
         said("horizon.standing_questions",
              {r["subject"]: r["id"] for r in horizon.standing_questions(
                  probe, market="total", **cell)})
-        claimed = {s for s, rows, st, _c in STANDING_PASS_WORLD
-                   if rows[st][2] < -1}
+        claimed = {s for s, rows, st, _c in world if rows[st][2] < -1}
+        door_claims = at_the_line.standing_claims(probe, market="total", **cell)
         said("market.at_the_line.standing_claims",
-             {c["subject"]: c["prediction_id"] for c in
-              at_the_line.standing_claims(probe, market="total", **cell)},
+             {c["subject"]: c["prediction_id"] for c in door_claims},
              only=claimed)
+        in_play("market.at_the_line.standing_claims", door_claims)
+        recounted = list(recount.standing_claims_of(recount.claims(
+            probe, market="total", event_tier=None, **cell)).values())
         said("recount.standing_claims_of",
-             {c["subject"]: c["prediction_id"] for c in
-              recount.standing_claims_of(recount.claims(
-                  probe, market="total", event_tier=None, **cell)).values()},
+             {c["subject"]: c["prediction_id"] for c in recounted},
              only=claimed)
+        in_play("recount.standing_claims_of", recounted)
         if not config.held_market("nfl", "total"):
             said("views.week (the slate's card)",
                  {c["subject"]: c["prediction_id"] for c in views.week(
@@ -9881,10 +9961,9 @@ def standing_pass_faults() -> list[str]:
                  probe, {"sport": "nfl", "market_type": "total",
                          "forecaster": "statistical",
                          "fitted_utc": _STANDING_PASS_FITTED})},
-             only={s for s, _r, _st, corrected in STANDING_PASS_WORLD
-                   if corrected})
+             only={s for s, _r, _st, corrected in world if corrected})
     except Exception as exc:  # noqa: BLE001 -- the fault is the finding
-        faults.append(f"the probe world could not be asked: "
+        faults.append(f"{label}the probe world could not be asked: "
                       f"{type(exc).__name__}: {exc}")
     finally:
         probe.close()
@@ -13841,6 +13920,7 @@ def pick_contracts(conn, payload) -> dict:
     contract at the question's own line and its main rung, and each standing
     recommendation's own claim (the taken rail's edge)."""
     from . import subjects as _subjects
+    from .db import instant as _db_instant
     from .market import recommend as _recommend
 
     payload = payload or {}
@@ -13904,8 +13984,10 @@ def pick_contracts(conn, payload) -> dict:
                 "outcome": c["outcome"],
                 "across": (stored is None) != (sold is None)
                 or (stored is not None and abs(stored - sold) > 1e-9)})
+        # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01), as
+        # the page's own claim window reads it -- never the stored text.
         before = [c for c in claims if f["kickoff_utc"] is None
-                  or c["created_utc"] < f["kickoff_utc"]]
+                  or _db_instant(c["created_utc"]) < _db_instant(f["kickoff_utc"])]
         key = (f["game_id"], f["market_type"])
         if key not in ladders:
             ladders[key] = conn.execute(
@@ -15167,3 +15249,716 @@ def _check_the_roster_scan_can_see() -> None:
 
 
 _check_the_roster_scan_can_see()
+
+
+# ---------------------------------------------------------------------------
+# A START IS COMPARED AS AN INSTANT (operator question 35, ruled 2026-09-30)
+# ---------------------------------------------------------------------------
+#
+# THE RULING: "Q35: a pass written at or after the start is not blind. Store
+# and compare starts as instants, never as text." Built 2026-10-01.
+#
+# THE DEFECT. UFC's feed lists a bout to the minute ("2026-09-05T19:00Z") and
+# the other four sports' to the second; every pass, read and run is stamped
+# to the second. Compared as text a colon sorts below a Z, so "19:00:02Z" was
+# BEFORE "19:00Z": eighteen UFC final passes written two and three seconds
+# into their bouts (forecasts 1014-1031) were taken by the standing rule for
+# passes written before the start, and the final pass that wrote them was let
+# through by the same comparison in `next_slate` and the predict path.
+#
+# THE ONE DOOR, TWO SPELLINGS. In Python a start is read by `db.instant`; in
+# SQL it is compared or ordered only as `julianday(<start>)`, against another
+# `julianday(...)` -- a start read as an instant beside a value that is not
+# compares a number with text, which is no comparison at all. This scan reads
+# every string the shipped code can hand SQLite (question 15's readers) and
+# every `.sql` file, and every comparison in the shipped Python, and names a
+# start compared, ordered, or taken the least or greatest of as text. A day
+# taken off a start (`substr(start, 1, 10)`) is a day, not an instant, and is
+# not refused; an upsert's `SET start = excluded.start` assigns, and is not
+# a comparison.
+
+#: THE STORED STARTS: a game's listed start, and the UFC card's and bout's it
+#: is mirrored from.
+START_COLUMNS = frozenset({"kickoff_utc", "bout_utc", "event_utc"})
+
+#: The names a start is held under in Python as stored text: the columns, a
+#: start under its own name, and a slate's first start. A name assigned from
+#: a call (`kickoff = _parse(row["kickoff_utc"])`) holds what the call made
+#: of it, and is not text.
+START_NAMES = START_COLUMNS | frozenset({"kickoff", "first_kickoff"})
+
+#: THE ONE SQL EXPRESSION a start is compared or ordered by, on both sides.
+INSTANT_SQL = "JULIANDAY"
+
+#: A text comparison of a start the scan holds, by (file, function or schema
+#: object), with a dated reason. A REGISTER THAT MAY ONLY SHRINK (question
+#: 15's precedent): an entry not among those frozen on 2026-10-01 fails,
+#: dated or not, and so does an entry no longer found.
+START_TEXT_COMPARISONS_HELD: dict[tuple[str, str], str] = {
+    ("gridiron/schema.sql",
+     "recommendation_close_is_a_later_read_of_its_own_contract"):
+        "2026-10-01 (operator question 35): a rule's text is never replaced "
+        "on a record that holds it (the precedent written beside "
+        "`recommendation_close_cites_its_own_priced_read`), so this rule "
+        "keeps comparing a close's read with the stored start as text; "
+        "`recommendation_close_is_read_before_the_start_instant` stands "
+        "beside it and refuses, read as instants, every close it would let "
+        "through at or after the start.",
+}
+START_TEXT_COMPARISONS_HELD_ON_2026_10_01 = frozenset(START_TEXT_COMPARISONS_HELD)
+
+_START_DATED = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\b")
+
+#: Where an ORDER BY list, or a SET clause, can be told to have ended.
+_START_ORDER_STOPS = frozenset({
+    "SELECT", "FROM", "WHERE", "GROUP", "HAVING", "LIMIT", "UNION", "ON",
+    "SET", "VALUES", "WHEN", "THEN", "ELSE", "AND", "OR", "JOIN", "CASE",
+    "INTO", "PARTITION"})
+_START_SET_STOPS = frozenset({
+    "WHERE", "WHEN", "ON", "SELECT", "HAVING", "VALUES", "FROM", "AND", "OR",
+    "NOT", "CASE", "THEN", "ELSE", "BY", "JOIN"})
+
+
+def _start_is(tokens: list, k: int, chars: str) -> bool:
+    return (0 <= k < len(tokens) and tokens[k].kind == "other"
+            and tokens[k].value in chars)
+
+
+def _start_word(tokens: list, k: int) -> str:
+    return tokens[k].word if 0 <= k < len(tokens) else ""
+
+
+def _start_in_a_set_clause(tokens: list, s: int) -> bool:
+    """Is the operand at `tokens[s]` an assignment's, in an UPDATE's or an
+    upsert's SET clause?"""
+    depth = 0
+    for k in range(s - 1, -1, -1):
+        if _start_is(tokens, k, ")"):
+            depth += 1
+        elif _start_is(tokens, k, "("):
+            if depth == 0:
+                return False
+            depth -= 1
+        elif depth == 0:
+            if tokens[k].word == "SET":
+                return True
+            if tokens[k].word in _START_SET_STOPS:
+                return False
+    return False
+
+
+def _start_in_an_order_by(tokens: list, s: int) -> bool:
+    """Is the operand at `tokens[s]` a term of an ORDER BY list, at its own
+    depth?"""
+    depth = 0
+    for k in range(s - 1, -1, -1):
+        if _start_is(tokens, k, ")"):
+            depth += 1
+        elif _start_is(tokens, k, "("):
+            if depth == 0:
+                return False
+            depth -= 1
+        elif depth == 0:
+            if tokens[k].word == "BY":
+                return _start_word(tokens, k - 1) == "ORDER"
+            if tokens[k].word in _START_ORDER_STOPS:
+                return False
+    return False
+
+
+def _start_opens_an_instant(tokens: list, close: int) -> bool:
+    """Does the bracket closing at `tokens[close]` close a `julianday(...)`?"""
+    depth = 0
+    for k in range(close, -1, -1):
+        if _start_is(tokens, k, ")"):
+            depth += 1
+        elif _start_is(tokens, k, "("):
+            depth -= 1
+            if depth == 0:
+                return _start_word(tokens, k - 1) == INSTANT_SQL
+    return False
+
+
+def _start_instant_beside_text(tokens: list, first: int, last: int) -> str | None:
+    """A start read as an instant (`tokens[first]` is JULIANDAY, `tokens[last]`
+    its closing bracket) compared with a value that is not one, in words;
+    None when every comparison it is in has an instant on its other side."""
+    k = last + 1
+    if _start_is(tokens, k, "<>=!"):
+        while _start_is(tokens, k, "<>=!"):
+            k += 1
+        if _start_word(tokens, k) != INSTANT_SQL:
+            return ("read as an instant and compared with a value that is "
+                    "not one (a number beside text compares nothing)")
+    elif _start_word(tokens, k) == "BETWEEN":
+        if _start_word(tokens, k + 1) != INSTANT_SQL:
+            return "read as an instant BETWEEN bounds that are not instants"
+    k = first - 1
+    if _start_is(tokens, k, "<>="):
+        j = k
+        while _start_is(tokens, j, "<>=!"):
+            j -= 1
+        if not (_start_is(tokens, j, ")") and _start_opens_an_instant(tokens, j)):
+            return ("read as an instant and compared with a value that is "
+                    "not one (a number beside text compares nothing)")
+    return None
+
+
+def _start_compared_span(tokens: list, a: int, b: int) -> bool:
+    """Is the operand spanning `tokens[a..b]` one side of a comparison (an
+    operator, BETWEEN, IN, LIKE or GLOB) -- not an assignment's value?"""
+    after, before = b + 1, a - 1
+    return (
+        _start_is(tokens, after, "<>!")
+        or (_start_is(tokens, after, "=") and not _start_in_a_set_clause(tokens, a))
+        or _start_word(tokens, after) in ("BETWEEN", "IN", "LIKE", "GLOB")
+        or _start_is(tokens, before, "<>")
+        or (_start_is(tokens, before, "=") and not _start_in_a_set_clause(tokens, a))
+        or _start_word(tokens, before) == "BETWEEN"
+        or (_start_word(tokens, before) == "AND"
+            and any(_start_word(tokens, k) == "BETWEEN"
+                    for k in range(max(0, before - 8), before))))
+
+
+#: A call whose value is no longer the start's text (Q35's prover,
+#: 2026-10-01): an instant, a number, or a day. Any other call keeps it text
+#: (COALESCE, IFNULL, datetime, strftime, trim, a substr cut anywhere but at
+#: the day ...), and so does a bracket or a scalar subquery whose one column
+#: is the start.
+_START_INSTANT_CALLS = frozenset({INSTANT_SQL, "UNIXEPOCH"})
+_START_NUMBER_CALLS = frozenset({"COUNT", "LENGTH", "OCTET_LENGTH", "TYPEOF",
+                                 "INSTR", "SUM", "TOTAL", "AVG"})
+_START_DAY_CALLS = frozenset({"DATE"})
+#: Words a bracket may follow that name no function: the bracket groups.
+_START_NOT_A_CALL = frozenset({
+    "AND", "OR", "NOT", "WHERE", "ON", "WHEN", "THEN", "ELSE", "SELECT",
+    "FROM", "JOIN", "BY", "EXISTS", "AS", "OVER", "USING", "SET", "CASE",
+    "IS", "BETWEEN", "HAVING", "LIMIT", "RETURNING", "DISTINCT", "ALL",
+    "LIKE", "GLOB", "END", "DO", "FILTER", "WITH", "UNION", "EXCEPT",
+    "INTERSECT", "OFFSET"})
+
+
+def _start_close_of(tokens: list, open_: int) -> int | None:
+    """The bracket closing the one that opens at `tokens[open_]`."""
+    depth = 0
+    for k in range(open_, len(tokens)):
+        if _start_is(tokens, k, "("):
+            depth += 1
+        elif _start_is(tokens, k, ")"):
+            depth -= 1
+            if depth == 0:
+                return k
+    return None
+
+
+def _start_open_around(tokens: list, a: int) -> int | None:
+    """The bracket that holds `tokens[a]` at its own depth."""
+    depth = 0
+    for k in range(a - 1, -1, -1):
+        if _start_is(tokens, k, ")"):
+            depth += 1
+        elif _start_is(tokens, k, "("):
+            if depth == 0:
+                return k
+            depth -= 1
+    return None
+
+
+def _start_is_a_day(tokens: list, open_: int, close: int) -> bool:
+    """Is `substr(<start>, 1, 10)` -- the day -- what the bracket holds?"""
+    tail = tokens[close - 4:close] if close - 4 > open_ else []
+    return ([t.value for t in tail] == [",", "1", ",", "10"]
+            and tail[1].kind == "number" and tail[3].kind == "number")
+
+
+def _start_text_wrapped(tokens: list, s: int, i: int) -> str | None:
+    """A start inside something that keeps it text -- a call that is not an
+    instant, a number or a day; a bracket; a scalar subquery whose one column
+    it is -- where that whole is compared, ordered, or taken the least or
+    greatest of (Q35's prover, 2026-10-01: each got past the scan as first
+    built). In words; None when nothing outside reads it as text."""
+    a, b = s, i
+    for _depth in range(16):
+        k = a - 1
+        while _start_word(tokens, k) in ("DISTINCT", "ALL"):
+            k -= 1
+        if (_start_word(tokens, k) == "SELECT" and _start_is(tokens, k - 1, "(")
+                and (_start_word(tokens, b + 1) == "FROM" or _start_is(tokens, b + 1, ")"))):
+            open_ = k - 1
+            close = _start_close_of(tokens, open_)
+            if close is None:
+                return None
+            a, b, inside = open_, close, "a subquery's one column"
+        else:
+            if not (_start_is(tokens, a - 1, "(,") and _start_is(tokens, b + 1, "),")):
+                return None
+            open_ = _start_open_around(tokens, a)
+            close = None if open_ is None else _start_close_of(tokens, open_)
+            if open_ is None or close is None:
+                return None
+            word = (_start_word(tokens, open_ - 1)
+                    if open_ >= 1 and tokens[open_ - 1].kind == "word" else "")
+            if word == "IN":
+                return "compared as text (in an IN list)"
+            func = "" if word in _START_NOT_A_CALL else word
+            if func in _START_INSTANT_CALLS:
+                return (_start_instant_beside_text(tokens, open_ - 1, close)
+                        if func == INSTANT_SQL else None)
+            if func in _START_NUMBER_CALLS or func in _START_DAY_CALLS:
+                return None
+            if func == "SUBSTR" and _start_is_a_day(tokens, open_, close):
+                return None
+            if func in ("MIN", "MAX"):
+                return (f"taken the {'least' if func == 'MIN' else 'greatest'} of "
+                        f"as text ({func} of what keeps it text)")
+            if func:
+                a, b, inside = open_ - 1, close, func
+            else:
+                a, b, inside = open_, close, "brackets"
+        if _start_compared_span(tokens, a, b):
+            return f"compared as text (inside {inside})"
+        if _start_in_an_order_by(tokens, a):
+            return f"ordered as text (inside {inside})"
+    return None
+
+
+def _start_text_in_sql(tokens: list) -> list[tuple[int, str]]:
+    """(token index, how) for every start compared, ordered or taken the
+    least or greatest of as text in one SQL text."""
+    found: list[tuple[int, str]] = []
+    for i, tok in enumerate(tokens):
+        if tok.kind not in ("word", "name") or tok.value not in START_COLUMNS:
+            continue
+        if _start_is(tokens, i + 1, "."):
+            continue                      # a qualifier, not the column
+        s = i
+        while (_start_is(tokens, s - 1, ".") and s - 2 >= 0
+               and tokens[s - 2].kind in ("word", "name", "unknown")):
+            s -= 2
+        if (_start_is(tokens, s - 1, "(") and _start_word(tokens, s - 2) == INSTANT_SQL
+                and _start_is(tokens, i + 1, ")")):
+            how = _start_instant_beside_text(tokens, s - 2, i + 1)
+            if how:
+                found.append((i, how))
+            continue
+        if (_start_is(tokens, s - 1, "(") and _start_word(tokens, s - 2) in ("MIN", "MAX")
+                and _start_is(tokens, i + 1, ")")):
+            found.append((i, f"taken the {'least' if _start_word(tokens, s - 2) == 'MIN' else 'greatest'} "
+                             f"of as text ({_start_word(tokens, s - 2)})"))
+            continue
+        if _start_compared_span(tokens, s, i):
+            found.append((i, "compared as text"))
+        elif _start_in_an_order_by(tokens, s):
+            found.append((i, "ordered as text"))
+        else:
+            # AND INSIDE WHAT KEEPS IT TEXT (Q35's prover, 2026-10-01).
+            how = _start_text_wrapped(tokens, s, i)
+            if how:
+                found.append((i, how))
+    return found
+
+
+#: What keeps a start text in Python (Q35's prover, 2026-10-01): `str()` of
+#: it, and a string method that hands back a string.
+_START_TEXT_METHODS = frozenset({
+    "strip", "lstrip", "rstrip", "replace", "upper", "lower", "casefold",
+    "removeprefix", "removesuffix", "ljust", "rjust", "zfill"})
+
+
+def _start_keeps_text(node: ast.AST) -> ast.AST | None:
+    """The value a call hands back as the same text -- `str(x)`, `x.strip()`
+    and their kin -- or None for any other node."""
+    if not isinstance(node, ast.Call):
+        return None
+    fn = node.func
+    if isinstance(fn, ast.Name) and fn.id == "str" and len(node.args) == 1:
+        return node.args[0]
+    if isinstance(fn, ast.Attribute) and fn.attr in _START_TEXT_METHODS:
+        return fn.value
+    return None
+
+
+def _start_raw(node: ast.AST, parsed: set, aliases: frozenset | set = frozenset()) -> bool:
+    """Is `node` a start as stored text: a key, an attribute or a `.get` of a
+    start's name, a local or a parameter of that name not made by a call, a
+    local another start was handed to (`aliases`), `str()` or a string method
+    of one, or an `or`/conditional/tuple holding one?"""
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        return isinstance(key, ast.Constant) and key.value in START_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in START_NAMES
+    if isinstance(node, ast.Name):
+        return (node.id in START_NAMES and node.id not in parsed) or node.id in aliases
+    if isinstance(node, ast.Call):
+        if (isinstance(node.func, ast.Attribute) and node.func.attr == "get"
+                and bool(node.args) and isinstance(node.args[0], ast.Constant)):
+            return node.args[0].value in START_NAMES
+        inner = _start_keeps_text(node)
+        return inner is not None and _start_raw(inner, parsed, aliases)
+    if isinstance(node, ast.BoolOp):
+        return any(_start_raw(v, parsed, aliases) for v in node.values)
+    if isinstance(node, ast.IfExp):
+        return (_start_raw(node.body, parsed, aliases)
+                or _start_raw(node.orelse, parsed, aliases))
+    if isinstance(node, ast.Tuple):
+        return any(_start_raw(e, parsed, aliases) for e in node.elts)
+    return False
+
+
+def _start_cut_to_its_day(node: ast.Subscript) -> bool:
+    """`<start>[:10]` (or `[0:10]`): the day, which is not an instant."""
+    sl = node.slice
+    return (isinstance(sl, ast.Slice) and sl.step is None
+            and (sl.lower is None or (isinstance(sl.lower, ast.Constant)
+                                      and sl.lower.value == 0))
+            and isinstance(sl.upper, ast.Constant) and sl.upper.value == 10)
+
+
+def _start_text_ordered(node: ast.AST, parsed: set, aliases, sliced) -> bool:
+    """For an ORDERING -- a `<`, a sort, a least or greatest -- a start as
+    text: `_start_raw`, or one cut short anywhere but at its day
+    (`kickoff[:16]`, a local holding one: `sliced`), which still orders as
+    text (Q35's prover, 2026-10-01)."""
+    if _start_raw(node, parsed, aliases):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in sliced
+    if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
+        return (not _start_cut_to_its_day(node)
+                and _start_text_ordered(node.value, parsed, aliases, sliced))
+    inner = _start_keeps_text(node)
+    if inner is not None:
+        return _start_text_ordered(inner, parsed, aliases, sliced)
+    if isinstance(node, ast.BoolOp):
+        return any(_start_text_ordered(v, parsed, aliases, sliced) for v in node.values)
+    if isinstance(node, ast.IfExp):
+        return (_start_text_ordered(node.body, parsed, aliases, sliced)
+                or _start_text_ordered(node.orelse, parsed, aliases, sliced))
+    if isinstance(node, ast.Tuple):
+        return any(_start_text_ordered(e, parsed, aliases, sliced) for e in node.elts)
+    return False
+
+
+def _start_raw_outside_calls(node: ast.AST, parsed: set, aliases=frozenset(),
+                             sliced=frozenset()) -> bool:
+    """A start as stored text anywhere in `node` but inside a call's
+    arguments -- what a sort key orders by. A call that keeps it text
+    (`str()`, a string method) is no shelter (Q35's prover, 2026-10-01)."""
+    if _start_text_ordered(node, parsed, aliases, sliced):
+        return True
+    if isinstance(node, ast.Call):
+        return False
+    return any(_start_raw_outside_calls(child, parsed, aliases, sliced)
+               for child in ast.iter_child_nodes(node))
+
+
+_START_ORDERINGS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+
+
+def _start_handed_on(scope: ast.AST, parsed: set) -> tuple[set, set]:
+    """The locals of one scope a start is HANDED TO (Q35's prover,
+    2026-10-01: `listed = row["kickoff_utc"]; listed <= now` got past the scan
+    as first built): (`aliases`, the start's text whole; `sliced`, cut short
+    of its day). Through an assignment or a `for` over a list of starts,
+    followed to the end; a local ever assigned from a call that does not keep
+    text holds what the call made of it, as a start's own name does."""
+    made_by_a_call = set()
+    for node in ast.walk(scope):
+        if (isinstance(node, (ast.Assign, ast.AnnAssign))
+                and isinstance(node.value, ast.Call)
+                and _start_keeps_text(node.value) is None
+                and not (isinstance(node.value.func, ast.Attribute)
+                         and node.value.func.attr == "get")):
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                if isinstance(target, ast.Name):
+                    made_by_a_call.add(target.id)
+    aliases: set = set()
+    sliced: set = set()
+    lists: set = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(scope):
+            pairs = []
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                pairs.append((node.targets[0].id, node.value, False))
+            elif (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                  and node.value is not None):
+                pairs.append((node.target.id, node.value, False))
+            elif isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+                pairs.append((node.target.id, node.iter, True))
+            for name, value, each in pairs:
+                if name in made_by_a_call or name in START_NAMES:
+                    continue
+                if each:
+                    whole = ((isinstance(value, ast.Name) and value.id in lists)
+                             or (isinstance(value, (ast.ListComp, ast.GeneratorExp,
+                                                    ast.SetComp))
+                                 and _start_raw(value.elt, parsed, aliases)))
+                    if whole and name not in aliases:
+                        aliases.add(name)
+                        changed = True
+                    continue
+                if isinstance(value, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+                    if _start_raw(value.elt, parsed, aliases) and name not in lists:
+                        lists.add(name)
+                        changed = True
+                    continue
+                if _start_raw(value, parsed, aliases):
+                    if name not in aliases:
+                        aliases.add(name)
+                        changed = True
+                elif (_start_text_ordered(value, parsed, aliases, sliced)
+                      and name not in sliced):
+                    sliced.add(name)
+                    changed = True
+    return aliases, sliced
+
+
+def _start_text_in_python(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """(node, how) for every comparison, sort, least or greatest of a start
+    as stored text in one module."""
+    found: list[tuple[ast.AST, str]] = []
+    scopes = [tree] + [n for n in ast.walk(tree)
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    seen: set[int] = set()
+    for scope in scopes:
+        parsed: set = set()
+        listed: set = set()
+        for node in ast.walk(scope):
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)):
+                name = node.targets[0].id
+                if (name in START_NAMES and isinstance(node.value, ast.Call)
+                        and _start_keeps_text(node.value) is None):
+                    parsed.add(name)
+                if (isinstance(node.value, (ast.ListComp, ast.GeneratorExp, ast.SetComp))
+                        and _start_raw(node.value.elt, set())):
+                    listed.add(name)
+        aliases, sliced = _start_handed_on(scope, parsed)
+        for node in ast.walk(scope):
+            if id(node) in seen:
+                continue
+            if isinstance(node, ast.Compare):
+                operands = [node.left, *node.comparators]
+                for k, op in enumerate(node.ops):
+                    a, b = operands[k], operands[k + 1]
+                    if isinstance(op, _START_ORDERINGS):
+                        hit = (_start_text_ordered(a, parsed, aliases, sliced)
+                               or _start_text_ordered(b, parsed, aliases, sliced))
+                    elif isinstance(op, (ast.Eq, ast.NotEq)):
+                        hit = ((_start_raw(a, parsed, aliases)
+                                and not isinstance(b, ast.Constant))
+                               or (_start_raw(b, parsed, aliases)
+                                   and not isinstance(a, ast.Constant)))
+                    else:
+                        hit = False
+                    if hit:
+                        seen.add(id(node))
+                        found.append((node, "compared as text"))
+                        break
+            elif isinstance(node, ast.Call):
+                fn = node.func
+                name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+                if name not in ("sorted", "sort", "min", "max"):
+                    continue
+                key = next((kw.value for kw in node.keywords if kw.arg == "key"), None)
+                hit = (isinstance(key, ast.Lambda)
+                       and _start_raw_outside_calls(key.body, parsed, aliases, sliced))
+                for arg in node.args[:1]:
+                    if (isinstance(arg, (ast.ListComp, ast.GeneratorExp, ast.SetComp))
+                            and _start_text_ordered(arg.elt, parsed, aliases, sliced)
+                            and key is None):
+                        hit = True
+                    if isinstance(arg, ast.Name) and arg.id in listed and key is None:
+                        hit = True
+                if hit:
+                    seen.add(id(node))
+                    found.append((node, "ordered as text" if name in ("sorted", "sort")
+                                  else f"taken the {'least' if name == 'min' else 'greatest'} "
+                                       f"of as text ({name})"))
+    return found
+
+
+def _start_scan_sources(root: Path) -> list[tuple[str, int, str, str]]:
+    """(file from the repository root, line, function or schema object,
+    how) for every text comparison of a start the shipped code holds."""
+    base = root.parent
+    found = []
+    quick = re.compile("|".join(sorted(START_COLUMNS)), re.I)
+    for path in _shipped_python_files(root):
+        where = path.relative_to(base).as_posix()
+        source = path.read_text(encoding="utf-8")
+        if not quick.search(source) and "kickoff" not in source:
+            continue
+        tree = ast.parse(source, filename=str(path))
+        functions = _qualified_functions(tree)
+        for node, text in _sql_strings_in(tree):
+            if not quick.search(text):
+                continue
+            tokens = _sql_tokens(text)
+            for i, how in _start_text_in_sql(tokens):
+                found.append((where, node.lineno,
+                              functions.get(id(node)) or "module level",
+                              f"`{tokens[i].value}` {how} in SQL"))
+        for node, how in _start_text_in_python(tree):
+            found.append((where, node.lineno,
+                          functions.get(id(node)) or "module level",
+                          f"a start {how} in Python"))
+    for path in sorted(root.rglob("*.sql")):
+        where = path.relative_to(base).as_posix()
+        text = path.read_text(encoding="utf-8")
+        tokens = _sql_tokens(text)
+        objects = _sql_objects(tokens)
+        for i, how in _start_text_in_sql(tokens):
+            holder = None
+            for at, _kind, name, _after in objects:
+                if at <= i:
+                    holder = name
+            found.append((where, text[:tokens[i].start].count("\n") + 1,
+                          holder or "the schema",
+                          f"`{tokens[i].value}` {how} in SQL"))
+    return found
+
+
+def start_text_comparison_faults(root: Path | None = None,
+                                 held: dict | None = None,
+                                 frozen: frozenset | None = None) -> list[str]:
+    """Every place the shipped code compares, orders or takes the least or
+    greatest of a START AS TEXT (operator question 35, ruled 2026-09-30:
+    "Store and compare starts as instants, never as text"; built 2026-10-01),
+    less what `START_TEXT_COMPARISONS_HELD` holds; and every held entry that
+    is no longer found, undated, or not among those frozen on 2026-10-01 --
+    the register only shrinks."""
+    root = Path(root) if root is not None else config.PACKAGE_ROOT
+    held = START_TEXT_COMPARISONS_HELD if held is None else held
+    frozen = START_TEXT_COMPARISONS_HELD_ON_2026_10_01 if frozen is None else frozen
+    faults = []
+    hit: set = set()
+    for where, line, holder, how in _start_scan_sources(root):
+        if (where, holder) in held:
+            hit.add((where, holder))
+            continue
+        faults.append(f"{where}:{line} ({holder}): {how}; a start is compared "
+                      f"only as an instant -- `db.instant` in Python, "
+                      f"`julianday()` on both sides in SQL")
+    for key, why in sorted(held.items()):
+        if key not in frozen:
+            faults.append(f"the register holds {key}, which was not held on "
+                          f"2026-10-01: it may only shrink, so a text comparison "
+                          f"of a start is fixed or ruled, never registered")
+        if not _START_DATED.match(why or ""):
+            faults.append(f"the register's entry {key} carries no date")
+        if key not in hit:
+            faults.append(f"the register holds {key}, and no text comparison of "
+                          f"a start is found there any more: take the entry out")
+    return faults
+
+
+def check_every_start_is_compared_as_an_instant(root: Path | None = None) -> None:
+    """Gate step 2 (operator question 35, ruled 2026-09-30; built
+    2026-10-01): no start is compared as text."""
+    faults = start_text_comparison_faults(root)
+    if faults:
+        raise LawViolation(
+            "A START IS COMPARED AS TEXT (operator question 35, ruled "
+            "2026-09-30: \"a pass written at or after the start is not blind. "
+            "Store and compare starts as instants, never as text\"):"
+            + _NL2 + _NL2.join(faults))
+
+
+#: What the scan must see, and must not, proved at import. Each text names
+#: its start as `{s}`, filled in by the check, so this module's own strings
+#: name no start for the scan to read.
+_START_FIXTURE_SQL = (
+    ("SELECT 1 FROM predictions p JOIN games g ON g.id = p.game_id"
+     " WHERE p.created_utc <= g.{s}", ["compared as text"]),
+    ("SELECT week FROM games WHERE {s} > ?", ["compared as text"]),
+    ("SELECT MIN({s}) AS first FROM games", ["taken the least of as text (MIN)"]),
+    ("SELECT id FROM games ORDER BY week, {s} DESC", ["ordered as text"]),
+    ("SELECT 1 FROM games WHERE {s} BETWEEN ? AND ?", ["compared as text"]),
+    ("SELECT 1 FROM games WHERE julianday({s}) > ?",
+     ["read as an instant and compared with a value that is not one "
+      "(a number beside text compares nothing)"]),
+    ("SELECT 1 FROM predictions p JOIN games g ON g.id = p.game_id"
+     " WHERE julianday(p.created_utc) < julianday(g.{s})", []),
+    ("UPDATE games SET {s} = ?, week = ? WHERE id = ?", []),
+    ("SELECT substr({s}, 1, 10) FROM games WHERE substr({s}, 1, 10) = ?", []),
+    ("SELECT id FROM games WHERE {s} IS NOT NULL ORDER BY julianday({s}), id", []),
+    ("SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MIN(julianday(g.{s}))) FROM games g"
+     " WHERE julianday(g.{s}) <= julianday(?)", []),
+    # INSIDE WHAT KEEPS IT TEXT (Q35's prover, 2026-10-01: each of these got
+    # past the scan as first built).
+    ("SELECT 1 FROM games WHERE COALESCE({s}, '') <= ?",
+     ["compared as text (inside COALESCE)"]),
+    ("SELECT 1 FROM games WHERE datetime(g.{s}) > datetime('now')",
+     ["compared as text (inside DATETIME)"]),
+    ("SELECT 1 FROM games WHERE substr({s}, 1, 16) <= substr(?, 1, 16)",
+     ["compared as text (inside SUBSTR)"]),
+    ("SELECT MAX(IFNULL({s}, '')) FROM games",
+     ["taken the greatest of as text (MAX of what keeps it text)"]),
+    ("SELECT id FROM games ORDER BY COALESCE({s}, '9999'), id",
+     ["ordered as text (inside COALESCE)"]),
+    ("SELECT 1 FROM predictions p WHERE (SELECT g.{s} FROM games g"
+     " WHERE g.id = p.game_id) <= p.created_utc",
+     ["compared as text (inside a subquery's one column)"]),
+    ("SELECT 1 FROM games WHERE ({s}) > ?", ["compared as text (inside brackets)"]),
+    ("SELECT 1 FROM games WHERE julianday(COALESCE({s}, ?)) < julianday(?)", []),
+    ("SELECT 1 FROM games WHERE julianday(COALESCE({s}, ?)) < ?",
+     ["read as an instant and compared with a value that is not one "
+      "(a number beside text compares nothing)"]),
+    ("UPDATE games SET {s} = COALESCE(excluded.{s}, {s}) WHERE id = ?", []),
+    ("SELECT COUNT({s}) > 0, date({s}) < date('now') FROM games", []),
+    ("INSERT INTO games (id, {s}, week) VALUES (?, ?, ?)", []),
+    ("CREATE INDEX IF NOT EXISTS gk ON games ({s})", []),
+    ("SELECT id, {s}, status FROM games WHERE (SELECT 1) = 1", []),
+)
+_START_FIXTURE_PYTHON = (
+    ("def f(row, now):\n    return row['{s}'] <= now\n", 1),
+    ("def f({s}, now):\n    return {s} <= now\n", 1),
+    ("def f(games):\n    games.sort(key=lambda g: (g['{s}'] or '', g['id']))\n", 1),
+    ("def f(cards):\n    times = [c.get('{s}') for c in cards]\n"
+     "    return min(times) if times else None\n", 1),
+    ("def f(row, now):\n    return instant(row['{s}']) <= instant(now)\n", 0),
+    ("def f(row, now):\n    kickoff = parse(row['{s}'])\n    return kickoff <= now\n", 0),
+    ("def f(games):\n    games.sort(key=lambda g: (order(g['{s}']), g['id']))\n", 0),
+    ("def f(row):\n    return row['{s}'] is None or row['{s}'] == ''\n", 0),
+    # HANDED ON, OR KEPT TEXT (Q35's prover, 2026-10-01: each of these got
+    # past the scan as first built).
+    ("def f(row, now):\n    listed = row['{s}']\n    return listed <= now\n", 1),
+    ("def f(rows, now):\n    starts = [r['{s}'] for r in rows]\n"
+     "    for start in starts:\n        if start < now:\n            return start\n", 1),
+    ("def f(row, now):\n    return str(row['{s}']) < now\n", 1),
+    ("def f(row, now):\n    return row['{s}'].replace('Z', ':00Z') < now\n", 1),
+    ("def f(row, now):\n    return row['{s}'][:16] <= now[:16]\n", 1),
+    ("def f(row, now):\n    cut = row['{s}'][:16]\n    return cut <= now[:16]\n", 1),
+    ("def f(games):\n    return sorted(games, key=lambda g: str(g['{s}']))\n", 1),
+    ("def f(row, today):\n    return row['{s}'][:10] < today\n", 0),
+    ("def f(row, now):\n    listed = row['{s}']\n    listed = instant(listed)\n"
+     "    return listed <= instant(now)\n", 0),
+    ("def f(row, now):\n    listed = row['{s}']\n    return instant(listed) <= instant(now)\n", 0),
+)
+
+
+def _check_the_start_scan_can_see() -> None:
+    """Prove at import that the start scan sees each form of a text
+    comparison of a start, and passes each instant one."""
+    problems = []
+    s = max(START_COLUMNS)                # the games table's listed start
+    for template, want in _START_FIXTURE_SQL:
+        text = template.replace("{s}", s)
+        got = [how for _i, how in _start_text_in_sql(_sql_tokens(text))]
+        if got != want:
+            problems.append(f"{text!r} read as {got}, not {want}")
+    for template, want in _START_FIXTURE_PYTHON:
+        text = template.replace("{s}", s)
+        got = len(_start_text_in_python(ast.parse(text)))
+        if got != want:
+            problems.append(f"{text!r}: {got} text comparison(s) found, not {want}")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_start_scan_can_see()

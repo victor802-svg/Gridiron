@@ -623,12 +623,14 @@ def _opening_read(conn: sqlite3.Connection) -> dict:
         # PAST THE NEAR-START WINDOW ONLY. Inside it the near-start pass is
         # already reading the same events, and its read is the one that
         # counts; two passes fetching the same ladder in the same minute
-        # would double the rows and answer nothing extra.
-        "   AND g.kickoff_utc > ?"
+        # would double the rows and answer nothing extra. THE START AS AN
+        # INSTANT (operator question 35, 2026-10-01): `julianday()` on both
+        # sides and in the order, never the stored text.
+        "   AND julianday(g.kickoff_utc) > julianday(?)"
         "   AND NOT EXISTS (SELECT 1 FROM venue_quotes v"
         "                   WHERE v.game_id = g.id AND v.read_kind = 'open'"
         "                     AND v.fetched_utc > ?)"
-        " ORDER BY g.kickoff_utc",
+        " ORDER BY julianday(g.kickoff_utc)",
         (horizon, stale_before)).fetchall()
     if not rows:
         return {"opening_read_due": 0, "opening_read_quotes": 0}
@@ -1355,17 +1357,82 @@ def _refresh_one_sport(conn: sqlite3.Connection, sport: str) -> str:
     return ""
 
 
+def final_pass_window(conn: sqlite3.Connection, sport: str, season: int,
+                      week: int, now: str) -> dict | None:
+    """When a final pass that FIRES BY ITS LEAD may write for this slate
+    (operator question 35, ruled 2026-09-30: "move that schedule so every
+    final pass lands before its start"; built 2026-10-01); None for a sport
+    whose installer's wall-clock triggers decide (`FinalPass.fires_by_lead`).
+
+    THE WINDOW is `minutes_before_first` before the slate's FIRST START STILL
+    AHEAD, each start read as an instant (`db.instant`) -- the first bout of
+    a card whose prelims have not begun, its main card's once they have --
+    until that start. `open` says whether `now` is inside it; `first` and
+    `opens` are written in the one stored form. No start still ahead that
+    can be read: `first` None, and the window is shut (a start nobody can
+    read is never guessed into one).
+    """
+    spec = config.FINAL_PASS.get(sport)
+    if (spec is None or not spec.fires_by_lead
+            or spec.minutes_before_first is None):
+        return None
+    at = db.instant(now)
+    ahead = []
+    for (stamp,) in conn.execute(
+            "SELECT kickoff_utc FROM games WHERE sport = ? AND season = ?"
+            "   AND week = ? AND kickoff_utc IS NOT NULL",
+            (sport, season, week)).fetchall():
+        try:
+            start = db.instant(stamp)
+        except ValueError:
+            continue
+        if start is not None and start > at:
+            ahead.append(start)
+    if not ahead:
+        return {"open": False, "first": None, "opens": None,
+                "minutes": spec.minutes_before_first}
+    first = min(ahead)
+    opens = first - timedelta(minutes=spec.minutes_before_first)
+    return {"open": at >= opens, "first": first.strftime(db.INSTANT_FORM),
+            "opens": opens.strftime(db.INSTANT_FORM),
+            "minutes": spec.minutes_before_first}
+
+
 def _run_final_pass(conn: sqlite3.Connection, sport: str, *, use_llm: bool) -> tuple[str, str, dict]:
     """Forecast the next slate AGAIN, close to start (config.FINAL_PASS).
 
     The rows this writes supersede the early ones as the standing forecast.
     The early rows are kept and labelled; nothing is edited or deleted.
+
+    A SPORT WHOSE FINAL PASS FIRES BY ITS LEAD (UFC, from 2026-10-01:
+    operator question 35) is fired every thirty minutes by the installer and
+    writes only inside its window (`final_pass_window`): a firing before the
+    window is a noop that says when it opens. And whatever fires it, no pass
+    is written at or after its game's start: `predict.write_prediction`
+    refuses the row at its own stamp, read as an instant.
     """
     from . import run, sports
 
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
     adapter = sports.get(sport)
     week = adapter.next_slate(conn, season)
+    window = (final_pass_window(conn, sport, season, week, db.utcnow())
+              if week is not None else None)
+    if window is not None and not window["open"]:
+        slate = _slate_words(conn, sport, season, week)
+        if window["first"] is None:
+            return ("noop",
+                    f"the {sport} final pass found no start still ahead on "
+                    f"{slate} that can be read; nothing was written",
+                    {"week": week, "window_opens": None,
+                     "first_start_ahead": None})
+        return ("noop",
+                f"the {sport} final pass for {slate} waits for its window: it "
+                f"writes from {window['opens']}, {window['minutes']} minutes "
+                f"before its first start still ahead ({window['first']}); "
+                f"nothing was written",
+                {"week": week, "window_opens": window["opens"],
+                 "first_start_ahead": window["first"]})
     if week is None:
         # MISSED, UNCHANGED (MENTOR 4): a pass whose slate has already begun
         # writes nothing. The early row remains the standing forecast for
@@ -1437,10 +1504,18 @@ def _record_missed_slates(conn: sqlite3.Connection, sport: str) -> list[dict]:
         return []
 
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON)
+    # STARTS AS INSTANTS (operator question 35, ruled 2026-09-30, built
+    # 2026-10-01): `julianday()` on both sides of each bound, and the slate's
+    # first start the earliest instant, written back in the one stored form
+    # -- never the stored text, where a UFC start to the minute ("...T19:00Z")
+    # sorted after a clock to the second of the same minute.
     started = conn.execute(
-        "SELECT g.week, MIN(g.kickoff_utc) AS first_game FROM games g"
+        "SELECT g.week, strftime('%Y-%m-%dT%H:%M:%SZ',"
+        "                        MIN(julianday(g.kickoff_utc))) AS first_game"
+        "  FROM games g"
         " WHERE g.sport = ? AND g.season = ? AND g.kickoff_utc IS NOT NULL"
-        "   AND g.kickoff_utc <= ? AND g.kickoff_utc >= ?"
+        "   AND julianday(g.kickoff_utc) <= julianday(?)"
+        "   AND julianday(g.kickoff_utc) >= julianday(?)"
         "   AND NOT EXISTS (SELECT 1 FROM predictions p WHERE p.game_id = g.id)"
         " GROUP BY g.week ORDER BY g.week",
         (sport, season, db.utcnow(), first),
@@ -1476,11 +1551,16 @@ def _record_missed_slates(conn: sqlite3.Connection, sport: str) -> list[dict]:
 
 
 def _missed_slate(conn: sqlite3.Connection, sport: str, season: int) -> dict | None:
-    """The most recent slate that started without being forecast."""
+    """The most recent slate that started without being forecast.
+
+    Starts read as instants (operator question 35, 2026-10-01), as
+    `_record_missed_slates` reads them."""
     row = conn.execute(
-        "SELECT g.week, MIN(g.kickoff_utc) AS first FROM games g"
+        "SELECT g.week, strftime('%Y-%m-%dT%H:%M:%SZ',"
+        "                        MIN(julianday(g.kickoff_utc))) AS first"
+        "  FROM games g"
         " WHERE g.sport = ? AND g.season = ? AND g.kickoff_utc IS NOT NULL"
-        "   AND g.kickoff_utc <= ?"
+        "   AND julianday(g.kickoff_utc) <= julianday(?)"
         "   AND NOT EXISTS (SELECT 1 FROM predictions p WHERE p.game_id = g.id)"
         " GROUP BY g.week ORDER BY g.week DESC LIMIT 1",
         (sport, season, db.utcnow()),

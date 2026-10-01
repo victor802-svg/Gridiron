@@ -39,10 +39,12 @@ def game_days(conn: sqlite3.Connection, sport: str,
     under. Fetching the UTC date would miss every late tip-off.
     """
     placeholders = ",".join("?" for _ in seasons)
+    # Ordered as instants (operator question 35, 2026-10-01); the days are
+    # sorted again below in any case.
     rows = conn.execute(
         f"SELECT DISTINCT kickoff_utc FROM games"
         f" WHERE sport = ? AND status = 'final' AND season IN ({placeholders})"
-        f" ORDER BY kickoff_utc", (sport, *seasons)).fetchall()
+        f" ORDER BY julianday(kickoff_utc)", (sport, *seasons)).fetchall()
     days = set()
     for r in rows:
         stamp = (r["kickoff_utc"] or "")[:19]

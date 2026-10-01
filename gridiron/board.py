@@ -649,6 +649,22 @@ def _my_day_entry(block: dict, game_id: str, state: str, club: dict,
     }
 
 
+def _start_order(stamp: str | None) -> tuple:
+    """A game's row in start order, its start READ AS AN INSTANT (operator
+    question 35, ruled 2026-09-30: "Store and compare starts as instants,
+    never as text"; built 2026-10-01): a start stored to the minute sorted
+    after one to the second of the same minute as text. A game with no start
+    yet comes first, as the empty text did; one whose start cannot be read
+    comes last, its time never guessed."""
+    from . import db as _db
+
+    try:
+        when = _db.instant(stamp)
+    except ValueError:
+        return (2, 0.0)
+    return (0, 0.0) if when is None else (1, when.timestamp())
+
+
 def _secondary(colours: dict) -> str | None:
     """The club's second colour, where the colour file records one.
 
@@ -764,7 +780,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             row["score_words"] = language.score_line_words(
                 game["away"], game["away_score"], game["home"], game["home_score"])
         games.append(row)
-    games.sort(key=lambda g: ((g["kickoff_utc"] or ""), g["game_id"]))
+    games.sort(key=lambda g: (_start_order(g["kickoff_utc"]), g["game_id"]))
 
     # --- the prop tiles -----------------------------------------------------
     families = config.SPORT_PROP_MARKETS.get(sport, ())

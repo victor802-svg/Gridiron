@@ -283,10 +283,13 @@ def open_windows(conn: sqlite3.Connection, now: datetime | None = None) -> list[
     windows = []
     for sport in LIVE_SPORTS:
         hours = GAME_HOURS.get(sport, 4.0)
+        # THE WINDOW'S BOUNDS ARE INSTANTS (operator question 35,
+        # 2026-10-01): `julianday()` on both sides, never the stored text.
         rows = conn.execute(
             "SELECT id, kickoff_utc, status FROM games"
             " WHERE sport = ? AND kickoff_utc IS NOT NULL AND status != 'final'"
-            "   AND kickoff_utc >= ? AND kickoff_utc <= ?",
+            "   AND julianday(kickoff_utc) >= julianday(?)"
+            "   AND julianday(kickoff_utc) <= julianday(?)",
             (sport,
              (now - STALE_AFTER).strftime("%Y-%m-%dT%H:%M:%SZ"),
              (now + WINDOW_LEAD).strftime("%Y-%m-%dT%H:%M:%SZ")),

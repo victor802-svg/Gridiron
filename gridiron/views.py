@@ -1668,11 +1668,13 @@ def _recent_form(conn: sqlite3.Connection, sport: str, team: str | None,
     """
     if not team:
         return []
+    # STARTS AS INSTANTS (operator question 35, 2026-10-01): `julianday()` on
+    # both sides of the bound and in the order, never the stored text.
     rows = conn.execute(
         "SELECT home, away, home_score, away_score FROM games"
         " WHERE sport = ? AND status = 'final' AND (home = ? OR away = ?)"
-        "   AND (? IS NULL OR kickoff_utc < ?)"
-        " ORDER BY kickoff_utc DESC LIMIT ?",
+        "   AND (? IS NULL OR julianday(kickoff_utc) < julianday(?))"
+        " ORDER BY julianday(kickoff_utc) DESC LIMIT ?",
         (sport, team, team, before_utc, before_utc, limit)).fetchall()
     out = []
     for row in rows:
@@ -2683,10 +2685,18 @@ def next_start_utc(cards: list[dict]) -> str | None:
     this is None and both sentences go quiet rather than naming a time in the
     past.
     """
-    times = [c.get("kickoff_utc") for c in cards
-             if c.get("kickoff_utc")
-             and card_state(c.get("game_status") or "") == "upcoming"]
-    return min(times) if times else None
+    # THE EARLIEST AS AN INSTANT (operator question 35, 2026-10-01), never
+    # the least text: a start stored to the minute sorted after one to the
+    # second of the same minute. A start that cannot be read names no time.
+    times = []
+    for c in cards:
+        if (c.get("kickoff_utc")
+                and card_state(c.get("game_status") or "") == "upcoming"):
+            try:
+                times.append((db.instant(c["kickoff_utc"]), c["kickoff_utc"]))
+            except ValueError:
+                continue
+    return min(times)[1] if times else None
 
 
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
@@ -2942,6 +2952,8 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         # latest written by then and before the start, the close's own rule
         # (`recommend.close_of`) -- names the line of the words, through the
         # one door; an edge worked out across two contracts is not stated.
+        # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01):
+        # `julianday()` on both sides, never the stored text.
         edge = conn.execute(
             "SELECT r.edge_cents, c.id AS claim_id, c.line AS claim_line,"
             "       q.line AS quote_line, q.yes_side AS quote_side, g.home"
@@ -2950,7 +2962,8 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
             "      SELECT c2.id FROM at_the_line_claims c2"
             "       WHERE c2.prediction_id = r.prediction_id"
             "         AND c2.created_utc <= r.created_utc"
-            "         AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
+            "         AND (g.kickoff_utc IS NULL"
+            "              OR julianday(c2.created_utc) < julianday(g.kickoff_utc))"
             "       ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
             "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
             " WHERE r.prediction_id = ? AND r.created_utc <= ?"
@@ -3591,15 +3604,19 @@ def _empty_slate_message(conn: sqlite3.Connection, sport: str) -> str:
         if detail and detail.get("message"):
             return detail["message"]
 
+    # THE EARLIEST START AHEAD, AS AN INSTANT (operator question 35,
+    # 2026-10-01): ordered and bounded by `julianday()` on both sides, never
+    # by the stored text.
     upcoming = conn.execute(
-        "SELECT MIN(kickoff_utc) AS first FROM games"
+        "SELECT kickoff_utc AS first FROM games"
         " WHERE sport = ? AND status = 'scheduled' AND kickoff_utc IS NOT NULL"
         # FORWARD ONLY. Without this bound the "next scheduled game" was a
         # game from 2024 -- one college fixture that never got a final score
         # and so still reads as scheduled two years later. A record with any
         # history at all will have a few of those, and pointing a reader at
         # one as the NEXT game is worse than saying nothing.
-        "   AND kickoff_utc > ?",
+        "   AND julianday(kickoff_utc) > julianday(?)"
+        " ORDER BY julianday(kickoff_utc) LIMIT 1",
         (sport, db.utcnow()),
     ).fetchone()
     loaded = conn.execute(
@@ -4913,9 +4930,13 @@ def digest(
 def _nothing_resolved_message(conn: sqlite3.Connection, sport: str) -> str:
     """The empty state, in plain words and with the next thing named."""
     label = config.SPORT_LABELS.get(sport, sport.upper())
+    # THE EARLIEST START AHEAD, AS AN INSTANT (operator question 35,
+    # 2026-10-01): `julianday()` on both sides, never the stored text.
     row = conn.execute(
-        "SELECT MIN(kickoff_utc) AS next FROM games WHERE sport = ?"
-        " AND status = 'scheduled' AND kickoff_utc > ?",
+        "SELECT kickoff_utc AS next FROM games WHERE sport = ?"
+        " AND status = 'scheduled'"
+        " AND julianday(kickoff_utc) > julianday(?)"
+        " ORDER BY julianday(kickoff_utc) LIMIT 1",
         (sport, db.utcnow()),
     ).fetchone()
     if row and row["next"]:

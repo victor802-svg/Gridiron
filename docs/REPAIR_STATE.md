@@ -49,6 +49,84 @@
   firing's read. The schedule is unchanged (the ruling names no lead): a
   :00/:30 start's last read is 25 minutes out; moving it is one installer
   line, the operator's call. Question 38 below. **Q35 building.**
+  **Q35 BUILT AND PROVEN (2026-10-01, on a9c5193; committed locally on
+  `repair` by its prover, not pushed; next: its gate and release; FOLLOWUPS
+  "A pass written at or after the start is not blind; a start is an
+  instant"; CLAUDE.md, the LAW 1 row of that name and the ONE CLAUSE row):**
+  MEASURED FIRST on one verified copy (made 01:40:24Z, deleted after): UFC's
+  2,783 starts stored to the minute, the other sports' 21,527 to the second,
+  every pass, read and run to the second; 67 text comparisons of a start in
+  the shipped code and one schema rule; 24 forecasts written at or after
+  their start by the instant -- the 18 (1014-1031, withdrawn by nothing) and
+  MLB 105-110 (withdrawn 29 August) -- none at the start's own second. WHY
+  THE FINAL PASS RAN AT THE START: `Gridiron-Final-UFC` (read read-only: a
+  daily trigger from 2026-09-05 12:00 local, 19:00Z in summer, whatever card
+  is next; its first firing was that day) began run 131 at 19:00:01Z, the
+  minute the Paris card's main bouts were listed ("2026-09-05T19:00Z");
+  `next_slate` and the question check compared that with the clock as text,
+  so the card read as still to come, and the 18 were written 19:00:02-03Z.
+  12:00 local was never the declared "three hours before the first bout":
+  18 of 2025-2026's 103 cards start before it, 2 at it, and every other
+  final pass of September landed 23 to 73 hours before its card. BUILT:
+  every loader stores a start to the second (`db.stored_start`; the UFC
+  mirror rewrites the record's 2,783 at the first UFC refresh after the
+  release, the same instants -- rehearsed, only `kickoff_utc` moves); every
+  comparison reads instants (`db.instant`; `julianday()` on both sides),
+  the standing rule strictly before the start; a schema rule beside the
+  close's text rule (through `db.init`, rehearsed: the one object, 0
+  differences from a fresh build, no checksum moved); the writer refuses a
+  pass at or after its start at its own stamp (`predict.PassAtOrAfterTheStart`);
+  `final:ufc` fires by its declared 180-minute lead (`tasks.
+  final_pass_window`); the gate's scan (`audit.check_every_start_is_compared_
+  as_an_instant`, step 2) and the standing world to the minute; the void
+  tool (`tools/void_passes_written_at_the_start.py`). NUMBERS (a9c5193
+  against this tree on the copy): the UFC ranker split 53/0 -> 47/6 in each
+  market (the re-read's 49/0 -> 43/6), nothing else counted moves -- the
+  early passes carry the finals' probabilities exactly; after the voids, UFC
+  378 -> 360 settled ("189-171, 18 withdrawn") and the figures beside it
+  (FOLLOWUPS). Three plantings escape on a9c5193 and are caught here;
+  `plant.py` 408/408; the suite 2,356 passed, 4 skipped; gate step 2's rows
+  110 of 112 on the copy, the two schema rows 0 differences each (the copies
+  deleted 03:33:11Z).
+  **ITS PROVER (2026-10-01; one verified copy made 03:45:01Z, deleted
+  04:21:46Z with its four scratch copies; FOLLOWUPS, THE PROVER):** the
+  measurement and the report stand as built; no start is compared as text
+  anywhere in the shipped code, and no path writes or stands a pass at or
+  after its start. FIXED, each failing on the change as first built, with a
+  test and a planting form: a start nobody can read (empty, or a feed's
+  "TBD" kept as sent) put a final pass below an early one in the standing
+  order (`julianday()` NULL), so the clause stood the early pass where the
+  recount keeps the latest row -- the term is `IFNULL(..., 0)` (none on the
+  record); and the gate's scan saw a start only bare and by its own name --
+  it now follows one handed to a local or a loop, `str()` and string
+  methods, a cut short of the day, a call that keeps it text (`COALESCE`,
+  `IFNULL`, `datetime`, `substr`), brackets and a scalar subquery (nothing
+  more on a9c5193 than the 67 and the rule; the tree clean). FOUND, NOT
+  BUILT: the 5 September slate's payload labels the eighteen standing early
+  passes "A later forecast stands in its place" (`views._superseded_ids`,
+  question 30's FOLLOWUPS; drawn nowhere), voids or not. Rehearsed again on
+  the copy: the void tool (24 listed, the 18 written once, `--live` refused
+  on the copy), `db.init` (the one rule, appended, 0 differences both rows,
+  no checksum moved), the mirror (2,783 UFC starts, the same instants);
+  the numbers the same as the build's (11,041; 623; 0 for the voids alone on
+  the released code). `plant.py` 408/408; step 2's rows 110 of 112 (the
+  schema two in the rehearsal); the suite 2,358 passed, 4 skipped, none
+  failed (04:23:27Z to 04:50:29Z).
+  **TO APPLY AFTER THE RELEASE (the orchestrator):** (1) the 18 --
+  `python tools/void_passes_written_at_the_start.py --database
+  var/gridiron.db` (dry; it must list exactly 1014-1031), then the same with
+  `--write --live`; (2) THE SCHEDULE -- re-register `Gridiron-Final-UFC` with
+  the installer's Final-UFC trigger (every 30 minutes from 00:20 local;
+  `tools/schedule_install.ps1`, dated 2026-10-01); until it is, the 12:00
+  firing writes a final pass only for a card whose first start still ahead
+  is within 180 minutes of it; (3) nothing else -- `db.init` adds the rule on
+  the first open, and the first UFC refresh rewrites the starts. **FOR THE
+  ORCHESTRATOR, FOUND:** the void count beside a UFC curve is the market's
+  across every card (`calibration.curve` hands the card to `resolved`, not
+  to `void_count`), so after (1) the Record page reads "6 withdrawn" beside
+  the Contender Series and Numbered card curves of each UFC market --
+  question 34's ground ("every UFC count is per card tier"); FOLLOWUPS has
+  it and four more, none LAW 1, LAW 3 or a gate count.
   Q36 (ii) (the 269 stored claims and 54 recommendations:
   void, label or leave) and (iii) (what the page draws for a row priced off
   one) are not ruled: until they are, the stored rows stay as written and

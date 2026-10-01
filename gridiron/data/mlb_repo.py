@@ -67,7 +67,8 @@ def games_on_day(conn: sqlite3.Connection, season: int, day: int) -> list[sqlite
         "SELECT g.*, c.stadium FROM games g"
         " LEFT JOIN game_conditions c ON c.game_id = g.id"
         " WHERE g.sport = 'mlb' AND g.season = ? AND g.week = ?"
-        " ORDER BY g.kickoff_utc, g.id",
+        # In start order, read as instants (operator question 35, 2026-10-01).
+        " ORDER BY julianday(g.kickoff_utc), g.id",
         (season, day),
     ).fetchall()
 

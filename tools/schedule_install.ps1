@@ -302,17 +302,51 @@ New-GridironTask -Name "$($Prefix)Final-CFB" -TaskArg "final:cfb" `
 # the record was run by hand. Daily, like baseball: about 4.3 cards a month
 # with no season shape, and a day with no card is a logged no-op.
 #
-# Final-UFC at 12:00 local. `config.FINAL_PASS["ufc"]` asks for three hours
-# before the first bout and says it is NOT measured; the 2026 record puts the
-# first bout at 14:00 local on the early cards and 16:00 on most. 12:00 is
-# three hours before the early ones. Change it when the timing is measured.
+# Final-UFC at 12:00 local, until 2026-10-01 (below). `config.FINAL_PASS["ufc"]`
+# asks for three hours before the first bout and says it is NOT measured; the
+# 2026 record puts the first bout at 14:00 local on the early cards and 16:00
+# on most. 12:00 is three hours before the early ones. Change it when the
+# timing is measured.
+#
+# EVERY THIRTY MINUTES FROM 2026-10-01, AND THE TASK DECIDES (operator
+# question 35, ruled 2026-09-30: "Report why a final pass ran at the start
+# time and move that schedule so every final pass lands before its start").
+# WHY IT RAN AT THE START: this trigger fired `final:ufc` daily at 12:00 local
+# -- 19:00Z on this machine's clock in summer -- whatever card was next. On 5
+# September the main card of UFC Fight Night: Hooker vs. Parnasse (Paris) was
+# listed at 19:00Z exactly, stored to the minute ("2026-09-05T19:00Z"); the run
+# (131) began at 19:00:01Z and the code compared the start with its clock AS
+# TEXT, where a colon sorts below a Z, so the card read as still to come and
+# eighteen final passes were written at 19:00:02-03Z, after their bouts began.
+# And 12:00 local is not "three hours before the first bout" for most cards:
+# of the 103 cards of 2025-2026, 18 list their first bout before 12:00 local
+# (Riyadh, London, Baku, Abu Dhabi, Shanghai, Paris, Doha, Perth, Macau,
+# Belgrade) and 2 at it; every final pass from 6 to 30 September was written
+# 23 to 73 hours before its card's first start still ahead.
+# THE MOVE: the trigger repeats every thirty minutes, from 00:20 (clear of
+# NearStart's :05 and :35), and `final:ufc` writes only inside the declared
+# 180 minutes before its card's first start still ahead, read as an instant
+# (`tasks.final_pass_window`, `config.FinalPass.fires_by_lead`); every other
+# firing is a noop row saying when the window opens. So the pass lands 150 to
+# 180 minutes before the first bout wherever the card is, and the code refuses
+# any pass at or after its bout's start whatever fires it
+# (`predict.PassAtOrAfterTheStart`). The other sports' final passes were all
+# written before their starts (measured: MLB at least 4.6 minutes before, CFB
+# 59, NFL 123), keep their wall-clock triggers, and are held by the same
+# refusal.
+# APPLIED BY THE OPERATOR AFTER THE RELEASE (the registered tasks are the
+# operator's; this file is never run by a session): re-register
+# Gridiron-Final-UFC with this trigger. Until then the 12:00 firing writes a
+# final pass only for a card whose first start still ahead is within 180
+# minutes of it.
 New-GridironTask -Name "$($Prefix)Predict-UFC" -TaskArg "predict:ufc" `
     -Trigger (New-ScheduledTaskTrigger -Daily -At "11:00") `
     -Description "Forecast the next UFC card, blind. A logged no-op on a day with no card."
 
 New-GridironTask -Name "$($Prefix)Final-UFC" -TaskArg "final:ufc" `
-    -Trigger (New-ScheduledTaskTrigger -Daily -At "12:00") `
-    -Description "Re-forecast the fights close to the first bout, on what is known then."
+    -Trigger (New-ScheduledTaskTrigger -Once -At "00:20" `
+        -RepetitionInterval (New-TimeSpan -Minutes 30)) `
+    -Description "Re-forecast the fights three hours before the card's first bout, on what is known then. Fires every thirty minutes; writes only inside the three hours before the first start still ahead."
 
 # THE WEEKLY RE-FIT (audit 2026-09-05). `recalibrate` has declared a weekly
 # cadence since 2026-08-31 and nothing ever registered it, so the claim

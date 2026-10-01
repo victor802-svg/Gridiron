@@ -96,10 +96,13 @@ def walk_forward(conn: sqlite3.Connection, k: float,
     ratings to `ufc_ratings`; the fitting path leaves it False so a sweep
     never touches the record.
     """
+    # IN TIME ORDER, READ AS INSTANTS (operator question 35, 2026-10-01):
+    # bouts loaded before that date are stored to the minute and later ones
+    # to the second, and only `julianday()` orders the two by when they were.
     bouts = conn.execute(
         "SELECT id, bout_utc, fighter_a, fighter_b, winner FROM ufc_bouts"
         " WHERE status = 'final' AND bout_utc IS NOT NULL"
-        " ORDER BY bout_utc, id").fetchall()
+        " ORDER BY julianday(bout_utc), id").fetchall()
 
     rating: dict[str, float] = {}
     fought: dict[str, int] = {}

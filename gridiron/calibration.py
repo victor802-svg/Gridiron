@@ -250,11 +250,38 @@ def standing_pass_order(forecast: str, game: str, row: str | None = None) -> str
     before the start; when none was (a backtest), every row is after the
     start, the first term is false for all of them, and the latest written
     stands -- the fallback kept as it was, as the brief's reading says.
+
+    BEFORE THE START, AS INSTANTS, AND STRICTLY (operator question 35, ruled
+    2026-09-30: "a pass written at or after the start is not blind. Store
+    and compare starts as instants, never as text"; built 2026-10-01). Until
+    this date the term compared the stored text and admitted a pass written
+    AT the start (`<=`): UFC starts are stored to the minute ("...T19:00Z"),
+    every pass to the second, and ':' sorts below 'Z', so eighteen UFC final
+    passes written at 19:00:02-03Z on a card listed at 19:00Z (forecasts
+    1014-1031, 5 September) came first, and the UFC ranker split read 49 and
+    0 in each of three markets where it was 43 and 6 (the re-read of 29
+    September; 53 and 0 against 47 and 6 on 1 October). Now `julianday()` on
+    both sides -- the one expression every query compares a start by -- and
+    `<`: a pass written at the start's second is not before it.
+
+    A START NOBODY CAN READ IS BEFORE NOTHING, AND THE TERM SAYS SO (Q35's
+    prover, 2026-10-01). `julianday()` of a start it cannot read -- an empty
+    one, a feed's "TBD" kept as sent (`db.stored_start`) -- is NULL, so as
+    first built the term was NULL for a final pass on such a game and 0 for
+    an early pass, and ORDER BY ... DESC puts NULL last: the question stood
+    on its latest EARLY pass, where the recount (`recount._before_the_start`,
+    False) and the rule's own fallback -- nothing shown to come before the
+    start, so the latest written stands -- keep the latest row: on a world
+    with an early pass and a later final pass on an unreadable start, the
+    clause stood the early one and the recount the final.
+    `IFNULL(..., 0)`: not before the start, as the recount reads it. None on
+    the record that day (24,310 starts, every one read).
     """
     row = row or forecast
     return (f"({forecast}.pass_kind = 'final'"
             f" AND ({game}.kickoff_utc IS NULL"
-            f" OR {forecast}.created_utc <= {game}.kickoff_utc)) DESC,"
+            f" OR IFNULL(julianday({forecast}.created_utc)"
+            f" < julianday({game}.kickoff_utc), 0))) DESC,"
             f" {row}.created_utc DESC, {row}.id DESC")
 
 
@@ -343,6 +370,15 @@ def standing_row_clause(same_set: bool) -> str:
     # time alone. The WHERE below is unchanged. A question whose final pass
     # was withdrawn is left its latest early pass, because a withdrawn row is
     # never a candidate (`skip_voided`).
+    #
+    # WRITTEN BEFORE THE START IS STRICTLY BEFORE IT, READ AS INSTANTS
+    # (operator question 35, ruled 2026-09-30: "a pass written at or after the
+    # start is not blind. Store and compare starts as instants, never as
+    # text"; built 2026-10-01). Both tests below compared the stored text and
+    # admitted a row written AT the start (`<=`); a start stored to the minute
+    # ("...T19:00Z") then took a pass written at "...T19:00:02Z" for one
+    # written before it (':' sorts below 'Z'). `julianday()` on both sides,
+    # and `<`, in which rows may stand and in the backtest's fallback alike.
     return (
         f"{voided}"
         " AND p.id = (SELECT p2.id FROM predictions p2"
@@ -351,7 +387,8 @@ def standing_row_clause(same_set: bool) -> str:
         f"{same}"
         f"{skip_voided}"
         "                AND (g2.kickoff_utc IS NULL"
-        "                     OR p2.created_utc <= g2.kickoff_utc"
+        "                     OR julianday(p2.created_utc)"
+        "                        < julianday(g2.kickoff_utc)"
         # A SLATE OF ROWS ALL WRITTEN AFTER START is a backtest, and a
         # backtest still has to produce a curve. When nothing was written
         # before kickoff the latest row stands, because refusing them all
@@ -359,7 +396,8 @@ def standing_row_clause(same_set: bool) -> str:
         "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
         "                                    JOIN games g3 ON g3.id = p3.game_id"
         f"                                    WHERE {bet.same('p3', 'p2')}"
-        "                                      AND p3.created_utc <= g3.kickoff_utc))"
+        "                                      AND julianday(p3.created_utc)"
+        "                                          < julianday(g3.kickoff_utc)))"
         f"              ORDER BY {standing_pass_order('p2', 'g2')} LIMIT 1)"
     )
 

@@ -932,7 +932,12 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         "  WHERE c.sport = ? AND c.market = ? AND p.predictor = ?"
         "    AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
         "                     WHERE v.prediction_id = c.prediction_id)"
-        "    AND (g.kickoff_utc IS NULL OR c.created_utc < g.kickoff_utc)"
+        # A CLAIM BEFORE THE START, READ AS INSTANTS (operator question 35,
+        # ruled 2026-09-30, built 2026-10-01): `julianday()` on both sides,
+        # never the stored text, which took a claim at "...T19:00:30Z" for
+        # one before a start stored to the minute ("...T19:00Z").
+        "    AND (g.kickoff_utc IS NULL"
+        "         OR julianday(c.created_utc) < julianday(g.kickoff_utc))"
         f"{tier_clause})"
         " WHERE latest_first = 1 ORDER BY id", params).fetchall()
 

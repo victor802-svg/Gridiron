@@ -84,6 +84,56 @@ def instant(stamp: str | None) -> datetime | None:
     return when.astimezone(timezone.utc)
 
 
+#: THE ONE FORM A START IS STORED IN (operator question 35, ruled 2026-09-30:
+#: "Store and compare starts as instants, never as text"; built 2026-10-01):
+#: ISO-8601, UTC, to the second, Z-suffixed -- the form every other instant
+#: in this record already has (`utcnow`).
+INSTANT_FORM = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def stored_instant(stamp: str | None) -> str | None:
+    """A start as it is STORED from 2026-10-01: the instant `stamp` names,
+    written to the second (`INSTANT_FORM`); None when nothing is given.
+
+    WHY (operator question 35, ruled 2026-09-30, built 2026-10-01). UFC's
+    feed lists a bout to the minute ("2026-09-05T19:00Z") and the four other
+    sports' to the second; every pass, read and run is stamped to the
+    second. Compared as text ':' sorts below 'Z', so "19:00:02Z" read as
+    before "19:00Z" -- and eighteen UFC final passes written two and three
+    seconds after their bouts' start stood as written before it. Every
+    loader writes a start through here, so a start is stored as the same
+    instant in the same form whatever its feed sent; and every comparison
+    of a start reads it as an instant all the same (`instant` here,
+    `julianday()` on both sides in SQL), so a start stored before this date
+    in another form is still read as what it is.
+
+    A stamp `instant` cannot read -- or one naming no zone -- is refused by
+    name (ValueError), never guessed into a time: the caller decides what an
+    unreadable start is, and a loader stores none and says so.
+    """
+    when = instant(stamp)
+    return None if when is None else when.strftime(INSTANT_FORM)
+
+
+def stored_start(stamp: str | None) -> str | None:
+    """What a LOADER stores for the start its feed sent (2026-10-01,
+    operator question 35): `stored_instant` of it -- the instant, to the
+    second -- or, where the feed sent something that cannot be read as an
+    instant, the feed's own text unchanged.
+
+    NEVER A GUESS, AND NEVER A LOAD STOPPED BY ONE GAME. A start nobody can
+    read is not turned into a time, nor into "no time yet" (NULL, which a
+    reader takes for a start still to be announced); it is kept as sent, and
+    every reader of a start refuses it by name -- the near-start run names it
+    on every firing (item 1's prover, 2026-09-30) and the predict path writes
+    no forecast on its game (`predict.PassAtOrAfterTheStart`). None on the
+    record when this was written: 24,310 starts, every one readable."""
+    try:
+        return stored_instant(stamp)
+    except ValueError:
+        return stamp
+
+
 class LiveRecordTouched(RuntimeError):
     """Verification opened the operator's own record. It never may.
 

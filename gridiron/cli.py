@@ -155,9 +155,11 @@ def _report_market_agreement(conn, sport: str, market_type: str, fit) -> None:
               "second number to check this one against")
         return
 
+    # The latest 200 by start, read as instants (operator question 35,
+    # 2026-10-01).
     games = conn.execute(
         "SELECT id FROM games WHERE sport = 'nba' AND status = 'final'"
-        " ORDER BY kickoff_utc DESC LIMIT 200").fetchall()
+        " ORDER BY julianday(kickoff_utc) DESC LIMIT 200").fetchall()
     checked, disagreed = 0, []
     for row in games:
         try:

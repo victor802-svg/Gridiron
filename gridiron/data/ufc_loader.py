@@ -28,7 +28,7 @@ import sqlite3
 from datetime import timedelta
 
 from . import sources
-from ..db import utcnow
+from ..db import stored_start, utcnow
 from ..sports import ufc as ufc_adapter
 
 #: The one host this module talks to.
@@ -103,7 +103,12 @@ def load_season(conn: sqlite3.Connection, season: int) -> dict:
         event_id = str(card.get("id") or "")
         if not event_id:
             continue
-        when = card.get("date")
+        # STORED AS AN INSTANT, TO THE SECOND (operator question 35, ruled
+        # 2026-09-30, built 2026-10-01). The feed lists a card to the minute
+        # ("2026-09-05T16:00Z"), and compared as text with a pass stamped to
+        # the second that let eighteen final passes written after their
+        # bouts' start stand as written before it.
+        when = stored_start(card.get("date"))
         name = card.get("name") or "UFC"
         bouts = card.get("competitions") or []
         # WHICH KIND OF CARD, AND WHETHER IT IS ONE (E2, 2026-09-03). The tier
@@ -207,7 +212,9 @@ def _load_bout(conn: sqlite3.Connection, event_id: str, bout: dict,
         "   status = excluded.status, winner = excluded.winner,"
         "   method = excluded.method, end_round = excluded.end_round,"
         "   end_clock = excluded.end_clock, fetched_utc = excluded.fetched_utc",
-        (bout_id, event_id, bout.get("date"), periods, weight,
+        # The bout's listed start, as an instant to the second (operator
+        # question 35, 2026-10-01), as the card's above.
+        (bout_id, event_id, stored_start(bout.get("date")), periods, weight,
          segment, bout.get("matchNumber"),
          ids[0], ids[1],
          "final" if settled else ("in" if state == "in" else "scheduled"),

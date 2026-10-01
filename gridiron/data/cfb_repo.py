@@ -26,9 +26,11 @@ def slate(conn: sqlite3.Connection, season: int, day: int) -> list[sqlite3.Row]:
     is what the loader writes -- the feed's `week.number` is null for the live
     season and would merge Saturday's 60 games with Friday's 8 anyway.
     """
+    # In start order, read as instants (operator question 35, 2026-10-01):
+    # every start in this module is compared and ordered by `julianday()`.
     return conn.execute(
         "SELECT * FROM games WHERE sport = 'cfb' AND season = ? AND week = ?"
-        " ORDER BY kickoff_utc, id",
+        " ORDER BY julianday(kickoff_utc), id",
         (season, day),
     ).fetchall()
 
@@ -44,7 +46,7 @@ def next_slate(conn: sqlite3.Connection, season: int, *,
     row = conn.execute(
         "SELECT MIN(week) AS day FROM games WHERE sport = 'cfb' AND season = ?"
         "  AND status = 'scheduled'"
-        + (" AND kickoff_utc > ?" if after_utc else ""),
+        + (" AND julianday(kickoff_utc) > julianday(?)" if after_utc else ""),
         (season, after_utc) if after_utc else (season,),
     ).fetchone()
     return int(row["day"]) if row and row["day"] is not None else None
@@ -57,7 +59,8 @@ def completed(conn: sqlite3.Connection, season: int | None = None) -> list[sqlit
     if season is not None:
         sql += " AND season = ?"
         params = (season,)
-    return conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
+    return conn.execute(sql + " ORDER BY julianday(kickoff_utc), id",
+                        params).fetchall()
 
 
 def scoring_form(conn: sqlite3.Connection, team: str, *, before_utc: str,
@@ -76,9 +79,9 @@ def scoring_form(conn: sqlite3.Connection, team: str, *, before_utc: str,
         "SELECT home, away, home_score, away_score FROM games"
         " WHERE sport = 'cfb' AND status = 'final'"
         "   AND home_score IS NOT NULL AND away_score IS NOT NULL"
-        "   AND kickoff_utc < ?"
+        "   AND julianday(kickoff_utc) < julianday(?)"
         "   AND (home = ? OR away = ?)"
-        " ORDER BY kickoff_utc DESC LIMIT ?",
+        " ORDER BY julianday(kickoff_utc) DESC LIMIT ?",
         (before_utc, team, team, window),
     ).fetchall()
     if not rows:
@@ -100,8 +103,8 @@ def days_rest(conn: sqlite3.Connection, team: str, *, before_utc: str) -> int | 
     """Days since this team last played, or None if it has not played yet."""
     row = conn.execute(
         "SELECT kickoff_utc FROM games WHERE sport = 'cfb' AND status = 'final'"
-        "   AND kickoff_utc < ? AND (home = ? OR away = ?)"
-        " ORDER BY kickoff_utc DESC LIMIT 1",
+        "   AND julianday(kickoff_utc) < julianday(?) AND (home = ? OR away = ?)"
+        " ORDER BY julianday(kickoff_utc) DESC LIMIT 1",
         (before_utc, team, team),
     ).fetchone()
     if not row or not row["kickoff_utc"]:
@@ -180,7 +183,8 @@ def ratings(conn: sqlite3.Connection, season: int, *, before_utc: str) -> dict:
         "SELECT home, away, home_score, away_score FROM games"
         " WHERE sport = 'cfb' AND status = 'final'"
         "   AND home_score IS NOT NULL AND away_score IS NOT NULL"
-        "   AND kickoff_utc < ? AND kickoff_utc >= ?",
+        "   AND julianday(kickoff_utc) < julianday(?)"
+        "   AND julianday(kickoff_utc) >= julianday(?)",
         (before_utc, since),
     ).fetchall()
     if not rows:
@@ -224,7 +228,8 @@ def decayed_ratings(conn: sqlite3.Connection, season: int, *, before_utc: str) -
         "SELECT home, away, home_score, away_score, kickoff_utc FROM games"
         " WHERE sport = 'cfb' AND status = 'final'"
         "   AND home_score IS NOT NULL AND away_score IS NOT NULL"
-        "   AND kickoff_utc < ? AND kickoff_utc >= ?",
+        "   AND julianday(kickoff_utc) < julianday(?)"
+        "   AND julianday(kickoff_utc) >= julianday(?)",
         (before_utc, since),
     ).fetchall()
     if not rows:
@@ -262,11 +267,11 @@ def score_swing(conn: sqlite3.Connection, team: str, *, before_utc: str,
         "SELECT home_score, away_score FROM games"
         " WHERE sport = 'cfb' AND status = 'final'"
         "   AND home_score IS NOT NULL AND away_score IS NOT NULL"
-        "   AND kickoff_utc < ? AND (home = ? OR away = ?)"
-        " ORDER BY kickoff_utc DESC LIMIT ?",
+        "   AND julianday(kickoff_utc) < julianday(?) AND (home = ? OR away = ?)"
+        " ORDER BY julianday(kickoff_utc) DESC LIMIT ?",
         (before_utc, team, team, window),
     ).fetchall()
-    totals = [float(r["home_score"]) + float(r["away_score"]) for r in rows]
+    totals =[float(r["home_score"]) + float(r["away_score"]) for r in rows]
     if len(totals) < 2:
         return None
     changes = [abs(totals[i] - totals[i + 1]) for i in range(len(totals) - 1)]

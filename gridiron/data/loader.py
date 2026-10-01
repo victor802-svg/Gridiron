@@ -16,7 +16,7 @@ import sqlite3
 from collections import defaultdict
 
 from .. import config
-from ..db import utcnow
+from ..db import stored_start, utcnow
 from . import reference, sources
 
 # Columns on the upstream games row that are market prices. Named here so the
@@ -83,7 +83,11 @@ def load_games(conn: sqlite3.Connection, seasons: tuple[int, ...]) -> dict[str, 
                     season,
                     _int(r.get("week")),
                     (r.get("game_type") or "REG").strip(),
-                    reference.kickoff_to_utc(r.get("gameday", ""), r.get("gametime")),
+                    # STORED AS AN INSTANT, TO THE SECOND (operator question
+                    # 35, 2026-10-01): every loader writes a start through
+                    # the one door, whatever form its feed sent.
+                    stored_start(reference.kickoff_to_utc(
+                        r.get("gameday", ""), r.get("gametime"))),
                     r["home_team"],
                     r["away_team"],
                     "final" if final else "scheduled",

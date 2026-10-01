@@ -1012,6 +1012,14 @@ def step_2_guards() -> bool:
         # moves with it on the record, so they cannot see it.
         ("a question stands on its final pass before the start (question 27)",
          audit.check_the_final_pass_stands),
+        # OPERATOR QUESTION 35 (ruled 2026-09-30; built 2026-10-01): "Store
+        # and compare starts as instants, never as text." No start is
+        # compared, ordered or taken the least or greatest of as text in the
+        # shipped code or the schema -- `db.instant` in Python, `julianday()`
+        # on both sides in SQL; the check above asks every door again on a
+        # world whose start is stored to the minute.
+        ("every start is compared as an instant (question 35)",
+         audit.check_every_start_is_compared_as_an_instant),
         # OPERATOR QUESTION 16 (ruled (B) 2026-09-27, on question 17's key;
         # question 23 (A), 2026-09-28; built 2026-09-29): each correction
         # gate's count is one forecaster's category, each question once --
@@ -1222,9 +1230,14 @@ def step_4_live_forward_week() -> bool:
     # prediction is not part of the record: the six MLB rows written after first
     # pitch were voided FOR that reason, and counting them made the blind-first
     # check fail on predictions that had already been removed for failing it.
+    # THE FIRST START AS AN INSTANT (operator question 35, 2026-10-01): the
+    # earliest by `julianday()`, written back in the one stored form, and
+    # compared below as instants -- never the least text, nor as text.
     rows = conn.execute(
         "SELECT g.sport, g.season, g.week, COUNT(*) AS n,"
-        " MIN(p.created_utc) AS written, MIN(g.kickoff_utc) AS first_kickoff,"
+        " MIN(p.created_utc) AS written,"
+        " strftime('%Y-%m-%dT%H:%M:%SZ', MIN(julianday(g.kickoff_utc)))"
+        "   AS first_kickoff,"
         " SUM(CASE WHEN p.resolved_utc IS NOT NULL THEN 1 ELSE 0 END) AS resolved,"
         " SUM(CASE WHEN g.status = 'final' THEN 1 ELSE 0 END) AS played"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
@@ -1246,7 +1259,8 @@ def step_4_live_forward_week() -> bool:
             " WHERE g.sport = ? AND g.season = ? AND g.week = ?",
             (r["sport"], r["season"], r["week"]),
         ).fetchone()[0]
-        blind_ok = r["written"] < r["first_kickoff"] if r["first_kickoff"] else None
+        blind_ok = (db.instant(r["written"]) < db.instant(r["first_kickoff"])
+                    if r["first_kickoff"] else None)
         print(f"\n  {r['season']} week {r['week']}: {r['n']} predictions")
         print(f"    written        {r['written']}")
         print(f"    first kickoff  {r['first_kickoff']}")

@@ -18865,6 +18865,517 @@ def plant_an_unreadable_start_that_stops_the_near_start_run() -> Result:
                   + (f"; the pass stopped: {stopped}" if stopped else ""))
 
 
+# ---------------------------------------------------------------------------
+# A PASS WRITTEN AT OR AFTER THE START IS NOT BLIND (operator question 35,
+# ruled 2026-09-30; built 2026-10-01)
+# ---------------------------------------------------------------------------
+#
+# "Q35: a pass written at or after the start is not blind. Store and compare
+# starts as instants, never as text." UFC's starts were stored to the minute
+# ("2026-09-05T19:00Z") and every pass to the second; compared as text a
+# colon sorts below a Z, so eighteen final passes written at 19:00:02-03Z
+# (forecasts 1014-1031) stood as written before a 19:00Z start, and the final
+# pass that wrote them was let through by the same comparison.
+
+LAW_STARTS_ARE_INSTANTS = ("A PASS WRITTEN AT OR AFTER THE START IS NOT BLIND: "
+                           "STARTS ARE STORED AND COMPARED AS INSTANTS")
+
+
+def _q35_released_order(forecast, game, row=None):
+    """`calibration.standing_pass_order` as released (a9c5193): the stored
+    text, and `<=`."""
+    row = row or forecast
+    return (f"({forecast}.pass_kind = 'final' AND ({game}.kickoff_utc IS NULL"
+            f" OR {forecast}.created_utc <= {game}.kickoff_utc)) DESC,"
+            f" {row}.created_utc DESC, {row}.id DESC")
+
+
+def _q35_released_clause(same_set):
+    """`calibration.standing_row_clause` as released (a9c5193)."""
+    from gridiron import bet as _bet
+
+    same = (" AND p2.factor_set_version = p.factor_set_version"
+            if same_set else "")
+    return (
+        " AND NOT EXISTS (SELECT 1 FROM prediction_voids vs"
+        "                 WHERE vs.prediction_id = p.id)"
+        " AND p.id = (SELECT p2.id FROM predictions p2"
+        "              JOIN games g2 ON g2.id = p2.game_id"
+        f"              WHERE {_bet.same('p2', 'p')}{same}"
+        "                AND NOT EXISTS (SELECT 1 FROM prediction_voids v2"
+        "                                WHERE v2.prediction_id = p2.id)"
+        "                AND (g2.kickoff_utc IS NULL"
+        "                     OR p2.created_utc <= g2.kickoff_utc"
+        "                     OR NOT EXISTS (SELECT 1 FROM predictions p3"
+        "                                    JOIN games g3 ON g3.id = p3.game_id"
+        f"                                    WHERE {_bet.same('p3', 'p2')}"
+        "                                      AND p3.created_utc <= g3.kickoff_utc))"
+        f"              ORDER BY {_q35_released_order('p2', 'g2')} LIMIT 1)")
+
+
+class _Q35Clock:
+    """THE CODE'S CLOCK, HELD BY HAND: `db.utcnow` and every module that
+    reads it by its own name at `stamp`, and the forecast writer's own at
+    `written` (default the same) -- the instant a row would be stamped with.
+    Nothing here reads the real clock."""
+
+    def __init__(self, stamp: str, written: str | None = None):
+        from gridiron import db as _db
+        from gridiron.market import recommend as _rec
+        from gridiron.model import predict as _pred
+        from gridiron.sports import ufc as _ufc
+
+        self._modules = {_db: stamp, _rec: stamp, _ufc: stamp,
+                         _pred: written or stamp}
+        self._saved: list = []
+
+    def __enter__(self):
+        for module, stamp in self._modules.items():
+            self._saved.append((module, module.utcnow))
+            module.utcnow = lambda stamp=stamp: stamp
+        return self
+
+    def __exit__(self, *exc):
+        for module, real in reversed(self._saved):
+            module.utcnow = real
+        return False
+
+
+#: The released text comparisons, put back in a copy of the package: the
+#: standing clause's order (by replacing the instant form where it is), and
+#: four more the code made until 2026-10-01, each in a function of its own.
+_Q35_ORDER_AS_INSTANTS = ('f" OR IFNULL(julianday({forecast}.created_utc)"\n'
+                          '            f" < julianday({game}.kickoff_utc), 0))) DESC,"')
+_Q35_ORDER_AS_RELEASED = 'f" OR {forecast}.created_utc <= {game}.kickoff_utc)) DESC,"'
+_Q35_PLANTED_UFC = '''
+
+# PLANTED VIOLATIONS (a start compared as text, as released until 2026-10-01)
+def planted_next_slate(conn, season, now):
+    return conn.execute(
+        "SELECT MIN(week) AS week FROM games WHERE sport = 'ufc' AND season = ?"
+        "   AND status = 'scheduled' AND kickoff_utc > ?", (season, now)).fetchone()
+
+
+def planted_first_start(conn, season, week):
+    return conn.execute(
+        "SELECT MIN(kickoff_utc) AS first FROM games WHERE sport = 'ufc'"
+        " AND season = ? AND week = ?", (season, week)).fetchone()
+
+
+def planted_card_order(conn, season):
+    return conn.execute(
+        "SELECT id FROM games WHERE sport = 'ufc' AND season = ?"
+        " ORDER BY kickoff_utc, id", (season,)).fetchall()
+
+
+# AND BY ANOTHER ROAD (Q35's prover, 2026-10-01): each got past the scan as
+# first built.
+def planted_handed_on(conn, now):
+    row = conn.execute(
+        "SELECT kickoff_utc FROM games WHERE sport = 'ufc' LIMIT 1").fetchone()
+    listed = row["kickoff_utc"]
+    return listed <= now
+
+
+def planted_cut_short(row, now):
+    return str(row["kickoff_utc"])[:16] <= now[:16]
+
+
+def planted_wrapped_bound(conn, now):
+    return conn.execute(
+        "SELECT id FROM games WHERE sport = 'ufc'"
+        "   AND COALESCE(kickoff_utc, '') > ?", (now,)).fetchall()
+
+
+def planted_subquery_start(conn):
+    return conn.execute(
+        "SELECT p.id FROM predictions p WHERE (SELECT g.kickoff_utc FROM games g"
+        "  WHERE g.id = p.game_id) >= p.created_utc").fetchall()
+'''
+_Q35_PLANTED_PREDICT = '''
+
+# PLANTED VIOLATION (a start compared as text, as released until 2026-10-01)
+def planted_question_check(kickoff, now):
+    return kickoff["status"] == "final" or (
+        kickoff["kickoff_utc"] and kickoff["kickoff_utc"] <= now)
+'''
+_Q35_PLANTED_SCHEMA = '''
+
+-- PLANTED VIOLATION (a start compared as text, as the later-read rule does)
+CREATE TRIGGER IF NOT EXISTS planted_close_rule
+BEFORE INSERT ON recommendation_closes
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM venue_quotes c, recommendations r, games g
+              WHERE c.id = NEW.close_quote_id AND r.id = NEW.recommendation_id
+                AND g.id = r.game_id AND c.fetched_utc >= g.kickoff_utc)
+BEGIN
+    SELECT RAISE(ABORT, 'planted');
+END;
+'''
+
+
+def plant_a_start_compared_as_text() -> Result:
+    """Compare a start with another instant as TEXT, in SQL and in Python.
+
+    THE SHAPE ON THE RECORD UNTIL 2026-10-01: the standing clause's
+    `p.created_utc <= g.kickoff_utc`, `next_slate`'s `kickoff_utc > ?`, the
+    predict path's `kickoff_utc <= now` and 64 more, every one of them text
+    -- which, beside a start stored to the minute, read "19:00:02Z" as before
+    "19:00Z". Put back in a copy of the package: the standing clause's order
+    as released, and in functions of their own a slate bound, a slate's
+    first start by MIN, a card order, the question check in Python, and a
+    schema rule comparing a close's read with the start. CAUGHT only if the
+    gate's scan (`audit.start_text_comparison_faults`) names each by its
+    function or rule, passes the shipped tree, and step 2 makes the call.
+
+    AND BY ANOTHER ROAD (Q35's prover, 2026-10-01; each named by nothing in
+    the scan as first built): a start handed to a local of another name and
+    compared (`listed = row["kickoff_utc"]; listed <= now`), one cut short of
+    its day as text (`str(start)[:16] <= now[:16]`), one inside a call that
+    keeps it text (`COALESCE(kickoff_utc, '') > ?`), and one as a scalar
+    subquery's only column compared with a stamp.
+    """
+    guard = ("audit.check_every_start_is_compared_as_an_instant "
+             "(audit.start_text_comparison_faults)")
+    violation = "a start compared with another instant as text"
+    scan = getattr(audit, "start_text_comparison_faults", None)
+    if scan is None:
+        return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                      "NOT CAUGHT - there is no scan for a start compared as "
+                      "text, and the shipped code compares them so: the "
+                      "standing clause's `p.created_utc <= g.kickoff_utc`, "
+                      "`next_slate`'s `kickoff_utc > ?`, the predict path's "
+                      "`kickoff_utc <= now` -- which is how eighteen UFC final "
+                      "passes written two and three seconds after a start "
+                      "stored to the minute stood as written before it")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        shipped = scan(root)
+        victim = root / "calibration.py"
+        source = victim.read_text(encoding="utf-8")
+        if _Q35_ORDER_AS_INSTANTS not in source:
+            return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                          "NOT CAUGHT - the planting's anchor in "
+                          "calibration.standing_pass_order is not there to put "
+                          "back")
+        victim.write_text(source.replace(_Q35_ORDER_AS_INSTANTS,
+                                         _Q35_ORDER_AS_RELEASED), encoding="utf-8")
+        _append_to(root, "sports/ufc.py", _Q35_PLANTED_UFC)
+        _append_to(root, "model/predict.py", _Q35_PLANTED_PREDICT)
+        _append_to(root, "schema.sql", _Q35_PLANTED_SCHEMA)
+        faults = scan(root)
+    wanted = {"(standing_pass_order)": "compared as text in SQL",
+              "(planted_next_slate)": "compared as text in SQL",
+              "(planted_first_start)": "taken the least of as text",
+              "(planted_card_order)": "ordered as text in SQL",
+              "(planted_question_check)": "compared as text in Python",
+              "(planted_close_rule)": "compared as text in SQL",
+              "(planted_handed_on)": "compared as text in Python",
+              "(planted_cut_short)": "compared as text in Python",
+              "(planted_wrapped_bound)": "compared as text (inside COALESCE) in SQL",
+              "(planted_subquery_start)":
+                  "compared as text (inside a subquery's one column) in SQL"}
+    hit = {marker: [f for f in faults if marker in f and words in f]
+           for marker, words in wanted.items()}
+    missing = [m for m, found in hit.items() if not found]
+    stray = [f for f in faults if not any(m in f for m in wanted)]
+    import ast as _ast
+
+    step = next(n for n in _ast.parse(
+        (REPO / "tools" / "verify.py").read_text(encoding="utf-8")).body
+        if isinstance(n, _ast.FunctionDef) and n.name == "step_2_guards")
+    called = any(isinstance(n, _ast.Attribute)
+                 and n.attr == "check_every_start_is_compared_as_an_instant"
+                 for n in _ast.walk(step))
+    if shipped or missing or stray or not called:
+        return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                      f"NOT CAUGHT - not named: {missing}; named besides: "
+                      f"{stray}; the shipped tree: {shipped[:3]}; gate step 2 "
+                      f"makes the call: {called}")
+    return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, True,
+                  "each named: " + "; ".join(
+                      found[0].split("; a start is compared only")[0]
+                      for found in hit.values()))
+
+
+#: THE WORLD OF THE EIGHTEEN: one settled game whose start is stored to the
+#: minute, and its questions as (subject, the early pass's hours from the
+#: start, the final pass's seconds from it, which stands).
+_Q35_START = "2025-12-01T18:00Z"
+_Q35_QUESTIONS = (("EIGHTEEN", -41, 2, "early"),
+                  ("ATSTART", -10, 0, "early"),
+                  ("JUSTBEFORE", -10, -1, "final"))
+
+
+def _q35_world(conn) -> dict:
+    """Write the eighteen's world; return {subject: {"early": id, "final":
+    id}} and {subject: the claim written before the start}."""
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score) VALUES"
+        " ('q35m', 'nfl', 2025, 13, 'REG', 'AAA', 'BBB', ?, 'final',"
+        " '2025-12-01', 27, 20)", (_Q35_START,))
+    start = "2025-12-01T18:00:00Z"
+    ids: dict = {}
+    for subject, early_hours, final_seconds, _stands in _Q35_QUESTIONS:
+        for kind, written in (("early", _iso_shift(start, early_hours * 3600)),
+                              ("final", _iso_shift(start, final_seconds))):
+            cur = conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning, resolved_utc, outcome) VALUES (?, 'nfl', 'q35m',"
+                " 'total', ?, 44.5, 0.6, 'over', 'statistical', ?, 'fsA', ?,"
+                " 'planted by question 35', '2025-12-01T22:00:00Z', 1)",
+                (written, subject, kind, _PLANT_FACTORS))
+            ids.setdefault(subject, {})[kind] = cur.lastrowid
+    # AND A START NOBODY CAN READ (Q35's prover, 2026-10-01): a game of the
+    # next week whose listed start is a feed's text kept as sent, with an
+    # early pass and a later final pass. Nothing can be shown to come before
+    # it, so the rule's fallback stands the latest row -- the final pass.
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score) VALUES"
+        " ('q35u', 'nfl', 2025, 14, 'REG', 'AAA', 'BBB', 'TBD', 'final',"
+        " '2025-12-08', 20, 27)")
+    for kind, written in (("early", "2025-12-05T10:00:00Z"),
+                          ("final", "2025-12-07T12:00:00Z")):
+        cur = conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id,"
+            " market_type, subject, line_asked, model_prob, model_side,"
+            " predictor, pass_kind, factor_set_version, factors_json,"
+            " reasoning, resolved_utc, outcome) VALUES (?, 'nfl', 'q35u',"
+            " 'total', 'UNREADABLE', 44.5, 0.6, 'over', 'statistical', ?,"
+            " 'fsA', ?, 'planted by question 35', '2025-12-08T22:00:00Z', 1)",
+            (written, kind, _PLANT_FACTORS))
+        ids.setdefault("UNREADABLE", {})[kind] = cur.lastrowid
+    # A LOOK AN HOUR OUT AND ONE AT THE START, a claim on every early pass at
+    # each: six minutes before the start, and thirty seconds into the game.
+    before: dict = {}
+    for look, claimed in (("2025-12-01T17:00:00Z", "2025-12-01T17:54:00Z"),
+                          (start, "2025-12-01T18:00:30Z")):
+        cur = conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc, read_kind) VALUES ('kalshi', 'PROBE', 'PROBE', 'nfl',"
+            " 'q35m', 'total', 'total', 44.5, 'over', 0.5, 0.52, ?,"
+            " 'near_start')", (look,))
+        for subject, *_rest in _Q35_QUESTIONS:
+            claim = conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape,"
+                " model_prob, venue_price, venue_implied, price_basis,"
+                " created_utc, resolved_utc, outcome) VALUES (?, ?, 'kalshi',"
+                " 'nfl', 'q35m', 'total', 'total', 44.5, 'over', 'rung_matched',"
+                " 0.6, 0.52, 0.52, 'ask', ?, '2025-12-01T22:00:00Z', 1)",
+                (ids[subject]["early"], cur.lastrowid, claimed))
+            if claimed < start:
+                before[subject] = claim.lastrowid
+    conn.commit()
+    return ids, before
+
+
+def plant_a_pass_written_at_the_start_standing() -> Result:
+    """Let a pass written at or after its game's start stand as its forecast.
+
+    THE EIGHTEEN'S SHAPE (forecasts 1014-1031, 5 September): a final pass
+    written two seconds after a start stored to the minute -- and, the
+    ruling's "at or after", one written at the start's own second -- each
+    beside an early pass written before. Every door that chooses a
+    question's row must keep the early pass (and the final pass written a
+    second before the start), no window may keep a claim written thirty
+    seconds into the game, and the gate's check, asked with the standing
+    clause put back as released, must name it on its world whose start is
+    stored to the minute. As released the clause compared the stored text
+    with `<=`: the final passes stood, and its check, on a world whose start
+    was stored to the second, passed.
+
+    AND A START NOBODY CAN READ (Q35's prover, 2026-10-01): a game whose
+    listed start is a feed's text kept as sent ("TBD"), with an early pass
+    and a later final pass. Nothing is shown to come before it, so the
+    rule's fallback stands the latest row, the final pass, in the clause,
+    the recount and the outlook's door alike. As first built the clause's
+    order read `julianday()` of the start -- NULL -- into its first term,
+    which is NULL for a final pass and 0 for an early one, and stood the
+    early pass while the recount kept the final. (On a9c5193 this form was
+    kept, by accident: as text every stamp sorts before "TBD".)
+    """
+    from gridiron import horizon as _horizon, recount as _recount, views as _views
+    from gridiron.market import at_the_line as _atl
+
+    guard = ("calibration.standing_row_clause (standing_pass_order), "
+             "recount.standing_of, horizon.standing_questions, views.week, "
+             "at_the_line.standing_claims; audit.check_the_final_pass_stands")
+    violation = "a pass written at or after its start standing as a forecast"
+    conn = db.connect(":memory:")
+    try:
+        db.init(conn)
+        ids, before = _q35_world(conn)
+        want = {s: ids[s][stands] for s, _e, _f, stands in _Q35_QUESTIONS}
+        unreadable = ids["UNREADABLE"]["final"]
+        cell = dict(sport="nfl", predictor="statistical")
+        doors = {
+            "the standing clause": {r.subject: r.id for r in calibration.resolved(
+                conn, market_type="total", **cell)},
+            "the recount": {r["subject"]: r["id"] for r in _recount.standing_of(
+                _recount.forecasts(conn, market_type="total", prop_type=None,
+                                   event_tier=None, **cell)).values()},
+            "the outlook's door": {r["subject"]: r["id"] for r in
+                                   _horizon.standing_questions(conn, market="total",
+                                                               **cell)},
+        }
+        if not config.held_market("nfl", "total"):
+            doors["the slate's card"] = {
+                c["subject"]: c["prediction_id"] for c in _views.week(
+                    conn, "nfl", 2025, 13, forecaster="statistical")["cards"]
+                if c["market_type"] == "total"}
+        claims = {
+            "the at-the-line window": {c["subject"]: c["id"] for c in
+                                       _atl.standing_claims(conn, market="total",
+                                                            **cell)},
+            "its recount": {c["subject"]: c["id"] for c in
+                            _recount.standing_claims_of(_recount.claims(
+                                conn, market="total", event_tier=None,
+                                **cell)).values()},
+        }
+    finally:
+        conn.close()
+    wrong = [f"{door} kept forecast {got.get(s)} for {s} where {want[s]} stands"
+             for door, got in doors.items() for s in want if got.get(s) != want[s]]
+    wrong += [f"{door} kept forecast {got.get('UNREADABLE')} for the question on a "
+              f"start nobody can read, where its latest row, {unreadable}, stands"
+              for door, got in doors.items() if door != "the slate's card"
+              and got.get("UNREADABLE") != unreadable]
+    wrong += [f"{door} kept claim {got.get(s)} for {s} where {before[s]} (before "
+              f"the start) stands"
+              for door, got in claims.items() for s in ("EIGHTEEN", "ATSTART")
+              if got.get(s) != before[s]]
+    if wrong:
+        return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(wrong))
+    real = (calibration.standing_pass_order, calibration.standing_row_clause)
+    calibration.standing_pass_order = _q35_released_order
+    calibration.standing_row_clause = _q35_released_clause
+    try:
+        audit.check_the_final_pass_stands()
+        said = None
+    except audit.LawViolation as exc:
+        said = str(exc)
+    finally:
+        calibration.standing_pass_order, calibration.standing_row_clause = real
+    if said is None or "stored to the minute" not in said or "EIGHTEEN" not in said:
+        return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                      "NOT CAUGHT - the doors keep the ruled rows, but the "
+                      "gate's check passes the standing clause put back as "
+                      "released: its world's start is stored to the second")
+    return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, True,
+                  "the final passes written two seconds after a start stored to "
+                  "the minute and at the start's own second never stand in "
+                  "any door (the one a second before does), a question on a "
+                  "start nobody can read stands on its latest row in every "
+                  "door, no claim thirty seconds into the game stands, and "
+                  "the gate names the "
+                  "clause as released on its world stored to the minute")
+
+
+def plant_a_final_pass_written_after_its_start() -> Result:
+    """Run the final pass a second after its slate's start and let it write.
+
+    THE 5 SEPTEMBER SHAPE, END TO END: `final:ufc` (run 131) began at
+    19:00:01Z, its card's main bouts were listed "2026-09-05T19:00Z", and the
+    slate selection (`next_slate`) and the predict path's question check both
+    compared the start with the clock as text -- so the card read as still to
+    come and eighteen final passes were written at 19:00:02-03Z. Planted on
+    the harness league, a live record, its week-17 games listed to the
+    minute and given an early pass the day before: (A) the scheduled task
+    `final:nfl` a second after the start; (B) the final pass run on that
+    slate directly a second after it; (C) the final pass asked a second
+    before the start whose rows would be stamped a second after it -- a slow
+    run crossing the start, which no question check sees. CAUGHT only if no
+    forecast is written at or after its game's start in any of them, read as
+    instants, and (B) and (C) name every question they did not write.
+    """
+    from gridiron import tasks as _tasks
+
+    guard = ("predict.write_prediction (PassAtOrAfterTheStart), "
+             "predict_slate's question check, sports' next_slate")
+    violation = "a final pass written after its start"
+    listed, ahead = "2025-12-28T17:00Z", "2025-12-27T12:00:00Z"
+    after, just_before = "2025-12-28T17:00:01Z", "2025-12-28T16:59:59Z"
+    kept = _quiet_failures()
+    real_run_slate = run.run_slate
+    real_refresh = _tasks._refresh_one_sport
+    real_season = config.SPORT_CURRENT_SEASON.get("nfl")
+    found: dict[str, tuple[int, list]] = {}
+    try:
+        def no_snapshot(*args, **kwargs):
+            kwargs["snapshot"] = False
+            return real_run_slate(*args, **kwargs)
+
+        run.run_slate = no_snapshot
+        _tasks._refresh_one_sport = lambda conn, sport: ""
+        config.SPORT_CURRENT_SEASON["nfl"] = 2025
+        for form in ("A", "B", "C"):
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+                conn = seeded_database(Path(tmp) / f"q35_{form}.db")
+                try:
+                    db.set_meta(conn, "kind", "live")
+                    conn.execute("UPDATE games SET kickoff_utc = ? WHERE week = 17",
+                                 (listed,))
+                    conn.commit()
+                    with _Q35Clock(ahead):
+                        run.run_slate(conn, "nfl", 2025, 17, include_props=False,
+                                      use_llm=False)
+                    skipped: list = []
+                    if form == "A":
+                        with _Q35Clock(after):
+                            _tasks.run_task(conn, "final:nfl", use_llm=False)
+                    else:
+                        clock = (_Q35Clock(after) if form == "B"
+                                 else _Q35Clock(just_before, written=after))
+                        with clock:
+                            got = run.run_slate(conn, "nfl", 2025, 17,
+                                                include_props=False,
+                                                use_llm=False, final=True)
+                        skipped = got["skipped"]
+                    late = [r["id"] for r in conn.execute(
+                        "SELECT p.id, p.created_utc, g.kickoff_utc FROM predictions p"
+                        "  JOIN games g ON g.id = p.game_id WHERE g.week = 17")
+                        if db.instant(r["created_utc"]) >= db.instant(r["kickoff_utc"])]
+                    asked = conn.execute(
+                        "SELECT COUNT(*) FROM predictions p JOIN games g"
+                        "  ON g.id = p.game_id WHERE g.week = 17"
+                        "   AND p.pass_kind = 'early'").fetchone()[0]
+                    named = sum("already under way" in s for s in skipped)
+                    found[form] = (late, asked, named)
+                finally:
+                    conn.close()
+    finally:
+        run.run_slate = real_run_slate
+        _tasks._refresh_one_sport = real_refresh
+        config.SPORT_CURRENT_SEASON["nfl"] = real_season
+        _restore_failures(kept)
+    wrong = []
+    for form, (late, asked, named) in found.items():
+        if late:
+            wrong.append(f"({form}) {len(late)} forecasts written at or after "
+                         f"their start ({late[:4]}...)")
+        if form in ("B", "C") and named != asked:
+            wrong.append(f"({form}) {named} of the {asked} questions named as "
+                         f"under way")
+    if wrong or len(found) != 3:
+        return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(wrong or ["a form did not run"]))
+    return Result(LAW_STARTS_ARE_INSTANTS, violation, guard, True,
+                  f"nothing written after the start: the task a second after "
+                  f"it, the pass run on the slate a second after it "
+                  f"({found['B'][2]} named), and the pass asked a second "
+                  f"before it whose rows would be stamped a second after "
+                  f"({found['C'][2]} named)")
+
+
 LAW_WITHDRAWN = "A WITHDRAWN RECOMMENDATION IS NEVER COUNTED"
 
 
@@ -23795,6 +24306,13 @@ def main() -> int:
     # AND ONE START NOBODY CAN READ STOPS NOTHING BUT ITSELF (2026-09-30,
     # item 1's prover): as first built it stopped the run for every game.
     results.append(plant_an_unreadable_start_that_stops_the_near_start_run())
+    # A PASS WRITTEN AT OR AFTER THE START IS NOT BLIND (operator question
+    # 35, ruled 2026-09-30; built 2026-10-01): a start compared as text, a
+    # pass written at the start's second standing, and the final pass
+    # writing after its start.
+    results.append(plant_a_start_compared_as_text())
+    results.append(plant_a_pass_written_at_the_start_standing())
+    results.append(plant_a_final_pass_written_after_its_start())
     results.append(plant_a_withdrawn_recommendation_in_the_closing_line())
     results.append(plant_a_recommendation_reader_that_goes_round_the_door())
     # THE CLOSING LINE'S WINDOW (the operator's ruling 8 of 2026-09-23,

@@ -433,9 +433,11 @@ def _league_allowance(conn: sqlite3.Connection, stat: str, season: int) -> float
 def next_slate(conn: sqlite3.Connection, season: int) -> int | None:
     from ..db import utcnow
 
+    # STARTED IS READ AS AN INSTANT (operator question 35, 2026-10-01):
+    # `julianday()` on both sides, never the stored text.
     row = conn.execute(
         "SELECT MIN(week) AS w FROM games WHERE sport = 'nba' AND season = ?"
-        " AND status = 'scheduled' AND kickoff_utc > ?",
+        " AND status = 'scheduled' AND julianday(kickoff_utc) > julianday(?)",
         (season, utcnow()),
     ).fetchone()
     return None if row is None or row["w"] is None else int(row["w"])
@@ -457,9 +459,12 @@ def first_slate_note(conn: sqlite3.Connection, season: int) -> dict | None:
     ).fetchone()["n"]
     if played:
         return None
+    # THE EARLIEST START, AS AN INSTANT (operator question 35, 2026-10-01),
+    # never the least text.
     row = conn.execute(
-        "SELECT MIN(kickoff_utc) AS first FROM games WHERE sport = 'nba'"
-        " AND season = ? AND kickoff_utc IS NOT NULL",
+        "SELECT kickoff_utc AS first FROM games WHERE sport = 'nba'"
+        " AND season = ? AND julianday(kickoff_utc) IS NOT NULL"
+        " ORDER BY julianday(kickoff_utc) LIMIT 1",
         (season,),
     ).fetchone()
     if row is None or not row["first"]:

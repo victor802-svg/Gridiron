@@ -191,7 +191,14 @@ def _weather(conn: sqlite3.Connection, home: str,
     # on zero training rows and dropped by the fit while being present on the
     # live slate -- an instrument that exists only forward. See
     # `weather.wind_observed` for why that trade is stated rather than hidden.
-    if kickoff < db.utcnow():
+    # PAST OR FUTURE IS READ AS AN INSTANT (operator question 35, 2026-10-01),
+    # never the stored text; a kickoff that cannot be read has no weather to
+    # look up, and is absent rather than guessed.
+    try:
+        past = db.instant(kickoff) < db.instant(db.utcnow())
+    except (ValueError, TypeError):
+        return False, None, "none"
+    if past:
         wind, basis = weather.wind_observed(conn, site[0], site[1], kickoff), "observed"
     else:
         wind, basis = weather.wind_at(conn, site[0], site[1], kickoff), "forecast"
@@ -392,7 +399,9 @@ def _completed_for_training(conn, seasons, through_season, through_week):
     if through_season is not None:
         sql += " AND (season < ? OR (season = ? AND week <= ?))"
         params += [through_season, through_season, through_week or 99999999]
-    games = conn.execute(sql + " ORDER BY kickoff_utc, id", params).fetchall()
+    # Oldest first, read as instants (operator question 35, 2026-10-01).
+    games = conn.execute(sql + " ORDER BY julianday(kickoff_utc), id",
+                         params).fetchall()
     baseline.assert_one_sport(games, "cfb", "cfb._completed_for_training")
     return games
 

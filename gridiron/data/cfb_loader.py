@@ -31,7 +31,7 @@ import json
 import sqlite3
 
 from .. import config
-from ..db import utcnow
+from ..db import stored_start, utcnow
 from . import sources
 
 CORE = "https://sports.core.api.espn.com/v2/sports"
@@ -232,6 +232,10 @@ def load_season(conn: sqlite3.Connection, season: int, *, progress=None) -> dict
         kickoff = (event.get("date") or "").replace("Z", ":00Z")
         if kickoff.count(":") == 3:            # 2026-09-05T18:30:00Z
             kickoff = kickoff[:19] + "Z"
+        # STORED AS AN INSTANT, TO THE SECOND (operator question 35,
+        # 2026-10-01), through the one door every loader writes a start by;
+        # an empty date is stored as it was.
+        kickoff = stored_start(kickoff) if kickoff else kickoff
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type,"
             " kickoff_utc, home, away, status, home_score, away_score,"

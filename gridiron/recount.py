@@ -42,6 +42,7 @@ from __future__ import annotations
 import sqlite3
 
 from . import bet
+from .db import instant
 
 
 def _on_the_card(game: str, event_tier: str | None) -> tuple[str, list]:
@@ -95,13 +96,30 @@ def forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
         f" WHERE {' AND '.join(where)}{card}", first + params)]
 
 
+def _before_the_start(written: str, kickoff: str | None) -> bool:
+    """Written strictly before the start, both READ AS INSTANTS (operator
+    question 35, ruled 2026-09-30: "a pass written at or after the start is
+    not blind. Store and compare starts as instants, never as text"; built
+    2026-10-01) -- `julianday(written) < julianday(start)` in the doors, in
+    Python. As text with `<=`, a pass written at "...T19:00:02Z" was before
+    a start stored to the minute, "...T19:00Z", and one written at the
+    start's own second was before it. A stamp that cannot be read is before
+    nothing, as `julianday()` of it is NULL to the doors."""
+    try:
+        return instant(written) < instant(kickoff)
+    except (ValueError, TypeError):
+        return False
+
+
 def _final_before_the_start(pass_kind: str, written: str,
                             kickoff: str | None) -> bool:
     """`calibration.standing_pass_order`'s first term, in Python: a final
     pass written before its game's start, or on a game with no start time
     recorded (operator question 27, 2026-09-29). `written` is the forecast's
-    own write time -- for a claim as for a forecast."""
-    return pass_kind == "final" and (kickoff is None or written <= kickoff)
+    own write time -- for a claim as for a forecast. Before the start is
+    strictly before it, as instants (operator question 35, 2026-10-01)."""
+    return pass_kind == "final" and (kickoff is None
+                                     or _before_the_start(written, kickoff))
 
 
 def standing_of(rows: list[dict]) -> dict[tuple, dict]:
@@ -129,8 +147,11 @@ def standing_of(rows: list[dict]) -> dict[tuple, dict]:
     for key, group in groups.items():
         kickoff = group[0]["kickoff_utc"]
         live = [r for r in group if not r["voided"]]
-        if kickoff is not None and any(r["created_utc"] <= kickoff for r in group):
-            live = [r for r in live if r["created_utc"] <= kickoff]
+        # WRITTEN BEFORE THE START: strictly, as instants (operator question
+        # 35, 2026-10-01), as the clause's two tests are.
+        if kickoff is not None and any(_before_the_start(r["created_utc"], kickoff)
+                                       for r in group):
+            live = [r for r in live if _before_the_start(r["created_utc"], kickoff)]
         if live:
             out[key] = max(live, key=lambda r: (
                 _final_before_the_start(r["pass_kind"], r["created_utc"], kickoff),
@@ -181,7 +202,10 @@ def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
     for row in rows:
         if row["voided"]:
             continue
-        if row["kickoff_utc"] is not None and not row["created_utc"] < row["kickoff_utc"]:
+        # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01), as
+        # the door's window reads it.
+        if (row["kickoff_utc"] is not None
+                and not _before_the_start(row["created_utc"], row["kickoff_utc"])):
             continue
         key = bet.of(row)
         held = out.get(key)

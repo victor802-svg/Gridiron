@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from .. import bet, config, fingerprint, sports
-from ..db import utcnow
+from ..db import instant, utcnow
 from ..factors import compute, context
 from . import baseline, llm, prompt_record
 from .question import Question
@@ -115,6 +115,56 @@ class BlindRun:
 #: question between the ask and the insert -- which raised on the key before
 #: 2026-09-27 and raises on the rule now, the same `IntegrityError`.
 NEVER_REPLACED = "a prediction is never replaced"
+
+
+class PassAtOrAfterTheStart(RuntimeError):
+    """A pass that would be written at or after its game's start, refused at
+    the moment of writing (operator question 35, ruled 2026-09-30: "a pass
+    written at or after the start is not blind"; built 2026-10-01).
+
+    WHY AT THE WRITE AND NOT ONLY AT THE QUESTION. `predict_slate` asked once
+    whether a game had begun, by a clock read when the run began and by the
+    stored text: on 5 September `final:ufc` (run 131) began at 19:00:01Z,
+    the card's main bouts were listed at "...T19:00Z", and as text ':' sorts
+    below 'Z', so "19:00:01Z" read as before the start and eighteen final
+    passes were written at 19:00:02-03Z, two and three seconds into it
+    (forecasts 1014-1031). A run that reasons slowly crosses a start the same
+    way by the clock alone. So the row's own stamp is the instant compared,
+    read as an instant, just before it is written; `predict_slate` names the
+    question it skips and writes nothing for it, by either forecaster."""
+
+
+def not_before_its_start(conn: sqlite3.Connection, game_id: str, stamp: str,
+                         *, over: bool = True) -> str | None:
+    """Why a pass stamped `stamp` on this game would NOT be blind, in words;
+    None when it would be written strictly before the game's listed start,
+    READ AS AN INSTANT (`db.instant`: to the second or to the minute as
+    stored), or the game has no start yet (operator question 35, ruled
+    2026-09-30; built 2026-10-01).
+
+    AT THE START'S OWN SECOND IS NOT BEFORE IT: "a pass written at or after
+    the start is not blind". A start that cannot be read refuses the pass --
+    nothing can show it comes first -- and is never guessed into a time. A
+    game the record already calls final is over, `over` asking it (the
+    question's check, as `predict_slate` always asked)."""
+    game = conn.execute("SELECT kickoff_utc, status FROM games WHERE id = ?",
+                        (game_id,)).fetchone()
+    if game is None:
+        return None
+    if over and game["status"] == "final":
+        return (f"already under way at {stamp} (the record calls it final); "
+                f"a forecast written after the first pitch is not a forecast")
+    try:
+        start = instant(game["kickoff_utc"])
+    except ValueError:
+        return (f"its listed start, {game['kickoff_utc']!r}, cannot be read as "
+                f"an instant, so a forecast written at {stamp} cannot be shown "
+                f"to come before it; nothing is guessed")
+    if start is not None and instant(stamp) >= start:
+        return (f"already under way at {stamp} (listed to start "
+                f"{game['kickoff_utc']}, read as an instant); a forecast "
+                f"written at or after the start is not a forecast")
+    return None
 
 
 def already_written(conn: sqlite3.Connection, q: Question, predictor: str,
@@ -314,6 +364,23 @@ def write_prediction(
         claim=claimed)
     calibrated = shown if correction_version is not None else None
 
+    # THE ROW'S OWN INSTANT, AND NEVER AT OR AFTER ITS START (operator
+    # question 35, ruled 2026-09-30: "a pass written at or after the start is
+    # not blind"; built 2026-10-01). The stamp the row is written with is
+    # read once, here, and compared with the game's listed start AS AN
+    # INSTANT before anything is written: a live record refuses the row by
+    # name, whatever a caller asked earlier and by whatever clock. A
+    # backtest is written after its games by design and is not asked.
+    stamp = utcnow()
+    from ..db import database_kind
+
+    if database_kind(conn)["kind"] == "live":
+        late = not_before_its_start(conn, q.game_id, stamp, over=False)
+        if late is not None:
+            raise PassAtOrAfterTheStart(
+                f"NOT WRITTEN: {q.game_id} {q.market_key} {q.subject} "
+                f"({predictor}, {'final' if final else 'early'} pass): {late}")
+
     # ONE TRANSACTION FOR THE ROW, ITS PROMPT AND ITS FINGERPRINT (2026-09-25).
     # A savepoint rather than a rollback, so a refusal undoes this row's
     # writes and nothing a caller had pending: the prompt record and the
@@ -330,7 +397,7 @@ def write_prediction(
             " calibrated_prob, correction_version)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                utcnow(),
+                stamp,
                 q.sport,
                 q.game_id,
                 q.market_type,
@@ -416,9 +483,13 @@ def predict_slate(
     # with anything else in the record. NBA's first run wrote 47 such rows at 52
     # days' notice before this guard existed.
     if live:
+        # THE SLATE'S FIRST START, THE EARLIEST AS AN INSTANT (operator
+        # question 35, 2026-10-01), never the least text.
         horizon = conn.execute(
-            "SELECT MIN(kickoff_utc) AS first FROM games WHERE sport = ?"
-            " AND season = ? AND week = ? AND kickoff_utc IS NOT NULL",
+            "SELECT kickoff_utc AS first FROM games WHERE sport = ?"
+            " AND season = ? AND week = ?"
+            " AND julianday(kickoff_utc) IS NOT NULL"
+            " ORDER BY julianday(kickoff_utc) LIMIT 1",
             (sport, season, week),
         ).fetchone()
         if horizon and horizon["first"]:
@@ -467,18 +538,16 @@ def predict_slate(
             run.skipped.append(f"{q.game_id} {q.market_key}: held, not forecast")
             continue
         if live:
-            kickoff = conn.execute(
-                "SELECT kickoff_utc, status FROM games WHERE id = ?", (q.game_id,)
-            ).fetchone()
-            started = kickoff and (
-                kickoff["status"] == "final"
-                or (kickoff["kickoff_utc"] and kickoff["kickoff_utc"] <= now)
-            )
-            if started:
-                run.skipped.append(
-                    f"{q.game_id}: already under way at {now}; a forecast written "
-                    "after the first pitch is not a forecast"
-                )
+            # BEFORE ITS START, AS AN INSTANT, BY THE CLOCK NOW (operator
+            # question 35, ruled 2026-09-30, built 2026-10-01). Until then
+            # this compared the stored start with a clock read when the run
+            # began, as text: a start stored to the minute ("...T19:00Z")
+            # sorted after "...T19:00:01Z", and a slow run's clock fell
+            # behind the slate. `write_prediction` asks again at the row's
+            # own stamp.
+            late = not_before_its_start(conn, q.game_id, _now())
+            if late is not None:
+                run.skipped.append(f"{q.game_id}: {late}")
                 continue
         if q.market_key not in fits:
             # NO ACTIVATED MODEL, not "no fitted model", from 2026-09-24: a
@@ -593,31 +662,41 @@ def predict_slate(
         if final_stands:
             run.final_pass_answered.append(
                 _final_pass_answered_name(q, "statistical"))
-        written = None if final_stands else write_prediction(
-            conn,
-            q,
-            final=final,
-            predictor="statistical",
-            prob_yes=stat["prob_yes"],
-            fv=fv,
-            reasoning=baseline.explain(stat["contributions"], absent=stat["absent"]),
-            extra={
-                "contributions": stat["contributions"],
-                # A RATE MODEL HAS NO LOG-ODDS. It works in log RATE, and the
-                # two are not the same quantity -- storing one under the
-                # other's name would be a number a later reader could not
-                # interpret. None is stored, and the rate is stored beside it.
-                "log_odds": (round(stat["log_odds"], 6)
-                             if stat.get("log_odds") is not None else None),
-                "expected_count": (round(stat["expected_count"], 4)
-                                   if stat.get("expected_count") is not None
-                                   else None),
-                "model_form": stat.get("model_form"),
-                "absent_detail": stat["absent_detail"],
-                "margin_distribution": distribution,
-            },
-            degraded=llm_off if use_llm else None,
-        )
+        try:
+            written = None if final_stands else write_prediction(
+                conn,
+                q,
+                final=final,
+                predictor="statistical",
+                prob_yes=stat["prob_yes"],
+                fv=fv,
+                reasoning=baseline.explain(stat["contributions"],
+                                           absent=stat["absent"]),
+                extra={
+                    "contributions": stat["contributions"],
+                    # A RATE MODEL HAS NO LOG-ODDS. It works in log RATE, and
+                    # the two are not the same quantity -- storing one under
+                    # the other's name would be a number a later reader could
+                    # not interpret. None is stored, and the rate is stored
+                    # beside it.
+                    "log_odds": (round(stat["log_odds"], 6)
+                                 if stat.get("log_odds") is not None else None),
+                    "expected_count": (round(stat["expected_count"], 4)
+                                       if stat.get("expected_count") is not None
+                                       else None),
+                    "model_form": stat.get("model_form"),
+                    "absent_detail": stat["absent_detail"],
+                    "margin_distribution": distribution,
+                },
+                degraded=llm_off if use_llm else None,
+            )
+        except PassAtOrAfterTheStart as exc:
+            # ITS START CAME WHILE THE RUN WAS WORKING (operator question 35,
+            # 2026-10-01): nothing is written for this game by either
+            # forecaster, and the run names it, as it names a game the
+            # question's check found under way.
+            run.skipped.append(str(exc))
+            continue
         if written:
             run.written.append(written)
         run.rungs_logged += rungs.record(
@@ -652,6 +731,15 @@ def predict_slate(
         if not config.llm_routed(q.sport, q.market):
             run.llm_routed_off += 1
             continue
+        # AND NOT ONCE ITS START HAS COME (operator question 35, 2026-10-01),
+        # asked by the clock now, before the reasoning pass is paid for: the
+        # statistical row above may have been written a second before it.
+        if live:
+            late = not_before_its_start(conn, q.game_id, _now())
+            if late is not None:
+                run.skipped.append(f"{q.game_id}: {late} (the reasoning pass "
+                                   f"was not asked)")
+                continue
         try:
             result = llm.reason(
                 conn,
@@ -670,22 +758,29 @@ def predict_slate(
                 progress(f"  LLM pass off for this run: {exc}")
             continue
 
-        llm_written = write_prediction(
-            conn,
-            q,
-            final=final,
-            predictor="llm",
-            prob_yes=result.probability,
-            fv=fv,
-            reasoning=result.reasoning,
-            extra={
-                "llm_model": result.model,
-                "llm_usd": round(result.usd, 6),
-                "llm_repaired": result.repaired,
-            },
-            # WHAT IT WAS SENT, kept with it (the prompt record, 2026-09-25).
-            prompt=result.prompt,
-        )
+        try:
+            llm_written = write_prediction(
+                conn,
+                q,
+                final=final,
+                predictor="llm",
+                prob_yes=result.probability,
+                fv=fv,
+                reasoning=result.reasoning,
+                extra={
+                    "llm_model": result.model,
+                    "llm_usd": round(result.usd, 6),
+                    "llm_repaired": result.repaired,
+                },
+                # WHAT IT WAS SENT, kept with it (the prompt record,
+                # 2026-09-25).
+                prompt=result.prompt,
+            )
+        except PassAtOrAfterTheStart as exc:
+            # THE START CAME WHILE IT REASONED (operator question 35,
+            # 2026-10-01): the answer is not written, and the run says so.
+            run.skipped.append(str(exc))
+            continue
         if llm_written:
             run.written.append(llm_written)
 

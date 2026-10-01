@@ -23,7 +23,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from .. import config
-from ..db import utcnow
+from ..db import instant, stored_start, utcnow
 from ..model import questions
 from ..model.question import Question
 
@@ -148,7 +148,16 @@ def is_sanctioned_card(name: str | None, bout_count: int,
     text = (name or "").strip()
     if any(text.startswith(prefix) for prefix in NOT_A_CARD_PREFIXES):
         return False
-    if event_utc and now and event_utc > now:
+    # THE CARD'S DATE AND NOW, AS INSTANTS (operator question 35, ruled
+    # 2026-09-30, built 2026-10-01): the feed lists a card to the minute and
+    # `now` is to the second, and as text a card that began thirty seconds
+    # ago read as still ahead. A date that cannot be read is no date to
+    # judge by, as a missing one is.
+    try:
+        ahead = bool(event_utc and now and instant(event_utc) > instant(now))
+    except ValueError:
+        return True                       # no readable date; keep it
+    if ahead:
         return True                       # still being announced
     if event_utc is None:
         return True                       # no date to judge by; keep it
@@ -216,6 +225,16 @@ def mirror_bouts(conn: sqlite3.Connection) -> int:
             score_a = score_b = 0        # a draw or no contest
         else:
             score_a = score_b = None
+        # THE START, STORED AS AN INSTANT TO THE SECOND (operator question
+        # 35, ruled 2026-09-30: "Store and compare starts as instants, never
+        # as text"; built 2026-10-01). `ufc_bouts` holds the feed's minute
+        # ("2026-09-05T19:00Z") for every bout loaded before this date, and
+        # this mirror rewrites EVERY bout's start on every refresh, as it
+        # always has -- so the first UFC refresh after the release brings all
+        # 2,783 UFC starts on the record to "2026-09-05T19:00:00Z", the same
+        # instant, through the loader's own upsert (rehearsed on a verified
+        # copy of the record: only `kickoff_utc` changes, each to the instant
+        # it named). Every comparison reads a start as an instant meanwhile.
         conn.execute(
             "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
             " league_date, home, away, status, home_score, away_score)"
@@ -225,7 +244,8 @@ def mirror_bouts(conn: sqlite3.Connection) -> int:
             "   away_score = excluded.away_score,"
             "   kickoff_utc = excluded.kickoff_utc,"
             "   week = excluded.week, league_date = excluded.league_date",
-            (row["id"], SPORT, row["season"], week, row["bout_utc"], day,
+            (row["id"], SPORT, row["season"], week,
+             stored_start(row["bout_utc"]), day,
              name_a, name_b, row["status"], score_a, score_b))
         written += 1
     conn.commit()
@@ -311,12 +331,16 @@ def _fill_fighter(conn, ctx, side, ident, when) -> None:
             years = _years_between(who["born"], when)
             setattr(ctx, f"age_{side}", years)
 
+    # STARTS COMPARED AS INSTANTS (operator question 35, 2026-10-01):
+    # `julianday()` on both sides, the one expression every query compares
+    # or orders a start by, so a bout stored to the minute and one stored to
+    # the second are told apart by when they were, not by their spelling.
     prior = conn.execute(
         "SELECT bout_utc, winner, method, end_round, scheduled_rounds"
         "  FROM ufc_bouts"
         " WHERE (fighter_a = ? OR fighter_b = ?) AND status = 'final'"
-        "   AND bout_utc IS NOT NULL AND bout_utc < ?"
-        " ORDER BY bout_utc DESC", (ident, ident, when)).fetchall()
+        "   AND bout_utc IS NOT NULL AND julianday(bout_utc) < julianday(?)"
+        " ORDER BY julianday(bout_utc) DESC", (ident, ident, when)).fetchall()
     if not prior:
         # ABSENT, NOT ZERO. A debutant has no layoff and no finish rate; a
         # zero would read as "fought yesterday" and "never finishes anyone".
@@ -351,11 +375,19 @@ def _days_between(earlier: str, later: str) -> float | None:
 # ---------------------------------------------------------------------------
 
 def next_slate(conn: sqlite3.Connection, season: int) -> int | None:
-    """The next card that has not started, as YYYYMMDD."""
+    """The next card that has not started, as YYYYMMDD.
+
+    THE START READ AS AN INSTANT (operator question 35, ruled 2026-09-30,
+    built 2026-10-01). As text, a bout listed to the minute ("...T19:00Z")
+    sorted after a clock to the second ("...T19:00:01Z"), so a card read as
+    still to come for up to a minute after its listed start -- which is how
+    `final:ufc` (run 131) re-forecast the 5 September main card at
+    19:00:01Z, a second after its bouts began."""
     row = conn.execute(
         "SELECT MIN(week) AS week FROM games"
         " WHERE sport = ? AND season = ? AND status = 'scheduled'"
-        "   AND kickoff_utc > ?", (SPORT, season, utcnow())).fetchone()
+        "   AND julianday(kickoff_utc) > julianday(?)",
+        (SPORT, season, utcnow())).fetchone()
     return row["week"] if row and row["week"] else None
 
 
@@ -429,7 +461,10 @@ def training_set(conn: sqlite3.Connection, seasons, market: str, *,
     if through_season is not None:
         sql += " AND (e.season < ? OR (e.season = ? AND g.week <= ?))"
         params += [through_season, through_season, through_week or 99999999]
-    bouts = conn.execute(sql + " ORDER BY b.bout_utc, b.id", params).fetchall()
+    # In the order they were fought, read as instants (operator question 35,
+    # 2026-10-01).
+    bouts = conn.execute(sql + " ORDER BY julianday(b.bout_utc), b.id",
+                         params).fetchall()
     baseline.assert_one_sport(
         [{"sport": SPORT} for _ in bouts], SPORT, "ufc.training_set")
 

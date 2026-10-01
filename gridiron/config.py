@@ -302,6 +302,15 @@ class FinalPass:
     measured: bool
     #: What the time rests on, in plain words, for Settings and the close-out.
     basis: str
+    #: DOES THE PASS FIRE BY ITS LEAD (operator question 35, ruled
+    #: 2026-09-30: "move that schedule so every final pass lands before its
+    #: start"; built 2026-10-01)? True: the installer fires the task every
+    #: thirty minutes and the task writes only inside `minutes_before_first`
+    #: before the slate's first start still ahead, read as an instant
+    #: (`tasks.final_pass_window`) -- so the pass lands that far before the
+    #: slate, wherever and whenever the slate is. False: the installer's
+    #: wall-clock triggers decide, as they always have.
+    fires_by_lead: bool = False
 
 
 #: When the final-pass times were declared. Shown beside each on the settings
@@ -338,6 +347,22 @@ FINAL_PASS: dict[str, FinalPass] = {
     # any particular one. NOT MEASURED -- no dated record of when a UFC card's
     # information settles exists, and inventing one would be the failure
     # docs/TIMING_FEASIBILITY.md exists to refuse.
+    #
+    # FIRED BY ITS LEAD FROM 2026-10-01 (operator question 35, ruled
+    # 2026-09-30: "Report why a final pass ran at the start time and move
+    # that schedule so every final pass lands before its start"). The 180
+    # minutes were declared here on 2026-09-03 and never reached the
+    # schedule: the installer fired `final:ufc` daily at 12:00 local -- 19:00Z
+    # on this machine's clock in summer -- whatever card was next. Measured
+    # on a verified copy of the record (2026-10-01): of the 103 cards of
+    # 2025-2026, 18 list their first bout before 12:00 local (Riyadh, London,
+    # Baku, Abu Dhabi, Shanghai, Paris, Doha, Perth, Macau, Belgrade) and 2 at
+    # it; every final pass from 6 to 30 September was written 23 to 73 hours
+    # before its card's first start still ahead, never three; and on 5
+    # September (UFC Fight Night: Hooker vs. Parnasse, Paris; prelims 16:00Z,
+    # main card listed "19:00Z") run 131 began at 19:00:01Z and wrote eighteen
+    # final passes at 19:00:02-03Z, after the main card's start (forecasts
+    # 1014-1031). The time is unchanged; it is now what fires the pass.
     "ufc": FinalPass(
         minutes_before_first=180,
         at_local=(),
@@ -345,6 +370,7 @@ FINAL_PASS: dict[str, FinalPass] = {
         basis=("3 hours before the first bout. Not measured: nothing in the "
                "record dates when a card's line-up settles, and weigh-ins are "
                "the day before."),
+        fires_by_lead=True,
     ),
     "nba": FinalPass(
         minutes_before_first=None,

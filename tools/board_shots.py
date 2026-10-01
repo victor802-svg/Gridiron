@@ -45,9 +45,11 @@ def _live_copy(source: Path, target: Path) -> None:
     """The same world with one game in progress and one standing pick taken."""
     shutil.copy(source, target)
     conn = db.open_db(target)
+    # The first by start, read as an instant (operator question 35, 2026-10-01).
     game = conn.execute(
         "SELECT g.id FROM games g JOIN predictions p ON p.game_id = g.id"
-        " WHERE g.status = 'scheduled' ORDER BY g.kickoff_utc, g.id LIMIT 1").fetchone()[0]
+        " WHERE g.status = 'scheduled'"
+        " ORDER BY julianday(g.kickoff_utc), g.id LIMIT 1").fetchone()[0]
     conn.execute(
         "UPDATE games SET status = 'in', home_score = 17, away_score = 14,"
         " live_period = '3rd Quarter', live_clock = '8:41', live_updated_utc = ?"
@@ -155,9 +157,11 @@ def _mockup_copy(source: Path, target: Path) -> None:
 
     shutil.copy(source, target)
     conn = db.open_db(target)
+    # In start order, read as instants (operator question 35, 2026-10-01).
     games = [r[0] for r in conn.execute(
         "SELECT DISTINCT g.id FROM games g JOIN predictions p ON p.game_id = g.id"
-        " WHERE g.status = 'scheduled' ORDER BY g.kickoff_utc, g.id").fetchall()]
+        " WHERE g.status = 'scheduled'"
+        " ORDER BY julianday(g.kickoff_utc), g.id").fetchall()]
     live, priced, final_a, final_b = games[:4]
     conn.execute(
         "UPDATE games SET status = 'in', home_score = 17, away_score = 14,"

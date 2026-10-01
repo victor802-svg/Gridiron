@@ -492,6 +492,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_read_after_a_start_to_the_minute_taken_as_before_it",
         # and its prover's (2026-09-30)
         "plant_an_unreadable_start_that_stops_the_near_start_run",
+        # A PASS WRITTEN AT OR AFTER THE START IS NOT BLIND (operator
+        # question 35, ruled 2026-09-30; built 2026-10-01)
+        "plant_a_start_compared_as_text",
+        "plant_a_pass_written_at_the_start_standing",
+        "plant_a_final_pass_written_after_its_start",
         "plant_a_withdrawn_recommendation_in_the_closing_line",
         "plant_a_recommendation_reader_that_goes_round_the_door",
         "plant_a_gate_step_that_opens_the_live_record_writable",

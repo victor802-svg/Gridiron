@@ -34,7 +34,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 from . import sources as http
-from ..db import utcnow
+from ..db import stored_start, utcnow
 
 STATS = "https://stats.nba.com/stats"
 
@@ -163,7 +163,10 @@ def load_schedule(conn: sqlite3.Connection, season: int) -> dict:
                 week_of(game_date, start) if game_date and start else 1,
                 h,
                 a,
-                _iso(when),
+                # STORED AS AN INSTANT, TO THE SECOND (operator question 35,
+                # 2026-10-01), through the one door every loader writes a
+                # start by.
+                stored_start(_iso(when)),
                 "final" if played else "scheduled",
                 hs,
                 as_,

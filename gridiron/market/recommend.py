@@ -341,9 +341,23 @@ def correction_instant(claim_utc: str | None, status: str | None,
     the one the claim stood for when it was written, and an activation
     afterwards never reaches it. `views` reads the at-the-line sentence by
     this rule too, so the pick and the words beside it cannot disagree.
+
+    "HAS STARTED" IS READ AS AN INSTANT (operator question 35, ruled
+    2026-09-30: "Store and compare starts as instants, never as text"; built
+    2026-10-01). As text a start stored to the minute ("...T19:00Z") sorted
+    after a clock to the second ("...T19:00:30Z"), so for the first minute
+    of a UFC bout the game read as not started and a pick on it was
+    corrected by whatever was in force NOW. A start that cannot be read is
+    taken as begun -- the claim's own instant, so nothing is re-derived by a
+    correction that came after it (LAW 3) -- never guessed into a time.
     """
+    try:
+        start = instant(kickoff_utc)
+        begun = start is not None and start <= instant(utcnow())
+    except ValueError:
+        begun = True
     started = ((status or "").lower() in IN_PLAY_STATUSES + ("final",)
-               or (kickoff_utc is not None and kickoff_utc <= utcnow()))
+               or begun)
     return claim_utc if started else None
 
 
@@ -392,10 +406,15 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # priced_across_two_contracts`). Nothing here is priced differently.
         " c.id AS claim_id, q.line AS quote_line, q.yes_side AS quote_side"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
+        # THE CLAIM WINDOW, READ AS INSTANTS (operator question 35, ruled
+        # 2026-09-30, built 2026-10-01): the latest claim written before the
+        # start, `julianday()` on both sides -- as text, a claim written
+        # thirty seconds into a bout stored to the minute was "before" it.
         " LEFT JOIN at_the_line_claims c ON c.id = ("
         "     SELECT c2.id FROM at_the_line_claims c2"
         "      WHERE c2.prediction_id = p.id"
-        "        AND (g.kickoff_utc IS NULL OR c2.created_utc < g.kickoff_utc)"
+        "        AND (g.kickoff_utc IS NULL"
+        "             OR julianday(c2.created_utc) < julianday(g.kickoff_utc))"
         "      ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
         " LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         f" WHERE p.id IN ({placeholders})"

@@ -87,10 +87,13 @@ def capture_lineups(conn: sqlite3.Connection) -> int:
     historical fact and is not what this table is for -- storing it as a live
     capture would put the same lie back that the backfill told.
     """
+    # NOT STARTED, READ AS AN INSTANT (operator question 35, 2026-10-01):
+    # `julianday()` on both sides, never the stored text.
     rows = conn.execute(
         "SELECT l.game_id, l.side, l.slot, l.player_id, l.player_name"
         "  FROM mlb_lineups l JOIN games g ON g.id = l.game_id"
-        " WHERE g.kickoff_utc IS NOT NULL AND g.kickoff_utc > ?"
+        " WHERE g.kickoff_utc IS NOT NULL"
+        "   AND julianday(g.kickoff_utc) > julianday(?)"
         "   AND g.status = 'scheduled'", (utcnow(),)).fetchall()
     if not rows:
         return 0
@@ -173,6 +176,7 @@ def _eligible(conn: sqlite3.Connection) -> int:
     lineups = conn.execute(
         "SELECT COUNT(*) AS n FROM mlb_lineups l JOIN games g"
         "  ON g.id = l.game_id"
-        " WHERE g.kickoff_utc IS NOT NULL AND g.kickoff_utc > ?"
+        " WHERE g.kickoff_utc IS NOT NULL"
+        "   AND julianday(g.kickoff_utc) > julianday(?)"
         "   AND g.status = 'scheduled'", (utcnow(),)).fetchone()["n"]
     return injuries + lineups
