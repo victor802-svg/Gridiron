@@ -402,8 +402,7 @@ def standing_row_clause(same_set: bool) -> str:
     )
 
 
-def resolved(
-    conn: sqlite3.Connection,
+def category_filter(
     *,
     sport: str,
     market_type: str | None = None,
@@ -411,10 +410,26 @@ def resolved(
     predictor: str | None = None,
     factor_set_version: str | None = None,
     event_tier: str | None = None,
-    with_factors: bool = False,
-) -> list[Resolved]:
-    require_sport(sport, "calibration.resolved")
-    where = ["p.resolved_utc IS NOT NULL", "p.sport = ?"]
+) -> tuple[list[str], list]:
+    """THE ONE DOOR FOR WHICH FORECASTS A CATEGORY HOLDS: its sport, its
+    card, its market, its prop type, its forecaster and its factor set, as
+    SQL terms on `predictions p` and their parameters.
+
+    A CURVE AND THE VOID COUNT BESIDE IT ASK HERE BOTH (2026-10-01; the
+    first of operator question 34's counts -- "every UFC count is per card
+    tier" -- built ahead of it because question 35's voids made this one
+    false). `resolved`, the curve's rows, and `withdrawn_forecasts`, its
+    void count, built these terms apart until this date, and only
+    `resolved` was handed the card: `curve` asked `void_count` for the
+    market across every card, so once question 35's eighteen were voided
+    (all Fight Night) each UFC market's Contender Series curve would have
+    read "6 withdrawn, void rate 0.3" and its Numbered card curve "6
+    withdrawn, void rate 1.0" on nothing settled, where only Fight Night's
+    6 is true. One door, so a curve's count and its void count cannot name
+    two populations; `assert_each_void_count_is_its_cards` holds the result
+    to a recount made without it."""
+    require_sport(sport, "calibration.category_filter")
+    where = ["p.sport = ?"]
     params: list = [sport]
     if event_tier:
         # LAW 6 ONE LEVEL DOWN (R2, 2026-09-03). A Contender Series bout goes
@@ -439,6 +454,28 @@ def resolved(
     if factor_set_version:
         where.append("p.factor_set_version = ?")
         params.append(factor_set_version)
+    return where, params
+
+
+def resolved(
+    conn: sqlite3.Connection,
+    *,
+    sport: str,
+    market_type: str | None = None,
+    prop_type: str | None = None,
+    predictor: str | None = None,
+    factor_set_version: str | None = None,
+    event_tier: str | None = None,
+    with_factors: bool = False,
+) -> list[Resolved]:
+    require_sport(sport, "calibration.resolved")
+    # THE CATEGORY'S ROWS THROUGH ITS ONE DOOR (2026-10-01), the void count's
+    # too; settled ones only, here.
+    where, params = category_filter(
+        sport=sport, market_type=market_type, prop_type=prop_type,
+        predictor=predictor, factor_set_version=factor_set_version,
+        event_tier=event_tier)
+    where = ["p.resolved_utc IS NOT NULL"] + where
 
     # SUPERSEDED FORECASTS ARE NOT IN THE RECORD'S ARITHMETIC (ruling R4,
     # 2026-09-02), and they are never deleted.
@@ -620,7 +657,7 @@ def baselines(items: list[Resolved]) -> dict:
     return out
 
 
-def void_count(
+def withdrawn_forecasts(
     conn: sqlite3.Connection,
     *,
     sport: str,
@@ -628,24 +665,41 @@ def void_count(
     prop_type: str | None = None,
     predictor: str | None = None,
     factor_set_version: str | None = None,
-) -> int:
-    require_sport(sport, "calibration.void_count")
-    where = ["p.sport = ?"]
-    params: list = [sport]
-    for column, value in (
-        ("market_type", market_type),
-        ("prop_type", prop_type),
-        ("predictor", predictor),
-        ("factor_set_version", factor_set_version),
-    ):
-        if value:
-            where.append(f"p.{column} = ?")
-            params.append(value)
-    return conn.execute(
-        "SELECT COUNT(*) FROM prediction_voids v JOIN predictions p"
-        f" ON p.id = v.prediction_id WHERE {' AND '.join(where)}",
+    event_tier: str | None = None,
+) -> list[dict]:
+    """Every withdrawn forecast ONE category holds -- the void count beside
+    its curve -- each with the card its own bout was on (UFC; None
+    elsewhere).
+
+    `void_count` until 2026-10-01, which took no card: the count beside a
+    UFC curve was its market's across every card. THROUGH THE CATEGORY'S
+    DOOR now (`category_filter`), the curve's own: the card a curve counts
+    is the card its void count counts. Every withdrawn row of the category,
+    whichever pass it was, as before -- the card is the one change. The
+    card read off each row (`event_tier`) is how the guard sees a door
+    that stopped asking for it (`assert_each_void_count_is_its_cards`).
+    """
+    require_sport(sport, "calibration.withdrawn_forecasts")
+    where, params = category_filter(
+        sport=sport, market_type=market_type, prop_type=prop_type,
+        predictor=predictor, factor_set_version=factor_set_version,
+        event_tier=event_tier)
+    card = ("(SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+            "   ON e.id = b.event_id WHERE b.id = p.game_id)"
+            if config.event_tiers(sport) else "NULL")
+    return [dict(r) for r in conn.execute(
+        f"SELECT p.id, {card} AS event_tier"
+        "  FROM prediction_voids v JOIN predictions p ON p.id = v.prediction_id"
+        f" WHERE {' AND '.join(where)} ORDER BY p.id",
         params,
-    ).fetchone()[0]
+    ).fetchall()]
+
+
+def void_rate(n: int, voided: int) -> float | None:
+    """The share of a category's forecasts withdrawn: its void count over
+    its settled count and its void count together. ONE ARITHMETIC, which
+    the curve states and the guard works again (2026-10-01)."""
+    return round(voided / (n + voided), 4) if (n + voided) else None
 
 
 def curve(
@@ -658,21 +712,21 @@ def curve(
     factor_set_version: str | None = None,
     event_tier: str | None = None,
 ) -> dict:
+    from . import db
+
     require_sport(sport, "calibration.curve")
-    items = resolved(
-        conn,
-        sport=sport,
-        market_type=market_type,
-        prop_type=prop_type,
-        predictor=predictor,
-        factor_set_version=factor_set_version,
-        event_tier=event_tier,
-    )
+    cell = dict(sport=sport, market_type=market_type, prop_type=prop_type,
+                predictor=predictor, factor_set_version=factor_set_version,
+                event_tier=event_tier)
+    # ONE CELL, ONE INSTANT (2026-10-01): the curve's rows and its void
+    # count are asked of the same category -- its card included, which the
+    # void count was not handed until this date -- in one read, so a void
+    # written between the two cannot be counted on one side only.
+    with db.one_instant(conn):
+        items = resolved(conn, **cell)
+        withdrawn = withdrawn_forecasts(conn, **cell)
     buckets = calibration_buckets(items)
-    voids = void_count(
-        conn, sport=sport, market_type=market_type, prop_type=prop_type,
-        predictor=predictor, factor_set_version=factor_set_version,
-    )
+    voids = len(withdrawn)
     return {
         "sport": sport,
         "filters": {
@@ -693,7 +747,14 @@ def curve(
         # Reported beside the curve, never folded into it. A rising void rate is
         # a finding about which questions we are choosing, not a rounding error.
         "voided": voids,
-        "void_rate": round(voids / (len(items) + voids), 4) if (len(items) + voids) else None,
+        "void_rate": void_rate(len(items), voids),
+        # THE CARDS THE VOID COUNT COUNTED, read off each withdrawn row's own
+        # bout (2026-10-01): one card's for a UFC category, none named for a
+        # sport that does not split by card. A card left unnamed by the
+        # source is None, which is no category's.
+        "void_tiers_counted": (sorted({r["event_tier"] for r in withdrawn},
+                                      key=str)
+                               if config.event_tiers(sport) else []),
     }
 
 
@@ -1502,58 +1563,85 @@ def blind_categories(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
     gate can build every sport's without the rest of the page, and the guard
     runs here, inside it: the API answers 500 rather than serve an outlook
     counting another record than the curve it sits under.
+
+    AND THE VOID COUNT BESIDE EACH CURVE IS ITS OWN CARD'S (2026-10-01; the
+    first of operator question 34's counts, built ahead of it because
+    question 35's voids made this one false): each category carries the
+    count `gridiron.recount` makes of its withdrawn forecasts without the
+    category's door (`voids_recounted`), in the same read as the curves,
+    and `assert_each_void_count_is_its_cards` runs here after the outlook's
+    guard -- so the API answers 500 rather than serve a UFC card's void
+    count of another card's withdrawals.
     """
+    from . import db, recount
+
     require_sport(sport, "calibration.blind_categories")
     markets = config.SPORT_MARKETS.get(sport, ())
     categories = []
     # ONE CATEGORY PER TIER for a sport that splits below the market (R2),
     # and `(None,)` for the four that do not, so nothing changes for them.
     tiers = config.event_tiers(sport) or (None,)
-    for market in markets:
-        for tier in tiers:
-            for predictor in ("statistical", "llm"):
-                c = curve(conn, sport=sport,
-                          market_type=market_type_of(sport, market),
-                          prop_type=prop_type_of(sport, market),
-                          predictor=predictor, event_tier=tier)
-                c["category"] = (f"{market} / {tier} / {predictor}"
-                                 if tier else f"{market} / {predictor}")
-                c["category_label"] = language.category_label(
-                    market, tier, predictor, config.retired_market(sport, market))
-                c["retired"] = config.retired_market(sport, market)
-                c["market"] = market
-                # WHICH RECORD THIS ROW BELONGS TO (E4). Checked, not assumed:
-                # an at-the-line curve filed here would be averaging a forecast
-                # against a price with a forecast against its own rung.
-                c["record"] = "rung"
-                # RULING R3: a gate that will not be reached is not a gate that
-                # has not been reached YET, and rendering them alike reads as
-                # progress.
-                #
-                # THE CURVE'S OWN FORECASTER AND CARD (operator question 14,
-                # 2026-09-27). The outlook is the statistical model's, beside
-                # its own curve on each card, counted through the door the
-                # curve's rows come from (`horizon.standing_questions`). Until
-                # this date one outlook per market, of every row on every card,
-                # sat beside each card's curve -- on the reasoning that the two
-                # forecasters answer the same questions, which the counts do
-                # not bear out (MLB moneyline 246 and 134 standing on 27
-                # September). The reasoning pass's curve in a market it is
-                # still asked carries its N and no projection, as it always
-                # has: the ruling rebuilds the counts the page states and adds
-                # none (FOLLOWUPS).
-                if predictor == "statistical":
-                    c["outlook"] = horizon.market_outlook(
-                        conn, sport, market, predictor=predictor, event_tier=tier)
-                elif not config.llm_routed(sport, market):
-                    # THE CURVE STOPS GROWING WITHOUT IMPLYING AN ERROR (ruling
-                    # E1, 2026-09-06): the reasoning pass no longer asks this
-                    # market, and the line says the count is final.
-                    c["outlook"] = horizon.llm_routed_off_outlook(
-                        conn, sport, market, event_tier=tier)
-                categories.append(c)
-    assert_no_pooled_outlooks({"sport": sport, "record": "rung",
-                               "categories": categories})
+    # ONE INSTANT FOR EVERY CURVE AND THE RECOUNT OF ITS VOIDS (2026-10-01),
+    # as question 17's recounts are read: a forecast voided between the two
+    # reads would make an honest count look pooled and the page answer 500.
+    with db.one_instant(conn):
+        withdrawn = recount.voids(conn, sport=sport)
+        for market in markets:
+            for tier in tiers:
+                for predictor in ("statistical", "llm"):
+                    c = curve(conn, sport=sport,
+                              market_type=market_type_of(sport, market),
+                              prop_type=prop_type_of(sport, market),
+                              predictor=predictor, event_tier=tier)
+                    c["category"] = (f"{market} / {tier} / {predictor}"
+                                     if tier else f"{market} / {predictor}")
+                    c["category_label"] = language.category_label(
+                        market, tier, predictor, config.retired_market(sport, market))
+                    c["retired"] = config.retired_market(sport, market)
+                    c["market"] = market
+                    # WHICH RECORD THIS ROW BELONGS TO (E4). Checked, not
+                    # assumed: an at-the-line curve filed here would be
+                    # averaging a forecast against a price with a forecast
+                    # against its own rung.
+                    c["record"] = "rung"
+                    # ITS VOIDS, COUNTED WITHOUT ITS DOOR (2026-10-01): the
+                    # recount the guard holds the void count to.
+                    c["voids_recounted"] = recount.voids_in(
+                        withdrawn, market_type=market_type_of(sport, market),
+                        prop_type=prop_type_of(sport, market),
+                        predictor=predictor, event_tier=tier)
+                    # RULING R3: a gate that will not be reached is not a gate
+                    # that has not been reached YET, and rendering them alike
+                    # reads as progress.
+                    #
+                    # THE CURVE'S OWN FORECASTER AND CARD (operator question
+                    # 14, 2026-09-27). The outlook is the statistical model's,
+                    # beside its own curve on each card, counted through the
+                    # door the curve's rows come from
+                    # (`horizon.standing_questions`). Until this date one
+                    # outlook per market, of every row on every card, sat
+                    # beside each card's curve -- on the reasoning that the
+                    # two forecasters answer the same questions, which the
+                    # counts do not bear out (MLB moneyline 246 and 134
+                    # standing on 27 September). The reasoning pass's curve in
+                    # a market it is still asked carries its N and no
+                    # projection, as it always has: the ruling rebuilds the
+                    # counts the page states and adds none (FOLLOWUPS).
+                    if predictor == "statistical":
+                        c["outlook"] = horizon.market_outlook(
+                            conn, sport, market, predictor=predictor,
+                            event_tier=tier)
+                    elif not config.llm_routed(sport, market):
+                        # THE CURVE STOPS GROWING WITHOUT IMPLYING AN ERROR
+                        # (ruling E1, 2026-09-06): the reasoning pass no
+                        # longer asks this market, and the line says the
+                        # count is final.
+                        c["outlook"] = horizon.llm_routed_off_outlook(
+                            conn, sport, market, event_tier=tier)
+                    categories.append(c)
+    payload = {"sport": sport, "record": "rung", "categories": categories}
+    assert_no_pooled_outlooks(payload)
+    assert_each_void_count_is_its_cards(payload)
     return categories
 
 
@@ -1671,6 +1759,83 @@ def assert_no_pooled_outlooks(payload: dict) -> None:
                 f"keyed any other way -- without the rung, or across "
                 f"forecasters -- counts other bets than the record holds "
                 f"(operator question 17, 2026-09-28).")
+
+
+class PooledVoidCount(MergedCurve):
+    """A category's void count counted withdrawn forecasts of another card
+    than the curve it sits beside (2026-10-01). A `MergedCurve`, so every
+    door that answers 500 for a merged curve answers 500 for it."""
+
+
+def assert_each_void_count_is_its_cards(payload: dict) -> None:
+    """Every void count, and the void rate made from it, beside a blind
+    curve counts THAT CURVE'S withdrawn forecasts: one card's for UFC, the
+    card its curve counts (2026-10-01).
+
+    THE FIRST OF OPERATOR QUESTION 34'S COUNTS, BUILT AHEAD OF IT. Question
+    34 (ruled 2026-09-30: "every UFC count is per card tier: tier table,
+    ranker, taken record, edge figure, board badge. Planting each.") is
+    later in the order; this one count is built now because question 35's
+    own voids would make it false. `curve` handed the card to `resolved`
+    and not to `void_count`, so the count beside each UFC curve was its
+    market's across every card: once the eighteen final passes 1014-1031
+    (all Fight Night) are voided, each UFC market's Contender Series
+    category reads "voided 6, void rate 0.3", its Numbered card category
+    "voided 6, void rate 1.0" on 0 settled, and the Record page's line
+    under the chart ("0 resolved, 6 withdrawn", the Numbered card's) with
+    them -- only Fight Night's 6 is true.
+
+    Refused by name, for each category of the payload: a void count that
+    is not a whole number; withdrawn forecasts counted on another card than
+    the category's, or on a card the source left unnamed, or on any card
+    in a sport that does not split by card (`void_tiers_counted`, read off
+    each withdrawn row's own bout); a void count other than the one
+    `gridiron.recount` makes without the category's door
+    (`voids_recounted`: a door that stopped asking for the card agrees
+    with its own rows); and a void rate that is not its own counts'
+    arithmetic (`void_rate`). Raised inside `blind_categories`, after the
+    outlook's guard, so `/api/scorecard` answers 500 rather than serve it,
+    and in gate step 2 for every sport that splits by card
+    (`audit.check_a_ufc_void_count_is_its_cards`).
+    """
+    law = "LAW 4 / LAW 6 IN A CATEGORY'S VOID COUNT (EVERY UFC COUNT IS PER CARD)"
+    sport = payload.get("sport")
+    tiers = config.event_tiers(sport)
+    for category in payload.get("categories") or []:
+        what = f"the void count beside {category.get('category')!r}"
+        tier = category.get("event_tier")
+        voided = category.get("voided")
+        if not isinstance(voided, int) or isinstance(voided, bool) or voided < 0:
+            raise PooledVoidCount(
+                f"{law}: {what} is {voided!r}, not a count of withdrawn "
+                f"forecasts.")
+        cards = category.get("void_tiers_counted")
+        if tiers:
+            if cards != ([tier] if voided else []):
+                raise PooledVoidCount(
+                    f"{law}: {what} counts {voided} withdrawn forecast"
+                    f"{'' if voided == 1 else 's'} on {cards!r} beside the "
+                    f"{tier!r} curve: a UFC category counts its own card's "
+                    f"voids, the card its curve counts -- {sport}'s cards "
+                    f"{list(tiers)} are reported side by side, never summed.")
+        elif cards != []:
+            raise PooledVoidCount(
+                f"{law}: {what} names the cards {cards!r} in {sport}, which "
+                f"declares none.")
+        again = category.get("voids_recounted")
+        if again != voided:
+            raise PooledVoidCount(
+                f"{law}: {what} counts {voided} withdrawn where the recount "
+                f"made without its door finds {again!r} on the category's "
+                f"own market, forecaster and card: a void count asked of "
+                f"another population than the curve's.")
+        rate = void_rate(category.get("n") or 0, voided)
+        if category.get("void_rate") != rate:
+            raise PooledVoidCount(
+                f"{law}: {what} states a void rate of "
+                f"{category.get('void_rate')!r} where its own counts -- "
+                f"{voided} withdrawn beside {category.get('n')!r} settled -- "
+                f"make {rate!r}.")
 
 
 #: WHAT A CORRECTION GATE'S PAYLOAD MAY CARRY AT ITS TOP LEVEL (operator

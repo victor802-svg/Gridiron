@@ -12667,7 +12667,8 @@ minutes, NCAAF 59.1, NFL 123.2, NBA 30,060 (pre-season).
   now (no UFC forecast was voided); drawn (`app.js`, the curve's line and the
   category table's cell). Question 34's ground ("every UFC count is per
   card tier") -- running the void tool before it is built puts the false
-  count on the page.
+  count on the page. **BUILT 2026-10-01**, ahead of question 34, on top of
+  this change: "A UFC category counts its own card's voids", below.
 - **The UFC final pass's pre-pass refresh reads the NFL schedule.**
   `tasks._refresh_one_sport` has no UFC arm and falls to the NFL loader, so
   the final pass forecasts the card as the four-hourly refresh last left it.
@@ -12909,3 +12910,188 @@ each with its -wal and -shm, and the rehearsal's fresh builds
 dumps with them. Nothing was written to the live record; no network; the
 main checkout, the live app, every registered task (read only) and `.env`
 untouched.
+
+## A UFC category counts its own card's voids -- built 2026-10-01 *(the first of operator question 34's counts, ruled 2026-09-30, docs/briefs/2026-09-30-rulings.md; found by question 35's prover; built on 3cb376e -- question 35, committed locally, not yet gated or released -- and AHEAD of question 34, because question 35's own voids make this count false; committed locally, not pushed)*
+
+The ruling this is the first count of: "Q34: every UFC count is per card
+tier: tier table, ranker, taken record, edge figure, board badge. Planting
+each." Question 34 is later in the order (Q33 + Q34, after the entry
+check). This one count -- the void count beside each UFC curve, the void
+rate made from it, and every figure the Record page, the scorecard and the
+gate list build from it -- is built now: question 35's release is followed
+by its void tool on the record, and the tool's eighteen voids would put a
+false count on the Record page the moment they were written.
+
+### THE FINDING *(question 35's prover, 2026-10-01)*
+
+`calibration.curve` handed the card to `resolved` (the curve's rows) and
+not to `void_count` (the count beside it), so the void count beside a UFC
+curve was its market's across every card. Latent while no UFC forecast was
+voided; false once the eighteen final passes 1014-1031 (all Fight Night) are.
+
+### MEASURED *(ONE verified copy of the record through `rebuild.verified_backup`, made 2026-10-01T05:29:53Z to 05:30:41Z: integrity ok, 64 tables, none mismatched; one scratch copy of THAT copy through `db.back_up` for the void tool, never of the record; both read only through `db.read_only` for the measurement; HEAD is `git archive` of 3cb376e; scratchpad `voidcard/measure.py`, `compare.py`, `compare.txt`)*
+
+**The void tool, rehearsed on the scratch copy** (never on the record):
+dry, it lists the 24 and selects the ruled 18 (1014-1031), "--write would
+void 18"; with `--write`, "wrote 18 void(s) at 2026-10-01T05:30:56Z; 0
+already voided by this ruling"; again, "wrote 0 void(s) ... 18 already
+voided by this ruling". (`--live` was also tried once ON THE SCRATCH COPY,
+to see the refusal: exit 2, "REFUSED, NOTHING WRITTEN: --live names the
+operator's record, and <the copy> is not the same file as it". It was
+never given the record.)
+
+**Every UFC void figure, each blind category** (each market alike --
+moneyline, rounds and distance; settled counts are the curves', unchanged
+by this change):
+
+| statistical category | settled | HEAD, as is | here, as is | HEAD, the 18 voided | here, the 18 voided |
+|---|---|---|---|---|---|
+| Fight Night | 39 | 0 withdrawn | 0 withdrawn | 6 withdrawn, void rate 0.1333 | 6 withdrawn, 0.1333 |
+| Contender Series | 14 | 0, rate 0.0 | 0, 0.0 | **6 withdrawn, void rate 0.3** | 0, 0.0 |
+| Numbered card | 0 | 0, no rate | 0, no rate | **6 withdrawn, void rate 1.0** | 0, no rate |
+
+The reasoning pass's nine categories (Fight Night 39, 14, 14 settled;
+Contender Series moneyline 14; the rest 0) have no withdrawal either way.
+
+**The line under the Record page's chart** (app.js `findCurve`: the first
+category of the chosen market and forecaster, the Numbered card's for every
+UFC market): HEAD with the 18 voided, "0 resolved, 6 withdrawn" in each
+statistical market; here, "0 resolved". As is, "0 resolved" on both.
+
+**The headline curve** (`scorecard.headline`, UFC moneyline, statistical,
+every card): 53 settled; 0 withdrawn as is, 6 withdrawn and void rate
+0.1017 with the 18 voided -- on HEAD and here alike. Every card's curve
+with every card's voids: one population, so not false against its own
+curve. It is drawn only where no category matches the chosen market and
+forecaster, which for UFC never happens. A UFC curve pooled across cards is
+question 34's ground (FOUND, below).
+
+**The gate list** (`scorecard.gates`: the correction, drift and
+read-window rows): 15 rows for UFC; none carries a void figure, on either
+tree or either copy. Nothing there to move.
+
+**Every other sport**: no category's settled count, void count or void
+rate moves, on either copy (NFL 16 categories, 53 withdrawn across them;
+MLB 16, 67; NBA 14, 47; NCAAF 6, 2), and each category's recount agrees.
+
+**The whole UFC `/api/scorecard` payload** (`views.scorecard`), HEAD
+against here: as is, 4,831 figures on HEAD and 4,849 here -- the 18 new
+`voids_recounted` (one per category) and nothing else; with the 18 voided,
+12 figures move -- the six statistical Contender Series and Numbered card
+categories' void count 6 -> 0 and void rate 0.3 -> 0.0 and 1.0 -> none --
+and 22 are new (the 18 `voids_recounted`, and `void_tiers_counted`
+naming Fight Night in its three statistical categories and the headline).
+(One build-identity string, `meta.build.head`, is None in the archive,
+which is no checkout.)
+
+### BUILT
+
+- **`calibration.category_filter`, THE ONE DOOR for which forecasts a
+  category holds**: its sport, its card (through the bout to its event's
+  tier), its market, prop type, forecaster and factor set, as SQL terms.
+  `resolved` reads it (settled rows only) and so does
+  **`calibration.withdrawn_forecasts`**, the void count -- `void_count`
+  until this date, which took no card. Every withdrawn row of the
+  category, whichever pass, as before; the card is the one change.
+- **`curve` asks both of one cell, in one instant** (`db.one_instant`), so
+  the card a curve counts is the card its void count counts and a void
+  written between the two reads cannot be counted on one side only.
+  `calibration.void_rate` is the one arithmetic of the rate. Each curve
+  carries `void_tiers_counted`, the cards its void count counted, read off
+  each withdrawn row's own bout (none named outside UFC; a card the source
+  left unnamed is None, which is no category's).
+- **The recount** (`recount.voids`, `recount.voids_in`): every withdrawn
+  forecast of the sport read straight off the tables with its own card,
+  placed in each category by restating the cell in Python -- asked once per
+  sport by `calibration.blind_categories`, inside the same instant as the
+  curves (`voids_recounted` on each category). Per row, as the page counts
+  a void; not by `bet.of`.
+- **The guard, inside the payload builder**:
+  `calibration.assert_each_void_count_is_its_cards`, run by
+  `blind_categories` after the outlook's guard. Refused by name
+  (`calibration.PooledVoidCount`, a `MergedCurve`, so `/api/scorecard`
+  answers 500): a void count that is not a whole number; one counted on
+  another card than the category's, on a card the source left unnamed, or
+  on any card in a sport that does not split by card; one the recount
+  made without the door does not make; and a void rate that is not its own
+  counts' arithmetic.
+- **Gate step 2**: `audit.check_a_ufc_void_count_is_its_cards` builds each
+  carded sport's table (UFC) on the record's copy and fails by name, its
+  row registered after the outlook's in `tools/verify.py`.
+  `audit.check_the_blind_outlook_is_never_pooled` leaves a
+  `PooledVoidCount` to it rather than filing it as an outlook's pool.
+- Nothing stored changes, and no interface code: app.js draws the
+  category's own `voided` in the "Withdrawn" cell and under the chart.
+
+### THE CHECKS
+
+- **Tests**: `tests/test_void_count_per_card.py`, 10 -- all 10 fail on
+  3cb376e (the file laid over its archive): the behaviour ones for the
+  right reason (the eighteen's world: Contender Series (2, 6, 0.75) and
+  Numbered card (0, 6, 1.0) where (2, 0, 0.0) and (0, 0, None) stand; the
+  drawn Numbered card (0, 6); a card the source left unnamed counted
+  under all three cards, 7, 7 and 7), the rest for the door, the guard and
+  the gate row that are not there. `tests/test_multisport.py`'s LAW 6
+  readers name `withdrawn_forecasts` and `category_filter` in place of
+  `void_count`; `tests/test_guards.py`'s harness list names the planting.
+  The touched and neighbouring modules (`test_void_count_per_card`,
+  `test_multisport`, `test_guards`, `test_outlook`, `test_props`,
+  `test_voids`, `test_calibration`, `test_api`, `test_standing_pass`,
+  `test_counted_once`): all pass, exit 0.
+- **The planting** (`tools/guards/plant.py`, `LAW_VOIDS_PER_CARD`, in
+  `main()` and `tests/test_guards.py`'s list):
+  `plant_a_pooled_void_count` -- the eighteen's shape on a scratch world (a
+  Fight Night card whose three final passes are withdrawn and whose early
+  passes stand, a Contender Series card with none, a Numbered card still to
+  come). ESCAPES on 3cb376e (the fixed `plant.py` laid over its archive):
+  "the Record page states (settled, withdrawn, void rate) {'numbered': (0,
+  3, 1.0), 'fight_night': (3, 3, 0.5), 'contender': (2, 3, 0.6)} ...; and
+  nothing checks a void count's card". CAUGHT here: each card states its
+  own (Fight Night 3, rate 0.5; Contender Series 0; Numbered card 0), and
+  the count as it stood, the curve asking its void count without the card,
+  and every card's withdrawals named as the asked card's are each refused
+  by the Record page's builder (two by the gate too: the third is seen by
+  the recount alone), and six pooled payload shapes and a card named in a
+  sport that declares none are each refused by name.
+- **Gate step 2's rows this touches, dry-run on this tree on both copies**
+  (`voidcard/gate_rows.py`, a read-only handle, not `tools/verify.py`
+  whole): the new row, the outlook's, the priced record's and the
+  at-the-line record's, as is and with the 18 voided -- 8 of 8 pass; and
+  the source scans the change could trip (orphans, shadowed definitions,
+  the one distinct-bet key, starts as instants, no replacing write, no raw
+  open, the side in prose and its one door, the recommendation door, the
+  counted-once door, the renderer's prose) -- 11 of 11.
+- **`plant.py` whole**: 409/409 planted violations caught (question 35's
+  408 and this one), exit 0, 2026-10-01T05:37:36Z to 05:46:28Z.
+- **The full suite**: 2,372 passed, 4 skipped, none failed, exit 0
+  (question 35's 2,358, this change's 10, and `test_multisport`'s four
+  for `category_filter`), with a dummy non-secret `GRIDIRON_ACCESS_TOKEN`
+  and TMP and TEMP at their defaults, 05:46:42Z to 06:13:56Z; no file of
+  the change edited while it or `plant.py` ran (every changed file's hash
+  the same before and after; this section's two results were written in
+  after); the only test that reached the network is the suite's own
+  marked one.
+- **The copies**: the verified copy and its one scratch copy (`voided.db`),
+  each with its -wal and -shm, were deleted at 2026-10-01T05:35:08Z, and the
+  measurement's four payload dumps at 06:14:19Z (`compare.txt`, the
+  figures above, kept). Nothing was written to the
+  live record; no network; the main checkout, the held branches, the live
+  app, every scheduled task and `.env` untouched; nothing pushed.
+
+### FOUND, NOT BUILT *(for question 34; none is LAW 1, LAW 3 or a gate count)*
+
+- **The headline curve is every card's.** `calibration.scorecard`'s
+  `headline` for UFC is the moneyline curve across every card (53
+  settled), with every card's voids -- consistent with itself, drawn only
+  where no category matches the chosen market and forecaster (never for
+  UFC), and not among question 34's five names; a UFC curve pooled across
+  cards all the same, which question 34's first words reach.
+- **The line under the chart names no card.** For UFC it draws the first
+  category of the market and forecaster, the Numbered card's ("Moneyline,
+  statistical. 0 resolved."), without saying whose card it is -- words,
+  not a count; beside question 34's tier table and badges.
+- **A withdrawn pass whose question still stands.** The void count counts
+  withdrawn FORECASTS, as it always has (R4): Fight Night's 6 are final
+  passes whose early passes stand in the curve's 39, so its void rate
+  (0.1333) counts six questions that were not lost. A reading for the
+  operator if "void rate" should mean questions.

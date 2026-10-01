@@ -14602,6 +14602,266 @@ def plant_a_blind_outlook_game_counted_twice() -> Result:
 
 
 # ---------------------------------------------------------------------------
+# A UFC CATEGORY COUNTS ITS OWN CARD'S VOIDS (2026-10-01; the first of
+# operator question 34's counts, "every UFC count is per card tier", built
+# ahead of it because question 35's voids made this one false)
+# ---------------------------------------------------------------------------
+
+LAW_VOIDS_PER_CARD = ("A UFC CATEGORY COUNTS ITS OWN CARD'S VOIDS, THE CARD ITS "
+                      "CURVE COUNTS (LAW 4, LAW 6; QUESTION 34'S FIRST COUNT)")
+
+
+def plant_a_pooled_void_count() -> Result:
+    """Put the void count beside each UFC curve back to its market's across
+    every card, as `calibration.curve` asked it until 2026-10-01.
+
+    THE SHIPPED COUNT (question 35's prover, 2026-10-01): `curve` handed the
+    card to `resolved` and not to `void_count`, so once question 35's
+    eighteen final passes 1014-1031 (all Fight Night) are voided, each UFC
+    market's Contender Series category reads "voided 6, void rate 0.3", its
+    Numbered card category "voided 6, void rate 1.0" on 0 settled, and the
+    line under the Record page's chart with them; only Fight Night's 6 is
+    true. This world plants the eighteen's shape on a scratch database --
+    a Fight Night card whose three final passes are withdrawn and whose
+    early passes stand, a Contender Series card settled with none
+    withdrawn, a Numbered card still to come -- and proves each card's
+    category states its own card's voids; then swaps the count as it stood
+    back in (the market's across every card), the curve asking its void
+    count without the card, and every card's withdrawals named as the asked
+    card's, and demands the Record page's builder and the gate's check
+    refuse each by name; and the guard refuses each pooled shape of a
+    payload by name, an honest payload passing.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+
+    guard = ("calibration.category_filter, "
+             "calibration.assert_each_void_count_is_its_cards, "
+             "audit.check_a_ufc_void_count_is_its_cards")
+    violation = "a UFC card's void count counting another card's withdrawals"
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    tiers = config.event_tiers("ufc")
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+
+        def card(event, tier, week, kickoff, bouts, played):
+            conn.execute(
+                "INSERT INTO ufc_events (id, name, event_utc, season,"
+                " fetched_utc, event_tier) VALUES (?, ?, ?, ?, ?, ?)",
+                (event, f"UFC {event}", kickoff, season, _db.utcnow(), tier))
+            for bout in bouts:
+                conn.execute(
+                    "INSERT INTO ufc_bouts (id, event_id, bout_utc,"
+                    " scheduled_rounds, fighter_a, fighter_b, status,"
+                    " fetched_utc) VALUES (?, ?, ?, 3, 'A', 'B', ?, ?)",
+                    (bout, event, kickoff, "final" if played else "scheduled",
+                     _db.utcnow()))
+                conn.execute(
+                    "INSERT INTO games (id, sport, season, week, game_type,"
+                    " home, away, kickoff_utc, status, league_date,"
+                    " home_score, away_score) VALUES (?, 'ufc', ?, ?, 'R',"
+                    " 'A', 'B', ?, ?, ?, ?, ?)",
+                    (bout, season, week, kickoff,
+                     "final" if played else "scheduled", kickoff[:10],
+                     1 if played else None, 0 if played else None))
+
+        def forecast(bout, pass_kind, written):
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning, resolved_utc, outcome) VALUES (?, 'ufc', ?,"
+                " 'moneyline', 'A', NULL, 0.6, 'win', 'statistical', ?,"
+                " 'fs2', '{}', 'planted', '2026-09-08T03:00:00Z', 1)",
+                (written, bout, pass_kind))
+            return conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+
+        card("void_fn", "fight_night", 1, "2026-09-05T19:00:00Z",
+             ("void_fn_1", "void_fn_2", "void_fn_3"), True)
+        card("void_cs", "contender", 2, "2026-09-06T23:00:00Z",
+             ("void_cs_1", "void_cs_2"), True)
+        card("void_nc", "numbered", 3, "2026-10-03T23:00:00Z",
+             ("void_nc_1",), False)
+        for bout in ("void_fn_1", "void_fn_2", "void_fn_3"):
+            forecast(bout, "early", "2026-09-04T02:04:00Z")
+            final = forecast(bout, "final", "2026-09-05T19:00:02Z")
+            # THE EIGHTEEN'S SHAPE: the final pass, written at its bout's
+            # start, withdrawn; the early pass stands for its question.
+            conn.execute(
+                "INSERT INTO prediction_voids (prediction_id, voided_utc,"
+                " reason) VALUES (?, '2026-10-01T05:00:00Z', 'planted: "
+                "written at or after its bout''s start')", (final,))
+        for bout in ("void_cs_1", "void_cs_2"):
+            forecast(bout, "final", "2026-09-06T20:00:00Z")
+        conn.commit()
+
+        def stated() -> dict:
+            # WHAT THE RECORD PAGE STATES beside each card's statistical
+            # moneyline curve: (settled, withdrawn, void rate).
+            got = {}
+            for c in calibration.scorecard(conn, sport="ufc")["categories"]:
+                if (c["market"] == "moneyline"
+                        and c["filters"]["predictor"] == "statistical"):
+                    got[c.get("event_tier")] = (c["n"], c["voided"],
+                                                c["void_rate"])
+            return got
+
+        want = {"fight_night": (3, 3, 0.5), "contender": (2, 0, 0.0),
+                "numbered": (0, 0, None)}
+        try:
+            shipped = stated()
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_VOIDS_PER_CARD, violation, guard, False,
+                          f"the shipped builder refuses an honest world: {exc}")
+        check = getattr(calibration, "assert_each_void_count_is_its_cards", None)
+        gate_check = getattr(audit, "check_a_ufc_void_count_is_its_cards", None)
+        door = getattr(calibration, "withdrawn_forecasts", None)
+        if shipped != want or check is None or gate_check is None or door is None:
+            conn.close()
+            return Result(LAW_VOIDS_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the Record page states (settled, "
+                          f"withdrawn, void rate) {shipped} for a Fight Night "
+                          f"card whose three final passes are withdrawn, a "
+                          f"Contender Series card with none and a Numbered "
+                          f"card still to come; wanted each card's own "
+                          f"{want}"
+                          + ("" if check else
+                             "; and nothing checks a void count's card"))
+
+        def as_released(conn, *, sport, market_type=None, prop_type=None,
+                        predictor=None, factor_set_version=None,
+                        event_tier=None):
+            # THE SHIPPED COUNT UNTIL 2026-10-01: the market's withdrawn
+            # forecasts on every card -- the card asked for is not read --
+            # with the card each row was on, as the door reads it.
+            where, params = ["p.sport = ?"], [sport]
+            for column, value in (("market_type", market_type),
+                                  ("prop_type", prop_type),
+                                  ("predictor", predictor),
+                                  ("factor_set_version", factor_set_version)):
+                if value:
+                    where.append(f"p.{column} = ?")
+                    params.append(value)
+            return [dict(r) for r in conn.execute(
+                "SELECT p.id, (SELECT e.event_tier FROM ufc_bouts b"
+                "   JOIN ufc_events e ON e.id = b.event_id"
+                "  WHERE b.id = p.game_id) AS event_tier"
+                "  FROM prediction_voids v JOIN predictions p"
+                "    ON p.id = v.prediction_id"
+                f" WHERE {' AND '.join(where)} ORDER BY p.id", params)]
+
+        def without_the_card(conn, **kw):
+            # THE FINDING ITSELF: the curve asks its void count of the door
+            # and does not hand it the card.
+            return door(conn, **dict(kw, event_tier=None))
+
+        def named_as_asked(conn, **kw):
+            # EVERY CARD'S WITHDRAWALS, each labelled with the card asked
+            # for: only the recount made without the door can see it.
+            return [dict(r, event_tier=kw.get("event_tier"))
+                    for r in door(conn, **dict(kw, event_tier=None))]
+
+        def the_page():
+            calibration.scorecard(conn, sport="ufc")
+
+        def the_gate():
+            try:
+                gate_check(conn)
+            except audit.LawViolation as exc:
+                named = [line.strip() for line in str(exc).splitlines()
+                         if line.strip().startswith("ufc:")]
+                if not named:
+                    raise
+                raise calibration.MergedCurve(
+                    f"the gate names {named[0]}") from exc
+
+        for name, planted, build in (
+                ("the count as it stood, UFC's Record page", as_released,
+                 the_page),
+                ("the count as it stood, the gate", as_released, the_gate),
+                ("the curve asking its void count without the card, UFC's "
+                 "Record page", without_the_card, the_page),
+                ("every card's withdrawals named as the asked card's, UFC's "
+                 "Record page", named_as_asked, the_page),
+                ("every card's withdrawals named as the asked card's, the "
+                 "gate", named_as_asked, the_gate)):
+            calibration.withdrawn_forecasts = planted
+            try:
+                build()
+            except calibration.MergedCurve as exc:
+                caught.append(f"{name}: {str(exc).splitlines()[0][:220]}")
+            else:
+                missed.append(name)
+            finally:
+                calibration.withdrawn_forecasts = door
+
+        # AND THE GUARD, ON THE PAYLOAD: the honest table passes, and each
+        # pooled shape of it is refused by name.
+        honest = {"sport": "ufc", "record": "rung",
+                  "categories": calibration.blind_categories(conn, sport="ufc")}
+        conn.close()
+    try:
+        check(honest)
+    except calibration.MergedCurve as wrong:
+        return Result(LAW_VOIDS_PER_CARD, violation, guard, False,
+                      f"the guard refuses an honest per-card table: {wrong}")
+
+    def at(tier):
+        return next(i for i, c in enumerate(honest["categories"])
+                    if c["market"] == "moneyline" and c.get("event_tier") == tier
+                    and c["filters"]["predictor"] == "statistical")
+
+    probes = {
+        "the Numbered card stating Fight Night's three, void rate 1.0 on 0 "
+        "settled": (at("numbered"), dict(voided=3, void_rate=1.0,
+                                         void_tiers_counted=["fight_night"])),
+        "the Contender Series card stating them under its own name": (
+            at("contender"), dict(voided=3, void_rate=0.6,
+                                  void_tiers_counted=["contender"])),
+        "a card counting a withdrawal on a card the source left unnamed": (
+            at("fight_night"), dict(void_tiers_counted=["fight_night", None])),
+        "a void rate that is not its own counts' arithmetic": (
+            at("fight_night"), dict(void_rate=0.3)),
+        "a void count that is no count": (at("numbered"), dict(voided=None)),
+        "a void count the recount does not make": (
+            at("fight_night"), dict(voids_recounted=6)),
+    }
+    for name, (index, change) in probes.items():
+        rows = [dict(c) for c in honest["categories"]]
+        rows[index].update(change)
+        try:
+            check(dict(honest, categories=rows))
+        except calibration.MergedCurve as exc:
+            caught.append(f"{name}: {str(exc).splitlines()[0][:160]}")
+        else:
+            missed.append(name)
+    mlb = {"sport": "mlb", "record": "rung", "categories": [
+        {"category": "moneyline / statistical", "event_tier": None, "n": 5,
+         "voided": 1, "void_rate": round(1 / 6, 4),
+         "void_tiers_counted": ["fight_night"], "voids_recounted": 1}]}
+    try:
+        check(mlb)
+    except calibration.MergedCurve as exc:
+        caught.append(f"a card named in a sport that declares none: "
+                      f"{str(exc).splitlines()[0][:160]}")
+    else:
+        missed.append("a card named in a sport that declares none")
+    if missed:
+        return Result(LAW_VOIDS_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC card's void count states another "
+                      "card's withdrawals: " + "; ".join(missed))
+    return Result(LAW_VOIDS_PER_CARD, violation, guard, True,
+                  "each card's category states its own card's voids on the "
+                  "shipped door -- Fight Night 3 (rate 0.5), Contender Series "
+                  "0, Numbered card 0 -- and with the count as it stood "
+                  "swapped back in, or the payload pooled: "
+                  + " | ".join(caught))
+
+
+# ---------------------------------------------------------------------------
 # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
 # 2026-09-27; question 21, ruled 2026-09-28; built 2026-09-28)
 # ---------------------------------------------------------------------------
@@ -24446,6 +24706,11 @@ def main() -> int:
     # QUESTIONS (operator question 14, ruled 2026-09-27, 3 of 3).
     results.append(plant_a_blind_outlook_counting_superseded_passes())
     results.append(plant_a_blind_outlook_game_counted_twice())
+    # A UFC CATEGORY COUNTS ITS OWN CARD'S VOIDS (2026-10-01; the first of
+    # operator question 34's counts, built ahead of it because question
+    # 35's voids made this one false): the void count beside each card's
+    # curve is that card's, through the curve's own door.
+    results.append(plant_a_pooled_void_count())
     # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
     # 2026-09-27; question 21, 2026-09-28): every record's door keyed by
     # `gridiron.bet`, recounted without the door, and no key spelled by hand.

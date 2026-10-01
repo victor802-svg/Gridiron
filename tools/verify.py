@@ -992,6 +992,14 @@ def step_2_guards() -> bool:
         ("the blind record's outlook counts its curve's standing questions",
          lambda: audit.check_the_blind_outlook_is_never_pooled(
              _record_conn())),
+        # THE FIRST OF OPERATOR QUESTION 34'S COUNTS (ruled 2026-09-30,
+        # "every UFC count is per card tier"; built 2026-10-01, ahead of it,
+        # because question 35's voids made this one false): the void count
+        # and the void rate beside each UFC card's curve count that card's
+        # withdrawn forecasts -- built on the record's copy through its
+        # builder's guard, and held to the recount made without its door.
+        ("a UFC category counts its own card's voids (question 34, first count)",
+         lambda: audit.check_a_ufc_void_count_is_its_cards(_record_conn())),
         # OPERATOR QUESTION 17 (ruled 2026-09-27; built 2026-09-28): one
         # function defines a distinct bet -- the forecaster and the venue's
         # question, the rung asked included -- and every count reads it. In

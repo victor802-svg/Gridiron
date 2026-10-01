@@ -9380,6 +9380,11 @@ def check_the_blind_outlook_is_never_pooled(conn) -> None:
     for sport in config.SPORTS:
         try:
             calibration.blind_categories(conn, sport=sport)
+        except calibration.PooledVoidCount:
+            # THE VOID COUNT'S OWN GUARD (2026-10-01) runs after the
+            # outlook's, which has passed by then; its own check below
+            # names it, under its own heading.
+            continue
         except (calibration.MergedCurve, calibration.MergedRecord,
                 config.CrossSportAggregation, horizon.PooledCount,
                 bet.NotABet) as exc:
@@ -9390,6 +9395,53 @@ def check_the_blind_outlook_is_never_pooled(conn) -> None:
             "2026-09-27): the line beside each curve counts that curve's "
             "standing questions -- one forecaster's, one card's for UFC, each "
             "once:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# A UFC CATEGORY COUNTS ITS OWN CARD'S VOIDS (2026-10-01; the first of
+# operator question 34's counts, built ahead of it)
+# ---------------------------------------------------------------------------
+#
+# Question 34 (ruled 2026-09-30): "every UFC count is per card tier: tier
+# table, ranker, taken record, edge figure, board badge. Planting each." It
+# is later in the order; this one count is built now because question 35's
+# own voids -- the eighteen Fight Night final passes 1014-1031 -- would make
+# it false: `calibration.curve` handed the card to the curve's rows and not
+# to its void count, so every UFC card's category would have said "6
+# withdrawn". The guard is `calibration.assert_each_void_count_is_its_cards`,
+# inside `calibration.blind_categories`; this builds each carded sport's
+# table on the record's copy and turns its refusal into a failure of its own.
+
+
+def check_a_ufc_void_count_is_its_cards(conn) -> None:
+    """Refuse a void count, or a void rate, beside a curve of a sport that
+    splits by card, that counts another card's withdrawn forecasts than the
+    curve's own -- or that the recount made without the door does not
+    make."""
+    from . import bet, calibration, horizon
+
+    faults = []
+    for sport in config.SPORTS:
+        if not config.event_tiers(sport):
+            continue
+        try:
+            calibration.blind_categories(conn, sport=sport)
+        except calibration.PooledVoidCount as exc:
+            faults.append(f"{sport}: {exc}")
+        except (calibration.MergedCurve, calibration.MergedRecord,
+                config.CrossSportAggregation, horizon.PooledCount,
+                bet.NotABet) as exc:
+            # THE TABLE REFUSED BEFORE ITS VOID COUNTS WERE ASKED (the
+            # outlook's guard runs first): not proven, so not passed.
+            faults.append(f"{sport}: the table was refused before its void "
+                          f"counts were checked: {exc}")
+    if faults:
+        raise LawViolation(
+            "A UFC VOID COUNT IS NOT ITS CARD'S (2026-10-01; operator "
+            "question 34, ruled 2026-09-30: \"every UFC count is per card "
+            "tier\"): the void count and the void rate beside each card's "
+            "curve count that card's withdrawn forecasts, the card the curve "
+            "counts:" + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------

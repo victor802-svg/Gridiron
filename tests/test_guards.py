@@ -624,6 +624,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         # two passes, two forecasters or three cards in one outlook.
         "plant_a_blind_outlook_counting_superseded_passes",
         "plant_a_blind_outlook_game_counted_twice",
+        # A UFC CATEGORY COUNTS ITS OWN CARD'S VOIDS (2026-10-01; the first
+        # of operator question 34's counts, built ahead of it because
+        # question 35's voids made this one false).
+        "plant_a_pooled_void_count",
         # OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
         # 2026-09-28): one function defines a distinct bet -- the forecaster
         # and the venue's question, the rung asked included. A door keyed

@@ -55,7 +55,11 @@ READERS = [
     ("scorecard", lambda c, s: calibration.scorecard(c, sport=s)),
     ("factor_report", lambda c, s: calibration.factor_report(c, sport=s)),
     ("over_time", lambda c, s: calibration.over_time(c, sport=s)),
-    ("void_count", lambda c, s: calibration.void_count(c, sport=s)),
+    # `void_count` until 2026-10-01: the void count now reads the category's
+    # one door, the card included (`withdrawn_forecasts`).
+    ("withdrawn_forecasts",
+     lambda c, s: calibration.withdrawn_forecasts(c, sport=s)),
+    ("category_filter", lambda c, s: calibration.category_filter(sport=s)),
     ("version_comparison", lambda c, s: calibration.version_comparison(c, sport=s)),
     ("views.week", lambda c, s: views.week(c, s)),
     ("views.history", lambda c, s: views.history(c, sport=s)),

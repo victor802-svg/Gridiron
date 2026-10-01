@@ -96,6 +96,44 @@ def forecasts(conn: sqlite3.Connection, *, sport: str, predictor: str,
         f" WHERE {' AND '.join(where)}{card}", first + params)]
 
 
+def voids(conn: sqlite3.Connection, *, sport: str) -> list[dict]:
+    """Every withdrawn forecast of one sport, read straight off the tables
+    -- no category door -- each with its market, prop type, forecaster and
+    the card its own bout was on (UFC; None elsewhere, and for a bout whose
+    card the source left unnamed).
+
+    THE VOID COUNT'S RECOUNT (2026-10-01; the first of operator question
+    34's counts, "every UFC count is per card tier", built ahead of it
+    because question 35's voids made this one false). The count beside a
+    blind curve is asked through the category's door
+    (`calibration.category_filter`); a door that stopped asking for the
+    card agrees with its own rows, so `calibration.blind_categories` asks
+    this once per sport, in the same read as the curves, and `voids_in`
+    places each row in its category by restating the cell in Python. A
+    void is a forecast's, not a bet's: counted per row, as the page counts
+    it, not by `bet.of`."""
+    return [dict(r) for r in conn.execute(
+        "SELECT p.id, p.market_type, p.prop_type, p.predictor,"
+        "       (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        "          ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
+        "  FROM prediction_voids v JOIN predictions p ON p.id = v.prediction_id"
+        " WHERE p.sport = ?", (sport,))]
+
+
+def voids_in(rows: list[dict], *, market_type: str | None,
+             prop_type: str | None, predictor: str | None,
+             event_tier: str | None) -> int:
+    """How many of `voids`' rows one category holds: each filter the
+    category names, as the curve's door reads it -- a filter not named (None
+    or empty) asks nothing -- and the card read off the row's own bout."""
+    return sum(
+        1 for r in rows
+        if (not market_type or r["market_type"] == market_type)
+        and (not prop_type or r["prop_type"] == prop_type)
+        and (not predictor or r["predictor"] == predictor)
+        and (not event_tier or r["event_tier"] == event_tier))
+
+
 def _before_the_start(written: str, kickoff: str | None) -> bool:
     """Written strictly before the start, both READ AS INSTANTS (operator
     question 35, ruled 2026-09-30: "a pass written at or after the start is
