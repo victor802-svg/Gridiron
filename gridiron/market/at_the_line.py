@@ -34,7 +34,7 @@ import sqlite3
 from pathlib import Path
 
 from .. import bet, config
-from ..db import utcnow
+from ..db import instant, utcnow
 
 #: The venue whose ladder is read. One venue today; the column carries the name
 #: on every row so a second one never merges into the first.
@@ -631,6 +631,7 @@ def evaluate(conn: sqlite3.Connection,
                   "unusable_distribution": 0, "predictions": 0,
                   "no_blind_rate": 0, "no_declared_form": 0,
                   "quote_after_first_pitch": 0, "game_under_way": 0,
+                  "start_unreadable": 0,
                   "unmappable_side": 0, "unclassifiable": 0,
                   "line_presence_differs": 0,
                   "no_distribution_for_this_market": 0}
@@ -654,11 +655,32 @@ def evaluate(conn: sqlite3.Connection,
 
     for pred in rows:
         counts_out["predictions"] += 1
-        # A GAME BEING PLAYED IS NOT A GAME TO CLAIM ABOUT. The status check
-        # and the timestamp check are both here on purpose: a status is only
-        # as fresh as the last refresh, and a kickoff time is a fact.
-        if pred["status"] not in ("scheduled", "pre", None):
-            counts_out["game_under_way"] += 1
+        # A GAME BEING PLAYED IS NOT A GAME TO CLAIM ABOUT -- and from
+        # 2026-09-30 a game is being played from its LISTED START, read as an
+        # instant, whatever its status says (the operator's ruling on the
+        # close window, GRIDIRON_REPAIR item 1: "The near-start run keeps
+        # every game until its start, so the close is the last read before
+        # the start"). A status check stood here beside the timestamp check
+        # below, and refused a game whose status said 'in' whole: baseball's
+        # feed calls a game in its warm-up 'Live', which the poller stores as
+        # 'in' up to ten minutes before the listed start, so the near-start
+        # read five minutes out -- which the run now takes
+        # (`tasks._near_start_selection`) -- would have written no claim.
+        # The check below is the one rule: a quote read at or after the
+        # listed start is never claimed. (`game_under_way` stays in the
+        # counts, at zero, so a reader of an older run's counts and a newer
+        # one's find the same keys.)
+        #
+        # A START NOBODY CAN READ WRITES NO CLAIM, AND STOPS NO OTHER
+        # (2026-09-30, item 1's prover). Whether a read came before such a
+        # start cannot be told, so none is claimed, and it is never guessed;
+        # as first built the parse raised here and took every other
+        # forecast of the call with it -- a predict pass's whole slate.
+        # Counted by its own name, as every hole is.
+        try:
+            start = instant(pred["kickoff_utc"])
+        except ValueError:
+            counts_out["start_unreadable"] += 1
             continue
         try:
             dist = (json.loads(pred["factors_json"]) or {}).get("margin_distribution")
@@ -686,7 +708,12 @@ def evaluate(conn: sqlite3.Connection,
             # run it produced a home side the model made 59.6% against a venue
             # price of 3.5%, which was the fourth inning. LAW 5 refuses to
             # size in-game one step later; this refuses to claim in-game.
-            if pred["kickoff_utc"] and quote["fetched_utc"] >= pred["kickoff_utc"]:
+            #
+            # AS INSTANTS from 2026-09-30 (item 1's close window): compared as
+            # text, a read at "...T02:00:30Z" sorted before a start stored to
+            # the minute, "...T02:00Z" (UFC's), and was claimed as a read
+            # taken before the start.
+            if start is not None and instant(quote["fetched_utc"]) >= start:
                 counts_out["quote_after_first_pitch"] += 1
                 continue
             # THE LINE THE CONTRACT SELLS, from the one place, carried by the

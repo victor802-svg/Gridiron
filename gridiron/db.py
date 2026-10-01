@@ -39,6 +39,51 @@ def just_after(iso: str | None) -> str:
     return max(now, after)
 
 
+def instant(stamp: str | None) -> datetime | None:
+    """A stored instant -- a game's listed start, a read, a run -- as an
+    aware UTC datetime; None when nothing is stored.
+
+    ADDED 2026-09-30 (GRIDIRON_REPAIR item 1, the close window; the
+    operator's ruling of that day: "The near-start run keeps every game
+    until its start, so the close is the last read before the start").
+    "Before the start" is decided by the listed start READ AS AN INSTANT,
+    never as text and never by the game's status. Starts are stored to the
+    second ("2026-09-27T19:10:00Z") for four sports and to the minute
+    ("2026-12-13T02:00Z") for UFC, and every read is stamped to the second;
+    compared as text, ':' sorts below 'Z', so a read at "...T02:00:30Z" was
+    taken for one BEFORE a start of "...T02:00Z". Operator question 35
+    (ruled 2026-09-30, next in the order) stores and compares every start as
+    an instant; the near-start run, its claims and the close read this parse
+    now, so they agree with it when it lands.
+
+    A stamp this cannot read -- or one that names no zone, which this
+    project never writes -- is refused by name (ValueError), never taken for
+    "no start" and never guessed into UTC: a start nobody can read is not a
+    game that never starts.
+    """
+    if stamp is None:
+        return None
+    text = str(stamp).strip()
+    if not text:
+        return None
+    # 'Z' spelled as the offset it means, so the parse is the same on every
+    # Python this project supports (3.10's `fromisoformat` knows no 'Z').
+    spelled = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        when = datetime.fromisoformat(spelled)
+    except ValueError:
+        raise ValueError(
+            f"the stored instant {stamp!r} cannot be read as an instant "
+            f"(ISO-8601, UTC, Z-suffixed, to the second or to the minute)"
+        ) from None
+    if when.tzinfo is None:
+        raise ValueError(
+            f"the stored instant {stamp!r} names no zone; every instant this "
+            f"project stores is UTC and says so with a 'Z', and one that does "
+            f"not is refused rather than guessed")
+    return when.astimezone(timezone.utc)
+
+
 class LiveRecordTouched(RuntimeError):
     """Verification opened the operator's own record. It never may.
 

@@ -18342,6 +18342,529 @@ def plant_a_close_that_cites_its_own_pricing_read() -> Result:
                   f"NOT CAUGHT - the table took: {', '.join(escaped)}")
 
 
+# ---------------------------------------------------------------------------
+# THE CLOSE WINDOW (the operator's ruling of 2026-09-30, GRIDIRON_REPAIR item
+# 1): "The near-start run keeps every game until its start, so the close is
+# the last read before the start." Measured first, on one verified copy of
+# the record (30 September; FOLLOWUPS, "The close window"): 14 of the 19
+# measured baseball closes since item 1 were the read 35 minutes out, because
+# the firing five minutes before each game's listed start left it out -- the
+# pass kept a recommendation only while its game's status said 'scheduled' or
+# 'pre' (a drift row only while 'scheduled'), and baseball's feed calls a
+# game in its warm-up 'Live', which the poller stores as 'in'; the claim
+# writer refused such a game whole too. Each planting below holds the clock
+# at each firing and answers the venue from a stub -- the near-start reader,
+# the claim writer and the closer are the shipped ones -- so nothing leaves
+# the machine; each escapes on 747a6c7 (the tree it is built on, whose code
+# is the release, 48c4ddd) and is caught on the fix.
+# ---------------------------------------------------------------------------
+
+
+class _HeldFirings:
+    """The near-start pass run at instants written out. The venue answers
+    each firing it is asked from `prices` -- one near-start read of each
+    asked forecast's own contract at the held instant ('T8', over 8.5, for a
+    total; 'TM', the home side, for a moneyline) -- and records what it was
+    asked; the media looks are recorded, not fetched. Every clock the pass,
+    the claim writer and the closer read is held; each is put back on
+    leaving."""
+
+    def __init__(self, prices: dict[str, float]):
+        import importlib
+
+        from gridiron import db as _db
+
+        self.prices = prices
+        self.asked: list[tuple[str, list[int]]] = []
+        self.looked: list[int] = []
+        self.payloads: list[dict] = []
+        self._db = _db
+        self._lines = importlib.import_module("gridiron.market.lines")
+        self._kalshi = importlib.import_module("gridiron.market.kalshi")
+        self._clocked = [importlib.import_module(name) for name in (
+            "gridiron.market.recommend", "gridiron.market.at_the_line")]
+        self._saved: list[tuple[object, str, object]] = []
+
+    def _set(self, owner, name, value):
+        self._saved.append((owner, name, getattr(owner, name)))
+        setattr(owner, name, value)
+
+    def __enter__(self):
+        held = self
+
+        def venue(conn, ids, **_kwargs):
+            now = held._db.utcnow()
+            held.asked.append((now, sorted(ids)))
+            price = held.prices.get(now)
+            written = 0
+            for pid in ids if price is not None else ():
+                market = conn.execute("SELECT market_type FROM predictions"
+                                      " WHERE id = ?", (pid,)).fetchone()[0]
+                ticker, quantity, line, side = (
+                    ("T8", "total", 8.5, "over") if market == "total"
+                    else ("TM", "home_win", None, "home"))
+                conn.execute(
+                    "INSERT INTO venue_quotes (venue, ticker, event_ticker,"
+                    " sport, game_id, market, quantity, line, yes_side,"
+                    " yes_bid, yes_ask, last_price, volume, fetched_utc,"
+                    " read_kind) SELECT 'kalshi', ?, 'E', sport, game_id, ?,"
+                    " ?, ?, ?, ?, ?, NULL, 900, ?, 'near_start'"
+                    "  FROM predictions WHERE id = ?",
+                    (ticker, market, quantity, line, side, price - 0.01,
+                     price + 0.01, now, pid))
+                written += 1
+            conn.commit()
+            return {"quotes": written}
+
+        self._set(self._kalshi, "capture_for_predictions", venue)
+        self._set(self._lines, "refresh_quotes", lambda conn, ids, ttl=None: 0)
+        self._set(self._lines, "snapshot_prediction",
+                  lambda conn, pid, kind: held.looked.append(pid))
+        self._set(self._db, "utcnow", self._db.utcnow)
+        for module in self._clocked:
+            self._set(module, "utcnow", module.utcnow)
+        return self
+
+    def fire(self, conn, now: str) -> dict:
+        from gridiron import tasks as _tasks
+
+        self._db.utcnow = lambda: now
+        for module in self._clocked:
+            module.utcnow = lambda: now
+        got = _tasks._near_start_snapshots(conn)
+        self.payloads.append(got)
+        return got
+
+    def __exit__(self, *exc):
+        for owner, name, value in reversed(self._saved):
+            setattr(owner, name, value)
+        return False
+
+
+def _close_window_world(conn, *, start: str, status: str = "scheduled",
+                        game: str = "g1", market: str = "total",
+                        media: float | None = None, recommended: bool = True):
+    """One game and one forecast on it; unless told otherwise, the read it
+    was priced from (46c, that morning), its claim and its
+    recommendation."""
+    scores = {"scheduled": (None, None), "in": (0, 0), "final": (3, 2)}[status]
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date, home_score, away_score) VALUES"
+        " (?, 'mlb', 2026, 1, 'R', 'MIA', 'NYM', ?, ?, '2026-09-27', ?, ?)",
+        (game, start, status, *scores))
+    subject, line, side, ticker, quantity, yes_side = (
+        ("NYM at MIA", 8.5, "over", "T8", "total", "over") if market == "total"
+        else ("MIA", None, "win", "TM", "home_win", "home"))
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-26T12:00:00Z', 'mlb', ?, ?, ?, ?, 0.6, ?, 'statistical',"
+        " 'final', 'fs2', '{\"coverage\": 1.0}', 'x')",
+        (game, market, subject, line, side))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+        " implied_prob, kind) VALUES (?, '2026-09-26T12:00:05Z', 'harness', ?,"
+        " 'open_at_predict')", (pid, media))
+    rec = None
+    if recommended:
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " last_price, volume, fetched_utc, read_kind) VALUES ('kalshi',"
+            " ?, 'E', 'mlb', ?, ?, ?, ?, ?, 0.45, 0.47, NULL, 900,"
+            " '2026-09-26T12:30:00Z', 'near_start')",
+            (ticker, game, market, quantity, line, yes_side))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, 'kalshi', 'mlb', ?, ?, ?, ?, ?,"
+            " ?, NULL, NULL, 0.6, 0.46, 0.46, 'mid', '2026-09-26T12:31:00Z')",
+            (pid, quote, game, market, quantity, line, yes_side,
+             "rung_matched" if market == "total" else "line_less"))
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units,"
+            " gate_n, created_utc) VALUES (?, 'mlb', ?, ?, 'yes', 0.6,"
+            " 0.46, 10.0, 'flat', 1.0, 0, '2026-09-26T13:00:00Z')",
+            (pid, game, market))
+        rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+    conn.commit()
+    return pid, rec
+
+
+def plant_a_game_marked_live_before_its_start_left_out() -> Result:
+    """Leave a game out of the near-start run because its status says it is
+    under way or over, five minutes before its listed start.
+
+    THE DEFECT, AS IT RAN FROM 2026-09-23 TO THE FIX: the pass kept a
+    recommendation only while its game's status was 'scheduled' or 'pre', a
+    drift row only while 'scheduled', and the claim writer refused a game
+    whose status said anything else whole. Planted as the fourteen were, each
+    five minutes before its listed start: a baseball total recommended on a
+    game marked 'in' (its warm-up, which the league's feed calls 'Live'); a
+    moneyline recommended on a game marked 'in', whose read must become a
+    claim; a recommendation on a game marked 'final' before its time; and a
+    forecast with a media line and no second look yet on a game marked 'in'.
+    Caught only if the firing asks the venue for all three recommendations
+    and the drift row (whose venue look goes with its media look), the claim
+    writer claims the moneyline's read, the drift row gets its media look,
+    and the payload names all four with their status.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    start = "2026-09-27T19:10:00Z"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        total, _ = _close_window_world(conn, start=start, status="in")
+        money, _ = _close_window_world(conn, start=start, status="in",
+                                       game="g2", market="moneyline")
+        over, _ = _close_window_world(conn, start=start, status="final",
+                                      game="g3")
+        drift, _ = _close_window_world(conn, start=start, status="in",
+                                       game="g4", media=0.52,
+                                       recommended=False)
+        payload, stopped = {}, None
+        with _HeldFirings({"2026-09-27T19:05:01Z": 0.55}) as held:
+            try:
+                payload = held.fire(conn, "2026-09-27T19:05:01Z")
+            except Exception as exc:  # noqa: BLE001 - a pass that stops is a finding
+                stopped = f"{type(exc).__name__}: {exc}"
+                conn.rollback()
+        claimed = conn.execute(
+            "SELECT COUNT(*) FROM at_the_line_claims WHERE prediction_id = ?"
+            "   AND created_utc = '2026-09-27T19:05:01Z'", (money,)).fetchone()[0]
+        conn.close()
+
+    asked = held.asked[0][1] if held.asked else []
+    named = {row["prediction_id"]: row["status"]
+             for row in payload.get("near_start_marked_under_way") or []}
+    right = (stopped is None
+             and asked == sorted([total, money, over, drift])
+             and held.looked == [drift]
+             and claimed == 1
+             and named == {total: "in", money: "in", over: "final",
+                           drift: "in"})
+    if right:
+        return Result(LAW_THE_CLOSE,
+                      "leave a game marked live before its start out of the "
+                      "near-start run",
+                      "tasks._near_start_selection, at_the_line.evaluate", True,
+                      "read five minutes before the listed start though the "
+                      "status said 'in' or 'final': three recommendations' "
+                      "contracts asked, the moneyline's read claimed, the "
+                      "drift row's media look taken, and each named in the "
+                      "payload with its status")
+    return Result(LAW_THE_CLOSE,
+                  "leave a game marked live before its start out of the "
+                  "near-start run",
+                  "tasks._near_start_selection, at_the_line.evaluate", False,
+                  f"NOT CAUGHT - five minutes before the listed start the "
+                  f"venue was asked for {asked} (of "
+                  f"{sorted([total, money, over, drift])}), "
+                  f"the media looked at for {held.looked} (of {[drift]}), "
+                  f"{claimed} claim written on the moneyline's read, and the "
+                  f"payload named {named or 'nothing'}"
+                  + (f"; the pass stopped: {stopped}" if stopped else "")
+                  + " -- the shape that made 14 of 19 baseball closes the "
+                  "read 35 minutes out")
+
+
+def plant_a_close_from_a_read_before_the_last_one_before_the_start() -> Result:
+    """Close a recommendation on a read earlier than the last read before
+    its start, when a later one was there to take.
+
+    End to end, the fourteen's shape: priced that morning at 46c, read at the
+    firing 35 minutes out (50c), marked 'in' by its warm-up, and the venue
+    answering 55c at the firing five minutes out. The close must be that
+    read -- the last before the start -- at +9.0c, five minutes out. Before
+    the fix the firing five minutes out left the game out and the close was
+    the read 35 minutes out, 50c, +4.0c. And on reads the record already
+    holds (a second game, started two hours earlier: reads 35 and 5 minutes
+    before its start, at it and a second after it), the close must be the
+    read five minutes out, never an earlier one and never one at or after
+    the start.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        _, rec = _close_window_world(conn, start="2026-09-27T19:10:00Z")
+        # THE HELD READS: g2 starts before the first firing, so no firing
+        # reads it and only the reads it already holds can close it.
+        _, held_rec = _close_window_world(conn, start="2026-09-27T17:10:00Z",
+                                          game="g2")
+        for stamp, bid in (("2026-09-27T16:35:01Z", 0.49),
+                           ("2026-09-27T17:05:01Z", 0.54),
+                           ("2026-09-27T17:10:00Z", 0.88),
+                           ("2026-09-27T17:10:01Z", 0.89)):
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " last_price, volume, fetched_utc, read_kind) VALUES"
+                " ('kalshi', 'T8', 'E', 'mlb', 'g2', 'total', 'total', 8.5,"
+                " 'over', ?, ?, NULL, 900, ?, 'near_start')",
+                (bid, bid + 0.02, stamp))
+        conn.commit()
+        stopped = None
+        with _HeldFirings({"2026-09-27T18:35:01Z": 0.50,
+                           "2026-09-27T19:05:01Z": 0.55}) as held:
+            try:
+                held.fire(conn, "2026-09-27T18:35:01Z")
+                conn.execute("UPDATE games SET status = 'in', home_score = 0,"
+                             " away_score = 0 WHERE id = 'g1'")
+                conn.commit()
+                held.fire(conn, "2026-09-27T19:05:01Z")
+                held.fire(conn, "2026-09-27T19:35:01Z")
+            except Exception as exc:  # noqa: BLE001 - a pass that stops is a finding
+                stopped = f"{type(exc).__name__}: {exc}"
+                conn.rollback()
+
+        def close(rid):
+            return conn.execute(
+                "SELECT r.close_price, r.clv_cents, c.minutes_before_start,"
+                "       q.fetched_utc"
+                "  FROM recommendations r"
+                "  LEFT JOIN recommendation_closes c"
+                "    ON c.recommendation_id = r.id"
+                "  LEFT JOIN venue_quotes q ON q.id = c.close_quote_id"
+                " WHERE r.id = ?", (rid,)).fetchone()
+
+        got, kept = close(rec), close(held_rec)
+        conn.close()
+
+    def at(row, stamp, price, cents):
+        return (row["fetched_utc"] == stamp and row["close_price"] is not None
+                and abs(row["close_price"] - price) < 1e-9
+                and abs(row["clv_cents"] - cents) < 1e-9
+                and abs(row["minutes_before_start"] - 5.0) < 1e-9)
+
+    right = (stopped is None
+             and at(got, "2026-09-27T19:05:01Z", 0.55, 9.0)
+             and at(kept, "2026-09-27T17:05:01Z", 0.55, 9.0))
+    if right:
+        return Result(LAW_THE_CLOSE,
+                      "close on a read before the last one before the start",
+                      "tasks._near_start_selection, "
+                      "market.recommend.close_of", True,
+                      "closed on 55c, the read five minutes out on a game "
+                      "marked 'in' by its warm-up (+9.0c), not the read 35 "
+                      "minutes out; and of reads held 35 and 5 minutes out, "
+                      "at the start and after it, on the one five minutes out")
+    second = [ids for now, ids in held.asked if now == "2026-09-27T19:05:01Z"]
+    return Result(LAW_THE_CLOSE,
+                  "close on a read before the last one before the start",
+                  "tasks._near_start_selection, market.recommend.close_of",
+                  False,
+                  f"NOT CAUGHT - closed on {got['close_price']} "
+                  f"({got['clv_cents']}c) from the read at "
+                  f"{got['fetched_utc']}, {got['minutes_before_start']} "
+                  f"minutes out, where the venue answered 55c five minutes "
+                  f"out (that firing asked for {second[0] if second else 'nothing'}); "
+                  f"the held reads closed on {kept['close_price']} from "
+                  f"{kept['fetched_utc']}"
+                  + (f"; the pass stopped: {stopped}" if stopped else ""))
+
+
+def plant_a_read_after_a_start_to_the_minute_taken_as_before_it() -> Result:
+    """Read a game, claim the read and close on it, thirty seconds after a
+    start stored to the minute, because the start was compared as text.
+
+    UFC's starts are stored to the minute ("...T02:00Z"); every read is
+    stamped to the second, and ':' sorts below 'Z', so "...T02:00:30Z" was
+    BEFORE "...T02:00Z" to the pass, the claim writer, the closer and
+    `close_of` alike -- and `_minutes_between` parsed a start to the second
+    and raised on it. The venue answers 89c thirty seconds after the start,
+    in play. Caught only if that firing reads nothing, no claim is written
+    off an in-play read, and the close is the last read before the start
+    (50c at 01:59, one minute out).
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        _, rec = _close_window_world(conn, start="2026-09-27T02:00Z")
+        stopped = None
+        with _HeldFirings({"2026-09-27T01:59:00Z": 0.50,
+                           "2026-09-27T02:00:30Z": 0.89}) as held:
+            try:
+                held.fire(conn, "2026-09-27T01:59:00Z")
+                held.fire(conn, "2026-09-27T02:00:30Z")
+                held.fire(conn, "2026-09-27T02:30:01Z")
+            except Exception as exc:  # noqa: BLE001 - a pass that stops is a finding
+                stopped = f"{type(exc).__name__}: {exc}"
+                conn.rollback()
+        got = conn.execute(
+            "SELECT r.close_price, c.minutes_before_start, q.fetched_utc"
+            "  FROM recommendations r"
+            "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+            "  LEFT JOIN venue_quotes q ON q.id = c.close_quote_id"
+            " WHERE r.id = ?", (rec,)).fetchone()
+        in_play_claims = conn.execute(
+            "SELECT COUNT(*) FROM at_the_line_claims c"
+            "  JOIN venue_quotes q ON q.id = c.quote_id"
+            " WHERE q.fetched_utc = '2026-09-27T02:00:30Z'").fetchone()[0]
+        conn.close()
+
+    in_play = [now for now, ids in held.asked
+               if now == "2026-09-27T02:00:30Z" and ids]
+    right = (stopped is None and not in_play and in_play_claims == 0
+             and got["fetched_utc"] == "2026-09-27T01:59:00Z"
+             and got["close_price"] is not None
+             and abs(got["close_price"] - 0.50) < 1e-9
+             and abs(got["minutes_before_start"] - 1.0) < 1e-9)
+    if right:
+        return Result(LAW_THE_CLOSE,
+                      "take a read after a start stored to the minute as "
+                      "one before it",
+                      "db.instant, tasks._near_start_selection, "
+                      "at_the_line.evaluate, market.recommend.close_of", True,
+                      "not read thirty seconds after the start, nothing "
+                      "claimed in play; closed on 50c, the read one minute "
+                      "before it")
+    return Result(LAW_THE_CLOSE,
+                  "take a read after a start stored to the minute as one "
+                  "before it",
+                  "db.instant, tasks._near_start_selection, "
+                  "at_the_line.evaluate, market.recommend.close_of", False,
+                  f"NOT CAUGHT - the venue was asked {len(in_play)} time(s) "
+                  f"thirty seconds after the start, {in_play_claims} claim(s) "
+                  f"written off that in-play read, and the close is "
+                  f"{got['close_price']} from the read at {got['fetched_utc']} "
+                  f"({got['minutes_before_start']} minutes before the start)"
+                  + (f"; the pass stopped: {stopped}" if stopped else ""))
+
+
+def plant_an_unreadable_start_that_stops_the_near_start_run() -> Result:
+    """Let one listed start nobody can read stop the near-start run for every
+    game -- or read, close or claim that game on a guess.
+
+    FOUND BY ITEM 1'S PROVER (2026-09-30), on the change as first built: the
+    selection read every candidate's listed start through `db.instant`, which
+    refuses a stamp with no zone or no time by name, and the refusal raised
+    in the selection, before the closer -- so one such start on any game a
+    drift row or an open recommendation sits on stopped every firing, every
+    game left out until its start and every finished game left unclosed;
+    the claim writer and the closer raised on it too. The games table has no
+    rule on the column's form. Planted, five minutes before a baseball
+    total's listed start, its game in its warm-up (marked 'in'), beside two
+    moneylines recommended on games whose listed start cannot be read -- one
+    from a feed that dropped its zone ("2026-09-27T19:40:00"), one a date with
+    no time -- each with a media line. Caught only if the firing five minutes
+    out asks the venue for the warm-up game and no other, names both others
+    with their listed starts, the firing after the start closes the warm-up
+    game on the read five minutes out (+9.0c) and holds the other two open,
+    and the claim writer, handed all three with a read of each other game's
+    contract taken five minutes before the warm-up game's start, writes no
+    claim on either.
+    """
+    import tempfile
+
+    from gridiron import db as _db
+    from gridiron.market import at_the_line as _atl
+
+    unreadable = {"g2": "2026-09-27T19:40:00", "g3": "2026-09-27"}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        _atl.ensure_read_kind(conn)
+        warm, rec = _close_window_world(conn, start="2026-09-27T19:10:00Z",
+                                        status="in")
+        held_recs: dict[int, int] = {}
+        for game, start in unreadable.items():
+            pid, held_rec = _close_window_world(conn, start=start, game=game,
+                                                market="moneyline",
+                                                media=0.52)
+            held_recs[pid] = held_rec
+        payloads: list[dict] = []
+        stopped = None
+        with _HeldFirings({"2026-09-27T19:05:01Z": 0.55}) as held:
+            try:
+                payloads.append(held.fire(conn, "2026-09-27T19:05:01Z"))
+                payloads.append(held.fire(conn, "2026-09-27T19:35:01Z"))
+                for game in unreadable:
+                    conn.execute(
+                        "INSERT INTO venue_quotes (venue, ticker, event_ticker,"
+                        " sport, game_id, market, quantity, line, yes_side,"
+                        " yes_bid, yes_ask, last_price, volume, fetched_utc,"
+                        " read_kind) VALUES ('kalshi', 'TM', 'E', 'mlb', ?,"
+                        " 'moneyline', 'home_win', NULL, 'home', 0.60, 0.62,"
+                        " NULL, 950, '2026-09-27T19:05:01Z', 'near_start')",
+                        (game,))
+                conn.commit()
+                _atl.evaluate(conn, sorted([warm, *held_recs]))
+            except Exception as exc:  # noqa: BLE001 - a pass that stops is a finding
+                stopped = f"{type(exc).__name__}: {exc}"
+                conn.rollback()
+        got = conn.execute(
+            "SELECT r.close_price, r.clv_cents, c.minutes_before_start,"
+            "       q.fetched_utc"
+            "  FROM recommendations r"
+            "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+            "  LEFT JOIN venue_quotes q ON q.id = c.close_quote_id"
+            " WHERE r.id = ?", (rec,)).fetchone()
+        closed_on_a_guess = [r[0] for r in conn.execute(
+            "SELECT id FROM recommendations WHERE closed_utc IS NOT NULL"
+            "   AND id IN (%s)" % ",".join("?" for _ in held_recs),
+            list(held_recs.values()))]
+        guessed_claims = [r[0] for r in conn.execute(
+            "SELECT prediction_id FROM at_the_line_claims"
+            " WHERE created_utc > '2026-09-26T12:31:00Z'"
+            "   AND prediction_id IN (%s)" % ",".join("?" for _ in held_recs),
+            list(held_recs))]
+        conn.close()
+
+    first = held.asked[0][1] if held.asked else []
+    named = [{row["prediction_id"]: row["listed_start"]
+              for row in p.get("near_start_unreadable_start") or []}
+             for p in payloads]
+    want = {pid: unreadable[game] for pid, game in zip(held_recs, unreadable)}
+    right = (stopped is None
+             and [ids for _, ids in held.asked] == [[warm]]
+             and named == [want, want]
+             and got["fetched_utc"] == "2026-09-27T19:05:01Z"
+             and got["close_price"] is not None
+             and abs(got["close_price"] - 0.55) < 1e-9
+             and abs(got["clv_cents"] - 9.0) < 1e-9
+             and not closed_on_a_guess and not guessed_claims)
+    if right:
+        return Result(LAW_THE_CLOSE,
+                      "let one start nobody can read stop the near-start run",
+                      "tasks._near_start_selection, at_the_line.evaluate, "
+                      "market.recommend.record_closing_prices", True,
+                      "the game in its warm-up read five minutes out and "
+                      "closed on that read (+9.0c); the two games whose "
+                      "listed start cannot be read named on both firings, "
+                      "not read, not closed and not claimed")
+    return Result(LAW_THE_CLOSE,
+                  "let one start nobody can read stop the near-start run",
+                  "tasks._near_start_selection, at_the_line.evaluate, "
+                  "market.recommend.record_closing_prices", False,
+                  f"NOT CAUGHT - five minutes out the venue was asked for "
+                  f"{first} (of {[warm]}), the firings named "
+                  f"{named or 'nothing'} as unreadable, the warm-up game "
+                  f"closed on {got['close_price']} from the read at "
+                  f"{got['fetched_utc']}, recommendations {closed_on_a_guess} "
+                  f"on a start nobody can read were closed and forecasts "
+                  f"{guessed_claims} claimed"
+                  + (f"; the pass stopped: {stopped}" if stopped else ""))
+
+
 LAW_WITHDRAWN = "A WITHDRAWN RECOMMENDATION IS NEVER COUNTED"
 
 
@@ -23261,6 +23784,17 @@ def main() -> int:
     results.append(plant_a_first_run_failed_by_name_off_the_strip())
     results.append(plant_a_close_read_from_the_first_of_two_reads())
     results.append(plant_a_close_that_cites_its_own_pricing_read())
+    # THE CLOSE WINDOW (the operator's ruling of 2026-09-30, GRIDIRON_REPAIR
+    # item 1: "The near-start run keeps every game until its start, so the
+    # close is the last read before the start"): a game is read, and its
+    # reads claimed, until its listed start whatever its status says, and a
+    # start is an instant, never text.
+    results.append(plant_a_game_marked_live_before_its_start_left_out())
+    results.append(plant_a_close_from_a_read_before_the_last_one_before_the_start())
+    results.append(plant_a_read_after_a_start_to_the_minute_taken_as_before_it())
+    # AND ONE START NOBODY CAN READ STOPS NOTHING BUT ITSELF (2026-09-30,
+    # item 1's prover): as first built it stopped the run for every game.
+    results.append(plant_an_unreadable_start_that_stops_the_near_start_run())
     results.append(plant_a_withdrawn_recommendation_in_the_closing_line())
     results.append(plant_a_recommendation_reader_that_goes_round_the_door())
     # THE CLOSING LINE'S WINDOW (the operator's ruling 8 of 2026-09-23,

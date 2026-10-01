@@ -38,7 +38,7 @@ from __future__ import annotations
 import sqlite3
 
 from .. import bet, config, correction
-from ..db import just_after, transaction, utcnow
+from ..db import instant, just_after, transaction, utcnow
 from ..priced import coverage
 from . import paper
 
@@ -1374,18 +1374,36 @@ def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
     prediction written by the time of the recommendation, whose price must be
     the recommendation's price. Anything that does not trace is UNMEASURED
     with its reason, never guessed.
+
+    BEFORE THE START IS AN INSTANT (2026-09-30, GRIDIRON_REPAIR item 1, the
+    close window: "the close is the last read before the start"). The listed
+    start, each claim's stamp and each read's are compared as instants
+    (`db.instant`), never as text: a start stored to the minute
+    ("...T02:00Z", as UFC's are) sorted a read at "...T02:00:30Z" before it,
+    so a read thirty seconds into the game could have been the close.
+    Operator question 35 stores and compares every start as an instant; this
+    agrees with it. The rule itself is unchanged: measured on one verified
+    copy of the record (30 September), it gives every one of the 106 closes
+    on the record again, read for read.
     """
     from . import at_the_line
 
     out = {"pricing_quote_id": None, "close_quote_id": None,
            "close_price": None, "clv_cents": None,
            "minutes_before_start": None}
-    claim = conn.execute(
-        "SELECT quote_id, venue_implied FROM at_the_line_claims"
-        " WHERE prediction_id = ? AND created_utc <= ?"
-        "   AND (? IS NULL OR created_utc < ?)"
-        " ORDER BY created_utc DESC, id DESC LIMIT 1",
-        (rec["prediction_id"], rec["created_utc"], kickoff, kickoff)).fetchone()
+    start = instant(kickoff)
+    written = instant(rec["created_utc"])
+    # THE PRICING CLAIM: the latest written by the recommendation's own
+    # stamp and before the start -- instants, then the id, as the text order
+    # broke a tie.
+    claim = max(
+        (c for c in conn.execute(
+            "SELECT id, quote_id, venue_implied, created_utc"
+            "  FROM at_the_line_claims WHERE prediction_id = ?",
+            (rec["prediction_id"],)).fetchall()
+         if instant(c["created_utc"]) <= written
+         and (start is None or instant(c["created_utc"]) < start)),
+        key=lambda c: (instant(c["created_utc"]), c["id"]), default=None)
     if claim is None or round(claim["venue_implied"], 4) != round(rec["price"], 4):
         return {**out, "why": UNTRACEABLE_WHY}
     pricing = conn.execute("SELECT * FROM venue_quotes WHERE id = ?",
@@ -1393,15 +1411,20 @@ def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
     if pricing is None:
         return {**out, "why": UNTRACEABLE_WHY}
     out["pricing_quote_id"] = claim["quote_id"]
-    if kickoff is None:
+    if start is None:
         return {**out, "why": UNMEASURED_WHY}
-    for quote in conn.execute(
+    priced_at = instant(pricing["fetched_utc"])
+    # EVERY NEAR-START READ OF ITS OWN CONTRACT AFTER THE PRICE'S AND BEFORE
+    # THE START, latest first -- instants, then the id, as the text order
+    # broke a tie.
+    reads = sorted(
+        (q for q in conn.execute(
             "SELECT * FROM venue_quotes WHERE venue = ? AND ticker = ?"
-            "   AND read_kind = 'near_start'"
-            "   AND fetched_utc > ? AND fetched_utc < ?"
-            " ORDER BY fetched_utc DESC, id DESC",
-            (pricing["venue"], pricing["ticker"], pricing["fetched_utc"],
-             kickoff)):
+            "   AND read_kind = 'near_start'",
+            (pricing["venue"], pricing["ticker"])).fetchall()
+         if priced_at < instant(q["fetched_utc"]) < start),
+        key=lambda q: (instant(q["fetched_utc"]), q["id"]), reverse=True)
+    for quote in reads:
         if all(_same(quote[k], pricing[k]) for k in _READ_CONTENT):
             # INDISTINGUISHABLE FROM THE READ IT WAS PRICED FROM -- the same
             # bid, ask, last price and volume -- which is what a cached body
@@ -1434,10 +1457,12 @@ def _same(a, b) -> bool:
 
 
 def _minutes_between(earlier: str, later: str) -> float:
-    from datetime import datetime
-
-    fmt = "%Y-%m-%dT%H:%M:%SZ"
-    delta = datetime.strptime(later, fmt) - datetime.strptime(earlier, fmt)
+    # AS INSTANTS (2026-09-30, item 1's close window). Both were parsed to the
+    # second, so a start stored to the minute (UFC's, "...T02:00Z") raised
+    # here: the first UFC recommendation with a measured close would have
+    # stopped the closer -- and with it every near-start firing, since the
+    # closer runs first in the pass.
+    delta = instant(later) - instant(earlier)
     return round(delta.total_seconds() / 60.0, 1)
 
 
@@ -1481,8 +1506,23 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
     for row in rows:
         # A START NOBODY KNOWS YET IS STILL AHEAD. Closing it now would write,
         # once and for good, that no read came before a start that has not
-        # been scheduled.
-        if not row["kickoff_utc"] or row["kickoff_utc"] > now:
+        # been scheduled. AND A START IS AN INSTANT (2026-09-30, item 1's
+        # close window), never compared as text: "...T02:00Z" sorted after a
+        # "now" of "...T02:00:30Z", so a game thirty seconds under way was
+        # still ahead to the closer, and the pass read it again.
+        #
+        # AND A START NOBODY CAN READ IS NOT ONE THAT HAS PASSED (2026-09-30,
+        # item 1's prover): as first built the parse raised here, and the
+        # closer runs first in the near-start pass, so one such start
+        # stopped every firing of every sport. It stays open, counted with
+        # the starts still ahead, and the near-start pass names it on every
+        # firing (`tasks._near_start_selection`'s `unreadable_start`).
+        try:
+            start = instant(row["kickoff_utc"])
+        except ValueError:
+            counts["still_open"] += 1
+            continue
+        if start is None or start > instant(now):
             counts["still_open"] += 1
             continue
         got = close_of(conn, row, row["kickoff_utc"])

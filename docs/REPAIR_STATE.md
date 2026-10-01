@@ -38,14 +38,60 @@
   00:15Z) and rec 115 (GB at TB) -- drawn unpriced; they join Q36 (ii)'s
   rows (now 275 claims, 56 recommendations). 69 of 117 past recommendations
   were drawn under another line's words while live (FOLLOWUPS, THE LIST).
-  **Next: item 1** (fresh on the released code; `item1-held` read as a
-  reference).
+  **Next: item 1's gate and release** (built fresh on the released code,
+  `item1-held` read as a reference; proven and committed locally on
+  2026-10-01 -- ITEM 1 below), then Q35.
   Q36 (ii) (the 269 stored claims and 54 recommendations:
   void, label or leave) and (iii) (what the page draws for a row priced off
   one) are not ruled: until they are, the stored rows stay as written and
   step A draws such a row WITHOUT a price and says why (the conservative
   default: no number is shown under a contract it does not belong to; the
   amended queue rule). Q37 not ruled.
+  **ITEM 1, THE CLOSE WINDOW, BUILT (2026-09-30, fresh on 747a6c7) AND
+  PROVEN (2026-10-01; committed locally on `repair` by its prover, not
+  released; FOLLOWUPS "The close window" and its THE PROVER; CLAUDE.md THE
+  CLOSE):** measured first on one verified copy (made 22:48:13Z, deleted
+  23:28:18Z): NFL 12 of 12 and NCAAF 7 of 8 measured closes since item 1 are the
+  last firing's read (10-30 minutes out, as the :05/:35 schedule gives;
+  NCAAF 103's venue answer lacked its contract) -- NO 35-MINUTE GAP; MLB 5 of
+  19, the 14 left out by nine firings, every one five minutes before its
+  listed start (the selection kept 'scheduled'/'pre' only, and baseball's
+  warm-up is statsapi 'Live' -> 'in'; inferred, the status history not
+  kept). Built: `tasks._near_start_selection` reads every open
+  recommendation and drift row until the listed START INSTANT (`db.instant`),
+  whatever the status; the claim writer claims by the start instant alone;
+  `close_of` and the closer compare instants (as text a start stored to the
+  minute -- UFC's -- took a read 30 s after it as before it, and
+  `_minutes_between` raised on it: latent, it would have stopped every
+  near-start firing at the first UFC close); each firing's payload names
+  every read while its game is marked under way. No close on the record
+  moves (106 of 106 given again; the venue was not read at all for the 14 at
+  the firing five minutes out). THE SCHEDULE IS NOT MOVED (the reading taken:
+  the ruling names no lead, and the :05/:35 firings give a last read before
+  every start -- 25 minutes before a :00/:30 start; one installer line if the
+  operator wants it nearer, FOLLOWUPS). Three plantings escape on 747a6c7 and
+  are caught here; `plant.py` 404/404; the suite 2326 passed, 4 skipped; gate
+  step 2's rows 109/109 on the copy (the two schema rows not run).
+  THE PROVER (its own verified copy, 23:59:56Z, deleted after): the gap
+  table stands figure for figure (NFL and NCAAF: no 35-minute gap); 106 of
+  106 closes given back. FOUND AND FIXED: one listed start `db.instant`
+  cannot read (no zone, no time) on any game a drift row or open
+  recommendation sits on stopped the whole pass on every firing (raised in
+  the selection, before the closer; the claim writer, the closer and the
+  noop count raised too, the count on an empty start as well) -- now not
+  read, named on every firing (`near_start_unreadable_start`), held open by
+  the closer, never claimed; a fourth planting
+  (`plant_an_unreadable_start_that_stops_the_near_start_run`) escapes on
+  747a6c7 and on the change as first built, caught here. Named, not built
+  (FOLLOWUPS): college TBD placeholders (292 games still to start listed at
+  midnight Eastern; Q35's ground), a UFC bout listed at its segment's start,
+  the identical-read skip (latent since item 1), the media day cache; and,
+  for the queue (with the orchestrator), a finished game's pick priced from
+  an in-play claim if it really started before its listed start. SCHEDULE:
+  none to apply. Four plantings escape on 747a6c7 and are caught here;
+  `plant.py` 405/405; gate step 2's rows 109 of 111 on the copy (the two
+  schema rows not run); the suite 2332 passed, 4 skipped.
+  Releasable well before 15 October.
   **Q36.1 BUILT (2026-09-30, resumed 16:01Z after its first build agent was
   cut off; uncommitted for its prover; FOLLOWUPS "An away contract is read
   at the line it sells"):** `at_the_line.home_view_line` reads a venue

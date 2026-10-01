@@ -310,12 +310,90 @@ def test_no_claim_is_written_against_a_live_price(tmp_path):
     assert got["claims"] == 0 and got["quote_after_first_pitch"] == 1
 
 
-def test_no_claim_is_written_on_a_game_already_under_way(tmp_path):
-    conn = _world(tmp_path, status="in")
+# REPLACED 2026-09-30 (GRIDIRON_REPAIR item 1, the close window):
+# `test_no_claim_is_written_on_a_game_already_under_way` pinned the claim
+# writer's STATUS refusal -- a game whose status said 'in' was refused whole,
+# whatever the read's time. The operator's ruling of that day ("The
+# near-start run keeps every game until its start, so the close is the last
+# read before the start") removes it: baseball's feed calls a game in its
+# warm-up 'Live', stored 'in' up to ten minutes before the listed start, and
+# 14 of the 19 measured baseball closes since item 1 were the read 35
+# minutes out because of it. The two tests below hold the one rule left: a
+# read before the listed start is claimed whatever the status says, and a
+# read at or after it never, the start read as an instant.
+
+@pytest.mark.parametrize("status", ["in", "final"])
+def test_a_game_marked_under_way_before_its_listed_start_is_claimed_until_it(
+        tmp_path, status):
+    conn = _world(tmp_path, kickoff="2026-09-07T02:10:00Z", status=status)
     pid = _predict(conn)
-    _quote(conn, price=0.55)
+    _quote(conn, price=0.55, fetched="2026-09-07T02:05:01Z")
     got = atl.evaluate(conn, [pid])
-    assert got["claims"] == 0 and got["game_under_way"] == 1
+    assert got["claims"] == 1, "a read five minutes before the listed start"
+    assert got["game_under_way"] == 0 and got["quote_after_first_pitch"] == 0
+
+
+@pytest.mark.parametrize("status", ["scheduled", "in", "final"])
+@pytest.mark.parametrize("kickoff, fetched", [
+    ("2026-09-07T02:10:00Z", "2026-09-07T02:10:00Z"),   # at the start
+    ("2026-09-07T02:10:00Z", "2026-09-07T02:10:01Z"),   # a second after it
+    # A START STORED TO THE MINUTE (UFC's): as text, "...T02:10:30Z" sorts
+    # before "...T02:10Z" (':' is below 'Z'), and the read was claimed.
+    ("2026-09-07T02:10Z", "2026-09-07T02:10:30Z"),
+    ("2026-09-07T02:10Z", "2026-09-07T02:10:00Z"),
+])
+def test_a_read_at_or_after_the_listed_start_is_never_claimed_whatever_the_status(
+        tmp_path, status, kickoff, fetched):
+    conn = _world(tmp_path, kickoff=kickoff, status=status)
+    pid = _predict(conn)
+    _quote(conn, price=0.55, fetched=fetched)
+    got = atl.evaluate(conn, [pid])
+    assert got["claims"] == 0 and got["quote_after_first_pitch"] == 1, \
+        (kickoff, fetched, status)
+
+
+def test_a_read_in_the_minute_before_a_start_stored_to_the_minute_is_claimed(
+        tmp_path):
+    conn = _world(tmp_path, kickoff="2026-09-07T02:10Z", status="in")
+    pid = _predict(conn)
+    _quote(conn, price=0.55, fetched="2026-09-07T02:09:59Z")
+    assert atl.evaluate(conn, [pid])["claims"] == 1
+
+
+@pytest.mark.parametrize("kickoff", ["2026-09-07T02:10:00", "2026-09-07"])
+def test_a_start_nobody_can_read_writes_no_claim_and_stops_no_other(
+        tmp_path, kickoff):
+    """ADDED 2026-09-30 (item 1's prover): whether a read came before a start
+    nobody can read -- a feed that dropped its zone, a date with no time --
+    cannot be told, so no claim is written on it, counted by its own name;
+    as first built the parse raised and took the call's other forecasts with
+    it (a predict pass hands the claim writer its whole slate)."""
+    conn = _world(tmp_path, kickoff=kickoff)
+    unread = _predict(conn)
+    _quote(conn, price=0.55, fetched="2026-09-07T02:05:01Z")
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g2', 'mlb', 2026, 1,"
+        " 'R', 'ATL', 'WSH', '2026-09-07T02:10:00Z', 'scheduled',"
+        " '2026-09-06')")
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-07T00:00:00Z', 'mlb', 'g2', 'moneyline', 'ATL', 0.6,"
+        " 'win', 'statistical', 'final', 'fs2', '{\"coverage\": 1.0}', 'x')")
+    read = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+        " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+        " last_price, volume, fetched_utc) VALUES (?, 'T2', 'E2', 'mlb',"
+        " 'g2', 'moneyline', 'home_win', NULL, 'home', 0.54, 0.56, 0.55,"
+        " 900, '2026-09-07T02:05:01Z')", (atl.VENUE,))
+    conn.commit()
+    got = atl.evaluate(conn, [unread, read])
+    assert got["start_unreadable"] == 1 and got["claims"] == 1, got
+    assert [r[0] for r in conn.execute(
+        "SELECT prediction_id FROM at_the_line_claims")] == [read]
 
 
 # --- the table itself --------------------------------------------------------

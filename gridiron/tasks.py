@@ -658,17 +658,19 @@ def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
         # the two predictions on it already had their second look, taken on an
         # earlier firing of the same clock. A task that misreports why it did
         # nothing is how a scheduler talks somebody out of trusting it.
-        soon = conn.execute(
-            "SELECT COUNT(*) FROM games WHERE status = 'scheduled'"
-            "   AND kickoff_utc > ? AND kickoff_utc <= ?",
-            (db.utcnow(), _plus_hours(db.utcnow(), NEAR_START_HOURS))
-        ).fetchone()[0]
+        #
+        # BY THE LISTED START, READ AS AN INSTANT, WHATEVER THE STATUS SAYS
+        # (2026-09-30, GRIDIRON_REPAIR item 1, the close window). This counted
+        # games still 'scheduled', by text; it counts the window the
+        # selection reads now (`_near_start_selection`), so the words count
+        # the games the firing would have read.
+        soon = _games_starting_within(conn, db.utcnow())
         counts["near_start_games_in_window"] = soon
         # WHAT IT CLOSED, EVEN ON A NOOP (ruling 2026-09-08). The pass still
         # closes finished games on a firing with nothing near start, and a
         # detail line that said only "no game starts" would hide the one
         # thing this firing did.
-        also = _closes_words(counts)
+        also = _closes_words(counts) + _unreadable_start_words(counts)
         if soon:
             return ("noop",
                     f"{language.counted(soon, 'game')} starts within the next "
@@ -689,8 +691,23 @@ def _run_near_start(conn: sqlite3.Connection) -> tuple[str, str, dict]:
             f"{language.counted(asked, 'forecast')} asked at the line, "
             f"{language.counted(quotes, 'price')} came back; "
             f"{language.counted(claims, 'claim')} at the line"
-            + pairs + _closes_words(counts),
+            + pairs + _closes_words(counts) + _unreadable_start_words(counts),
             counts)
+
+
+def _unreadable_start_words(counts: dict) -> str:
+    """The forecasts a firing could not read because their game's listed
+    start cannot be read as an instant, in words (2026-09-30, item 1's
+    prover): named in the payload by `_near_start_selection`, and said in the
+    detail line so a firing that left a game out never reads as one that left
+    none out."""
+    named = counts.get("near_start_unreadable_start") or []
+    if not named:
+        return ""
+    games = len({row["game_id"] for row in named})
+    return (f"; {language.counted(len(named), 'forecast')} not read: "
+            f"the listed start of {language.counted(games, 'game')} cannot "
+            f"be read as an instant")
 
 
 def _closes_words(counts: dict) -> str:
@@ -721,10 +738,9 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     drift, and storing it would make the count of pairs disagree with the count
     of rows.
     """
-    from .market import espn, lines, recommend
+    from .market import espn, lines
 
     now = db.utcnow()
-    horizon = _plus_hours(now, NEAR_START_HOURS)
     # RETIRED 2026-09-23 (GRIDIRON_REPAIR item 1): THE ONCE-THEN-EXCLUDE.
     #
     #     AND NOT EXISTS (SELECT 1 FROM market_snapshots n
@@ -744,33 +760,14 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # is one media snapshot each side (`market_snapshots_one_per_kind`, a
     # unique index, not a filter), and re-reading it every firing would only
     # multiply claims nothing reads.
-    drift = [r["id"] for r in conn.execute(
-        "SELECT p.id FROM predictions p"
-        " JOIN games g ON g.id = p.game_id"
-        " JOIN market_snapshots o"
-        "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
-        " WHERE g.status = 'scheduled'"
-        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?"
-        "   AND o.implied_prob IS NOT NULL",
-        (now, horizon),
-    )]
-    # THE KICKOFF IS THE FACT, not the status: a status is only as fresh as
-    # the last refresh, and a recommendation is read until its game starts.
-    # And the status as well, the same pair of checks `at_the_line.evaluate`
-    # makes: a game the record shows under way before its listed time (a
-    # doubleheader's second game) is priced off the game, not before it.
-    # A WITHDRAWN RECOMMENDATION IS NOT READ AGAIN (ruling 1, 2026-09-24): its
-    # close is never counted, so a look at its contract on every firing would
-    # spend a venue read and write a claim on a forecast nobody stands behind.
-    recs = [r["prediction_id"] for r in conn.execute(
-        "SELECT DISTINCT r.prediction_id FROM recommendations r"
-        " JOIN games g ON g.id = r.game_id"
-        " WHERE r.closed_utc IS NULL"
-        "   AND (g.status IS NULL OR g.status IN ('scheduled', 'pre'))"
-        "   AND g.kickoff_utc > ? AND g.kickoff_utc <= ?"
-        + recommend.not_withdrawn(conn),
-        (now, horizon),
-    )]
+    #
+    # AND EVERY GAME UNTIL ITS LISTED START, WHATEVER ITS STATUS SAYS
+    # (2026-09-30, the operator's ruling on the close window, GRIDIRON_REPAIR
+    # item 1: "The near-start run keeps every game until its start, so the
+    # close is the last read before the start"). The selection is
+    # `_near_start_selection`, below, and it says why the status left.
+    selected = _near_start_selection(conn, now)
+    drift, recs = selected["drift"], selected["recs"]
     firsts = [pid for pid in drift if not conn.execute(
         "SELECT 1 FROM market_snapshots WHERE prediction_id = ?"
         "   AND kind = 'near_start'", (pid,)).fetchone()]
@@ -785,9 +782,11 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # closed, because nothing else was near start.
     #
     # THE TWO SETS ARE DISJOINT, which is what makes this a move rather than a
-    # rewrite: the rows above are games still SCHEDULED with a kickoff in the
-    # future, and the closer only touches recommendations whose kickoff has
-    # passed. Nothing is closed here that the second look would have priced.
+    # rewrite: the rows above are games whose listed start is still ahead,
+    # and the closer only touches recommendations whose start has passed --
+    # both read as instants from 2026-09-30, and neither by the status (the
+    # rows above were games still SCHEDULED, compared as text, until then).
+    # Nothing is closed here that the second look would have priced.
     #
     # WHAT THE CLOSE IS, from 2026-09-23: the recommendation's own contract's
     # last near-start read before kickoff, or UNMEASURED where there is none
@@ -798,9 +797,13 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
                "closing_still_open": closed["still_open"]}
 
     ids = sorted(set(drift) | set(recs))
+    # A START NOBODY CAN READ, NAMED ON EVERY FIRING, read or not (2026-09-30,
+    # item 1's prover): `_near_start_selection` says why.
+    unreadable = {"near_start_unreadable_start": selected["unreadable_start"]}
     if not ids:
         return {"near_start_taken": 0, "near_start_failed": 0,
-                "near_start_due": 0, **closing}
+                "near_start_due": 0, "near_start_marked_under_way": [],
+                **unreadable, **closing}
 
     # RE-READ THE MARKET FIRST, AND FORCE IT PAST THE CACHE.
     #
@@ -840,7 +843,157 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
             "near_start_asked": len(looks),
             "venue_near_start": venue["quotes"],
             "at_the_line_claims": venue["claims"],
-            **closing}
+            # WHAT THE STATUS SAID, KEPT (2026-09-30, item 1's close window):
+            # the record holds only a game's current status, so the re-read
+            # of 29 September could only INFER why fourteen baseball games
+            # were left out five minutes before their start. Each forecast
+            # this firing read while its game's status said it was under way
+            # or over is named here, with that status and its listed start.
+            "near_start_marked_under_way": selected["marked_under_way"],
+            **unreadable, **closing}
+
+
+def _near_start_selection(conn: sqlite3.Connection, now: str) -> dict:
+    """Which forecasts the near-start pass reads at `now`: every drift row (a
+    forecast whose media line was read at its first look) and every open,
+    standing recommendation, whose game's LISTED START is after `now` and no
+    more than `NEAR_START_HOURS` after it -- read as instants, WHATEVER THE
+    GAME'S STATUS SAYS.
+
+    THE OPERATOR'S RULING OF 2026-09-30 (GRIDIRON_REPAIR item 1, the close
+    window): "The near-start run keeps every game until its start, so the
+    close is the last read before the start." Until that date the pass kept
+    a recommendation only while its game's status was 'scheduled' or 'pre'
+    (the table has never held 'pre') and a drift row only while 'scheduled',
+    each beside the listed start compared as text. Measured on one verified
+    copy of the record (30 September, FOLLOWUPS "The close window"): 14 of
+    the 19 measured baseball closes since item 1 were the read 35 minutes out
+    (34.5 to 35.0), because the firing five minutes before each game's listed
+    start left it out -- nine firings, fourteen recommendations, every one of
+    them five minutes before its listed start and no other. The live poller
+    maps statsapi's 'Live' to 'in' (`live.MLB_STATES`), its window opens ten
+    minutes before a listed start (`live.WINDOW_LEAD`), and the league calls a
+    game in its warm-up 'Live'; the record keeps no history of a game's
+    status, so that is inferred. NFL (12 of 12) and NCAAF (7 of 8; the eighth
+    a read whose venue answer lacked its contract) closed on the last firing
+    before the start. So THE STATUS IS NOT CONSULTED AT ALL: warm-up, 'Live',
+    'in', delayed, or 'final' before its time, a game is read until its
+    listed start, and after it never. A start is read by `db.instant`, to the
+    second or to the minute as stored, never compared as text (operator
+    question 35, next in the order, stores and compares every start as an
+    instant; this agrees with it).
+
+    WHAT THE STATUS CHECK STOOD AGAINST, AND WHY IT GOES ANYWAY. Its comment
+    named a game under way before its listed time (a doubleheader's second
+    game), priced off the game rather than before it. The ruling reads every
+    game until its listed start whatever its status says, so such a game is
+    read, and its reads claimed, until then (FOLLOWUPS, "The close window":
+    none is measurable on the record, which keeps no status history -- the
+    payload below now does -- and the live poll only opens ten minutes before
+    a listed start, so the check stood only in those minutes; the one
+    doubleheader of the record's September whose two games are listed
+    together, BAL at NYY on the 25th, lists them five minutes apart, 20:05Z
+    and 20:10Z, so its second game's listed start was earlier than it was
+    played, not later).
+
+    A WITHDRAWN RECOMMENDATION IS NOT READ AGAIN (ruling 1, 2026-09-24): its
+    close is never counted, so a look at its contract on every firing would
+    spend a venue read and write a claim on a forecast nobody stands behind.
+
+    A START NOBODY CAN READ STOPS NOTHING BUT ITSELF (2026-09-30, item 1's
+    prover). As first built, one listed start `db.instant` refuses -- a feed
+    that drops its zone ("2026-10-03T19:30:00"), a date with no time -- on ANY
+    game a drift row or an open recommendation sits on, of any sport and any
+    date, raised here, before the closer, and stopped the whole pass on every
+    firing until the row was mended by hand: every other game, warm-up or
+    not, left out until its start, and every finished game left unclosed --
+    the left-out this ruling removes, made total. (No start on the record
+    fails the parse on 30 September; no loader refuses one, and the games
+    table has no rule on the column's form.) Such a forecast is not read --
+    whether its start is ahead cannot be told, and it is never guessed -- and
+    it is NAMED, with its listed start as stored, on every firing it would
+    have been asked about (`unreadable_start`), so the record says which game
+    was not read and why; every other game is read as the ruling says. The
+    closer holds such a recommendation open (`recommend.
+    record_closing_prices`: a start nobody can read is not one that has
+    passed), and the claim writer writes no claim on such a game
+    (`at_the_line.evaluate`'s `start_unreadable`).
+
+    Returns the drift rows and the recommendations' forecasts (each sorted,
+    each once), and every forecast among them whose game's status said it
+    was under way or over, with that status and its listed start -- so the
+    next firing that reads a game in its warm-up says so on the record -- and
+    every candidate whose listed start cannot be read.
+    """
+    from .market import recommend
+
+    at = db.instant(now)
+    horizon = at + timedelta(hours=NEAR_START_HOURS)
+    unreadable: dict[int, dict] = {}
+
+    def ahead(row: sqlite3.Row) -> bool:
+        try:
+            when = db.instant(row["kickoff_utc"])
+        except ValueError:
+            unreadable[row["id"]] = {"prediction_id": row["id"],
+                                     "game_id": row["game_id"],
+                                     "listed_start": row["kickoff_utc"]}
+            return False
+        return when is not None and at < when <= horizon
+
+    drift_rows = [r for r in conn.execute(
+        "SELECT p.id, p.game_id, g.kickoff_utc, g.status FROM predictions p"
+        " JOIN games g ON g.id = p.game_id"
+        " JOIN market_snapshots o"
+        "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
+        " WHERE g.kickoff_utc IS NOT NULL"
+        "   AND o.implied_prob IS NOT NULL").fetchall()
+        if ahead(r)]
+    rec_rows = [r for r in conn.execute(
+        "SELECT DISTINCT r.prediction_id AS id, r.game_id, g.kickoff_utc,"
+        "       g.status"
+        "  FROM recommendations r"
+        " JOIN games g ON g.id = r.game_id"
+        " WHERE r.closed_utc IS NULL"
+        "   AND g.kickoff_utc IS NOT NULL"
+        + recommend.not_withdrawn(conn)).fetchall()
+        if ahead(r)]
+    marked: dict[int, dict] = {}
+    for row in drift_rows + rec_rows:
+        if row["status"] != "scheduled":
+            marked[row["id"]] = {"prediction_id": row["id"],
+                                 "game_id": row["game_id"],
+                                 "status": row["status"],
+                                 "listed_start": row["kickoff_utc"]}
+    return {"drift": sorted({r["id"] for r in drift_rows}),
+            "recs": sorted({r["id"] for r in rec_rows}),
+            "marked_under_way": [marked[pid] for pid in sorted(marked)],
+            "unreadable_start": [unreadable[pid]
+                                 for pid in sorted(unreadable)]}
+
+
+def _games_starting_within(conn: sqlite3.Connection, now: str) -> int:
+    """How many games' listed starts fall after `now` and within
+    `NEAR_START_HOURS` of it, read as instants, whatever their status says
+    (2026-09-30, item 1's close window): the window `_near_start_selection`
+    reads, counted for the words of a firing that read nothing. A start
+    `db.instant` cannot read is not counted -- whether it is ahead cannot be
+    told -- and never stops the count (2026-09-30, item 1's prover: as first
+    built one such start among every game of the record raised here); the
+    selection names any such game a forecast of its would have been read
+    on."""
+    at = db.instant(now)
+    horizon = at + timedelta(hours=NEAR_START_HOURS)
+    count = 0
+    for row in conn.execute(
+            "SELECT kickoff_utc FROM games WHERE kickoff_utc IS NOT NULL"):
+        try:
+            when = db.instant(row["kickoff_utc"])
+        except ValueError:
+            continue
+        if when is not None and at < when <= horizon:
+            count += 1
+    return count
 
 
 def _plus_hours(stamp: str, hours: float) -> str:
