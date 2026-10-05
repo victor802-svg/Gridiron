@@ -764,6 +764,9 @@ def test_every_new_guard_is_in_the_planted_harness():
         # and its prover's (2026-10-05): every sentence of the rule says when,
         # and the record bears the date out
         "plant_a_two_contract_sentence_dated_before_its_claims",
+        # OPERATOR QUESTION 37 (ruled 2026-10-05): a recommendation headlines
+        # the contract it buys, the model's own side named beside it.
+        "plant_a_recommendation_headlining_the_side_it_does_not_buy",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

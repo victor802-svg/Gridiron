@@ -517,8 +517,55 @@ def phrase_of_the_other_side(item: dict) -> str:
     (`subjects.other_side_spelling`), and the words come from `phrase`, so a
     side it cannot place is refused by name as it is everywhere else.
     """
+    return phrase(the_other_side(item))
+
+
+def the_other_side(item: dict) -> dict:
+    """The question on `item` on its OTHER side -- the same game, market,
+    subject and line, the side swapped through the one place
+    (`subjects.other_side_spelling`) -- so every composer here (`phrase`,
+    `tile_line`, `pick_line_words`, `club_named`) words the contract a
+    recommendation buys when it is not the side the model took.
+
+    OPERATOR QUESTION 37, RULED 2026-10-05 ("headline the contract the
+    recommendation buys; the model's own side named beside it"). The page
+    headlined the model's side -- "Atlanta +2.5 · 32% · 48c · $15" -- beside
+    the size, the edge and the outline of the contract the recommendation
+    buys, New Orleans -2.5. A side it cannot place is refused by name, as
+    everywhere else."""
     other = _subjects.other_side_spelling(item.get("market_type"), item.get("model_side"))
-    return phrase(dict(item, model_side=other))
+    out = dict(item, model_side=other)
+    # THE STORED SENTENCE IS THE MODEL'S SIDE'S, never the other side's: a
+    # composer that read it would word the side the model took.
+    out.pop("phrase", None)
+    out.pop("row_title", None)
+    return out
+
+
+def own_side_words(words: str, probability: float | None, *,
+                   clause: bool = False) -> str:
+    """The model's own side and its number, said beside a pick that headlines
+    the OTHER side -- the contract the recommendation buys (operator question
+    37, ruled 2026-10-05: "headline the contract the recommendation buys; the
+    model's own side named beside it").
+
+    "The model's own side: Washington +1.5, 58%" on the row and the tile;
+    `clause` gives the lower-case form for the end of a sentence ("... the
+    model's own side: Washington covers +1.5, 58%"). The number is the
+    model's for that side at the same contract's line, so the two sides of
+    one contract read as one hundred."""
+    start = "the model's own side" if clause else "The model's own side"
+    if probability is None:
+        return f"{start}: {words}"
+    return f"{start}: {words}, {round(float(probability) * 100)}%"
+
+
+def own_side_reasons_words(own_side: str) -> str:
+    """The words' tooltip, beside a pick headlining the contract bought on
+    the other side of the model's (operator question 37, 2026-10-05): the
+    reasons after it are the model's for its own side, and it says so."""
+    return (f"This buys the other side of the model's own. {own_side}. "
+            f"The reasons that follow are the model's, for its own side.")
 
 
 class LineNotNamed(ValueError):
@@ -3673,7 +3720,8 @@ def ranker_verdict_line(led_brier: float | None, rest_brier: float | None,
 
 def recommendation_line(*, words: str, fair_value: float, price: float,
                         edge_cents: float, units: float,
-                        flat: bool, size_why: str | None = None) -> str:
+                        flat: bool, size_why: str | None = None,
+                        own_side: str | None = None) -> str:
     """One recommendation, in the order a reader needs it.
 
     THE SIZE CARRIES ITS OWN REASON, and there are two different ones behind a
@@ -3692,11 +3740,17 @@ def recommendation_line(*, words: str, fair_value: float, price: float,
     model makes it 42¢, the venue is at 38¢, and the yes side is worth
     +2.1¢", where 42% and 38¢ are Detroit -1.5's and Detroit -1.5 is what it
     bought. The caller works out the side (`views._recommendations_block`).
+
+    `own_side` (operator question 37, ruled 2026-10-05: "headline the
+    contract the recommendation buys; the model's own side named beside
+    it"): where the side bought is not the one the model took, the line ends
+    by naming the model's own side and its number (`own_side_words`).
     """
-    return (f"{words} — the model makes it {round(fair_value * 100)}¢, the "
+    line = (f"{words} — the model makes it {round(fair_value * 100)}¢, the "
             f"venue is at {round(price * 100)}¢, and it is worth "
             f"{edge_cents:+.1f}¢ a contract after the fee. "
             f"{_units_words(units, flat, size_why)}")
+    return f"{line} {own_side}." if own_side else line
 
 
 #: A FLAT SIZE IS NOT ALWAYS ONE UNIT (GRIDIRON_COMBOS C3, 2026-09-08). A
@@ -4769,7 +4823,7 @@ def taken_today_heading(n: int) -> str:
 
 
 def taken_entry_words(question: str, edge_cents: float | None, *,
-                      across: bool = False) -> str:
+                      across: bool = False, own_side: str | None = None) -> str:
     """One line in the running list: what it was, and what it was worth then.
 
     THE EDGE IS FROZEN AT THE TAP. A number that moved afterwards would make
@@ -4778,12 +4832,18 @@ def taken_entry_words(question: str, edge_cents: float | None, *,
     `question` names the contract the edge belongs to (pick-number step A,
     2026-09-30), and an edge worked out across two contracts is not stated
     (`across`): no single contract carries it.
+
+    `own_side` (operator question 37, ruled 2026-10-05): `question` names the
+    contract the recommendation bought, and where that is the other side of
+    the one the model took, the model's own side and number follow it.
     """
     if across:
         return f"{question} · {across_two_contracts_price_words()} carries its edge"
     if edge_cents is None:
-        return f"{question} · no price recorded at the time"
-    return f"{question} · {edge_cents:+.1f}¢ when marked"
+        said = f"{question} · no price recorded at the time"
+    else:
+        said = f"{question} · {edge_cents:+.1f}¢ when marked"
+    return f"{said} — {own_side}" if own_side else said
 
 
 def worked_example_caption(phrase: str | None, shown_prob: float | None) -> str:
@@ -5668,6 +5728,22 @@ def my_day_counts_words(n: int, live: int, won: int, lost: int) -> str:
     return " · ".join(parts)
 
 
+def my_day_line_tip(question: str, own_side: str | None = None) -> str:
+    """A My day chip's tooltip: the contract its words name, and -- where the
+    pick is a recommendation buying the OTHER side of the model's words -- the
+    model's own side and number beside it ("New Orleans covers -2.5. The
+    model's own side: Atlanta +2.5, 32%.").
+
+    Q37'S PROVER (2026-10-05; operator question 37, ruled that day: "headline
+    the contract the recommendation buys; the model's own side named beside
+    it"). The chip headlined the contract bought and named the model's side
+    nowhere, where the row, the tile, the line and the taken rail all do; the
+    chip has no room for a sentence, so it is said in the tooltip."""
+    if not own_side:
+        return question
+    return f"{question}. {own_side}." if question else f"{own_side}."
+
+
 def my_day_status_words(state: str, signal: str, score_words: str | None) -> str:
     """The chip's state in a word: upcoming, live with the score, won, lost."""
     if state == "live":
@@ -5710,9 +5786,17 @@ def factor_line_words(plain_name: str | None, factor: str) -> str:
     return plain_name or humanise(factor)
 
 
-def pick_label_words(state: str, signal: str) -> str:
-    """The small label over the row's pick: whose it is, and its state."""
+def pick_label_words(state: str, signal: str, *, other_side: bool = False) -> str:
+    """The small label over the row's pick: whose it is, and its state.
+
+    `other_side` (operator question 37, ruled 2026-10-05): the pick headlines
+    the contract the recommendation buys, and where that is the other side of
+    the one the model took the label says so -- the row beneath it names the
+    model's own side and number. (Short: it heads a 290px column, and the
+    render of 2026-10-05 wrapped a longer one onto two lines at 1300px.)"""
     base = "Model's pick"
+    if other_side and state == "upcoming":
+        return base + " · the other side"
     if state == "live":
         return base + " · pregame"
     if signal == "won":
@@ -5772,15 +5856,26 @@ def signal_tip(signal: str) -> str | None:
 
 
 def prob_tip(shown: float | None, forecaster_label: str, *,
-             asked_words: str | None = None) -> str:
+             asked_words: str | None = None, own_side: str | None = None) -> str:
     """The model's chance, and where it came from.
 
     `asked_words` (pick-number step A, 2026-09-30): where the pick names the
     venue's contract at another line than the model was asked about, the
     chance is the model's own distribution read at that contract's line, and
-    the tooltip says what the model was asked (`asked_elsewhere_words`)."""
+    the tooltip says what the model was asked (`asked_elsewhere_words`).
+
+    `own_side` (operator question 37, ruled 2026-10-05): the pick headlines
+    the contract the recommendation buys, which is the OTHER side of the one
+    the model took; the chance is that contract's, and the tooltip names the
+    model's own side and its number (`own_side_words`)."""
     if shown is None:
         return "No probability on this row."
+    if own_side:
+        return (f"The {forecaster_label} forecaster's chance for this contract, "
+                f"{round(shown * 100)}%. It is the other side of the one the "
+                f"model took, and the recommendation buys it because the price "
+                f"makes it worth buying. {own_side}."
+                + (f" {asked_words}" if asked_words else ""))
     if asked_words:
         return (f"The {forecaster_label} forecaster's chance for this contract, "
                 f"{round(shown * 100)}%, read from the forecast it wrote before "

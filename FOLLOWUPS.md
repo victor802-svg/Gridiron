@@ -13586,3 +13586,356 @@ a pick, breaks neither LAW 1 nor LAW 3 and makes no gate count false)*:
   tolerance, the operator's call; a faster orphan scan would be the
   mechanism. A gate whose step 1 fails here fails on a clock, not a law:
   the rerun rule (one as-is rerun) covers it.
+
+## A recommendation headlines the contract it buys, the model's own side named beside it -- built 2026-10-05 *(operator question 37, ruled 2026-10-05, docs/briefs/2026-10-05-rulings.md: "Q37: headline the contract the recommendation buys; the model's own side named beside it."; the order of 5 October, "A (Q36, step A, spread edge re-run, Q37) -> ..."; built on b39754c -- Q36 (ii), committed locally; uncommitted for its prover)*
+
+The ruling is question 37's (A), as recommended: the pick names the contract
+the recommendation buys -- its words, chance, price, payout, size and
+outline -- and says beside it, in plain words, the model's own side and
+number; the label over it says the pick is the other side. Built through
+step A's door (`views._the_contract`, the line) and step C's side door
+(`views._the_side_bought`, the side).
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-10-05T19:42:58Z to 19:43:53Z: integrity ok, 64 tables, none mismatched; read only through `db.read_only`, except the test server's sign-in rows during the render; scratchpad `a2/q37/measure.py` -> `measure.txt`, `measure.json`)*
+
+- **22 of the 127 recommendations buy the other side of their question's
+  words** -- question 37's 16 (MLB 47, 82; NFL 67-69, 71-74, 76-78; NCAAF
+  89, 91, 102, 103) and six since it was asked: NFL 115 (GB at TB), 117
+  (ATL at NO), 118 (IND at WAS), 119 (DEN at SF), NCAAF 123 (SAM at UAB),
+  126 (TXSO at FAU). All spreads; none withdrawn; 7 of them (68, 69, 73,
+  77, 78, 91, 115) priced across two contracts, so drawn with no price or
+  side at all (step A; ruling A.2). One is on a game still to start: rec
+  117, 6 October 00:15Z. No game pick on the record is taken.
+- **Rec 117 is its EARLY pass's** (forecast 3583, 30 September 18:04Z). Its
+  final pass (3755, 1 October 15:04Z) stands on the slate and is not on the
+  shortlist, so the standing view prices nothing on the game and draws
+  "Atlanta +9.5 · 58% · venue has not listed this yet"; rec 117 is drawn on
+  the early view (the API's `early_view`, which no control on the page
+  sets). As released, the early view drew it "MODEL'S PICK · ATLANTA +2.5 ·
+  32% · 48c · 2.06x · $15", outlined, with "+15.0c on the other side" on the
+  tile -- New Orleans -2.5's size, edge and outline under Atlanta's words.
+
+### BUILT
+
+- **The one test, `views._buys_the_other_side`**: an entry with a side
+  bought (`side`, the yes or no side of the claim's fixed proposition) whose
+  question's words name the other side (`question_takes_the_proposition`,
+  placed by the one place); never a live card (LAW 5's in-game rule: it
+  carries nothing that can be acted on, and its entry no side).
+- **The Today card** (`views._today_card`) headlines the contract bought
+  where the test holds: its `question`, `line_words` and `named_club` are
+  that contract's, worded through step C's side door at step A's line;
+  `question_takes_the_proposition` says whether the card's WORDS name the
+  claim's proposition, so the chip, the price, the payout, the edge label
+  (bare: the edge is the headline's own), the accent and the board's turn
+  are the contract bought's; `own_side_words` names the model's own side at
+  the same contract's line with its number ("The model's own side: Atlanta
+  +2.5, 32%"; `language.own_side_words`) and `buys_the_other_side` says so
+  as a fact; the forecast's numbers line and why heading name the question
+  they are about ("For Washington +1.5, as the model was asked: ...", step
+  A's prover's composer); a finished game's card (payload only) carries the
+  contract bought's figure and its claim's verdict.
+- **The board's row and tile** (`board._question_block`) draw the card's
+  words and numbers, the size, the edge bare and the outline, and the own
+  side on the face (`.pick-own`, `.q-own`: muted words on 16px lines, no
+  value colour) and in the chance's tooltip (`language.prob_tip(own_side=)`)
+  and the words' tooltip (`language.own_side_reasons_words`: "This buys the
+  other side of the model's own. ... The reasons that follow are the
+  model's, for its own side." -- after what the model was asked, which
+  names the question at its own line first); the row's label is "Model's
+  pick · the other side" (`language.pick_label_words(other_side=)`; a
+  longer "the other side, at this price" wrapped onto two lines at 1300px in
+  the first render, and was cut). **My day's chip** wears the club of the
+  card's words (the block's `named_club` is the card's).
+- **The recommendation line** named the side bought from step C; it now ends
+  "The model's own side: Atlanta covers +2.5, 32%." (`language.
+  recommendation_line(own_side=)`), and carries `buys_the_other_side`.
+- **The taken rail** (`views.taken_today`) names the contract its STORED
+  recommendation bought -- the row's side and number, at its claim's line,
+  through the same side door -- and "— the model's own side: ..." after the
+  edge when marked; each entry carries `side`, `words_line_asked` and
+  `fair_value` for the check.
+- **Unchanged**: a watched card, an unpriced one, a live card and the
+  board's finished row (the forecast's own verdict, the settled group's
+  card); a recommendation on the model's own side; combos (their legs were
+  named on the side bought from step B); the stored rows (LAW 3).
+- **The gate.** `audit.headline_faults` works each recommendation's headline
+  out again from the payload -- the side bought from its recommendation
+  line; the side the MODEL took from the slate card's stored side through
+  the one place and its subject against the board row's home club
+  (`audit._model_takes_the_proposition`), never the Today card's say-so; the
+  contract bought's words at the line the card's words are asked at; its
+  chance, cost and payout from the card's proposition number and price --
+  and names a Today card, row, tile, label, My day chip, recommendation line
+  or taken rail entry headlining anything else, without the model's own side
+  beside it where it buys the other, or with one where it does not; and a
+  card that clears with no line saying what it buys.
+  `audit.check_every_recommendation_headlines_what_it_buys` is gate step 2's
+  new row (every sport's slate, both forecasters, the record's copy).
+  `HEADLINE_FIXTURE_GOOD` (rec 117 as built, recommended and tapped) and
+  eight `HEADLINE_FIXTURES_AS_RELEASED` are held at import, with step A's,
+  step C's and the board's checks accepting the good one.
+- **Step A's and step C's checks read the headline from the side bought**:
+  `number_line_faults` reads a recommendation's card's and upcoming block's
+  words' line from the side its line says it buys (and the taken rail's
+  from the stored row's side, `pick_contracts`' `recs[].side`), and
+  `pick_side_faults` holds a recommendation's My day chip on a game still to
+  start to the club of the contract bought; both read the card's
+  `question_takes_the_proposition` as the side its words name, as they did.
+  `own_side_words` is among the board's scanned texts (`BOARD_TEXT_KEYS`).
+- **Plantings**: `plant_a_recommendation_headlining_the_side_it_does_not_buy`
+  (in `main()` and `test_guards.py`'s list). The merge prover's
+  `plant_a_board_row_priced_off_the_other_side` is on a world whose
+  corrected number makes the home side the one bought, the other side of the
+  model's words: from this ruling its shipped row is the home side's 54% at
+  48.5c, and its planted price is the away side's 51.5c, the side the card's
+  words no longer name (`plant.py` whole found it: 414 of 415 caught before
+  it was moved). **Tests**:
+  `tests/test_headline_is_the_contract_bought.py` (12). Three tests that
+  held the released headline now hold the ruled one, each saying so in its
+  words: `test_every_number_names_its_line.py::test_a_spread_tile_names_the_
+  other_side_of_its_claims_contract` (rec 117), `test_board.py::test_a_
+  priced_row_is_its_cards_corrected_number_on_the_side_it_names` and
+  `test_recommend.py::test_the_card_the_line_sentence_and_the_pregame_
+  figure_read_one_number` (their worlds' corrected numbers make the home
+  side the one bought, the other side of the model's "BBB to win").
+
+### READINGS TAKEN *(the conservative default)*
+
+- **"Headline" is where the recommendation is drawn**: the Today card (in
+  CLEARS or folded below the floor, upcoming or finished), and on a game
+  still to start the board's row and tile and My day's chip; the line and the
+  rail always. A live row carries nothing that can be acted on (LAW 5), and
+  the board's finished row is the forecast's verdict on its own question
+  (step A's prover named a finished pick's contract as a companion to
+  question 37; the ruling's words name the recommendation's headline, not
+  the forecast's verdict) -- so a taken pick's My day chip names the
+  contract bought until its game starts and the question after, as step A's
+  prover recorded for the line.
+- **"The model's own side"** is the question's words at the same contract's
+  line, with the model's number for them there -- the rest of the hundred
+  ("Atlanta +2.5, 32%" beside "New Orleans -2.5, 68%"); what the model was
+  asked at its own line ("Atlanta +9.5 ... 58%") stays in the tooltips, as
+  step A put it.
+- **The label** "Model's pick · the other side" heads the contract bought:
+  the row's pick is the recommendation's, and the label says it is not the
+  side the model took (question 37's (A): "the label then heads a side the
+  model did not take and would say so").
+
+### WHAT MOVES *(b39754c, `git archive`, against a snapshot of this tree, each in a process of its own on the one copy, the clock held at 19:43:00Z: every slate carrying a recommendation -- 20 -- both forecasters, as held and in THE TIME MACHINE (`views.card_state` answering "upcoming" in the measuring process only); `measure_moves.py` -> `moves_head.json`, `moves_fix.json`; `compare.py` -> `compare.txt`, `moves_diff.txt`)*
+
+- **18 questions' drawing moves, the same 18 in both readings** -- each one
+  priced today, by the page's rule (the latest claim before the start), on
+  the other side of its words: forecasts 1819 (rec 47), 2341 (82), 2305
+  (67), 2315 (71), 2317 (72), 2323 (74), 2328 (76), 2330, 2484 (89), 2744
+  (102), 2808 (103), 3671 (118), 3731 (119), 4307 (126), and four with no
+  stored recommendation of their own -- 2321 (NFL week 3's TEN at NYG,
+  "Tennessee +2.5" -> "New York -2.5"), and the final passes of three
+  questions whose recommendations were written from the early pass: 3665
+  (PIT at CLE, rec 114's question, "Pittsburgh -2.5" -> "Cleveland +2.5"),
+  3689 (GB at TB, rec 115's, "Green Bay -2.5" -> "Tampa Bay +2.5") and 4229
+  (SAM at UAB, rec 123's, "UAB -30.5" -> "Samford +30.5"). Forecast 2330
+  (rec 77's) is priced today off a later claim on one contract, where rec
+  77 itself was priced across two. Rec 117 (3583) moves on the early view
+  only (above); recs 68, 69, 73, 78 and 91 are priced across two contracts
+  and draw no price or side.
+- **As held** every one of the 18 is a finished game: the Today card in
+  CLEARS (payload) headlines the contract bought with its figure and verdict
+  and names the model's side; the recommendation line ends naming it; the
+  board draws the finished row as before. **In the time machine** the row
+  and the tile headline the contract bought, e.g. rec 47 "WASHINGTON +1.5 ·
+  58% · 62c · 1.60x · $15" -> "DETROIT -1.5 · 42% · 38c · 2.67x · $15 · The
+  model's own side: Washington +1.5, 58%", rec 89 "Rutgers -41.5 · 11% ·
+  50c" -> "Howard +41.5 · 89% · 50c", rec 76 "Las Vegas +3.5 · 16% · 52c"
+  -> "New Orleans -3.5 · 84% · 48c".
+- **Nothing else** on the 80 payloads moved: no other question's card, row,
+  tile or line, no count, no combo.
+- **The check** names 126 faults on b39754c's payloads as held and 396 in
+  the time machine (this tree's `audit.headline_faults` run over each tree's
+  payloads in a process of its own), and none on this tree's;
+  `pick_side_faults` and `board_price_side_faults` name none on either.
+
+### THE RENDER *(the ONE verified copy served by the test server on a free local port with each tree's app and a dummy, non-secret token -- never the live app on 8848; Chromium at 1300px and 390px; arrivals waited for by opacity and every animation finished, no fixed wait; `render.py` -> `render/*.png`, `render/rows-*.json`)*
+
+- **Rec 117** (the early view, in the server process only): "MODEL'S PICK ·
+  THE OTHER SIDE / NEW ORLEANS -2.5 / 68% · 52c · 1.94x / $15 · one flat
+  unit, no measured edge yet: 42 of 100 settled in this market / The model's
+  own side: Atlanta +2.5, 32%", the green outline, at both widths; the tile
+  "New Orleans -2.5 · 68% · +15.0c · 1.94x", the size and the own side; the
+  chance's tooltip names the contract, the model's own side and the
+  question as asked (Atlanta +9.5, 58%). On b39754c the same row read
+  "MODEL'S PICK / ATLANTA +2.5 / 32% · 48c · 2.06x / $15 ...".
+- **Rec 47** (the time machine): "MODEL'S PICK · THE OTHER SIDE / DETROIT
+  -1.5 / 42% · 38c · 2.67x / $15 · one flat unit, measured and NOT ahead
+  ... / The model's own side: Washington +1.5, 58%" -- the ruling's own
+  example; on b39754c "WASHINGTON +1.5 / 58% · 62c · 1.60x / $15".
+- No page error, no sideways scroll, no tap target under 44px and every row
+  head a whole number of pixels (173 and 322, 205 and 338) at either width.
+  The own side reads in the muted ink beneath the size; the 1300px tile
+  wraps it after "+2.5,".
+
+### PROVED *(`scratchpad/a2/q37/`)*
+
+- **The planting** (`run_plantings.py`): ESCAPES on the `git archive` of
+  b39754c with this `plant.py` copied in -- the shipped page "Atlanta covers
+  +2.5" on the card, the row and the tile, the chip "ATL · Atlanta +2.5",
+  the rail "Atlanta covers +2.5 · +15.0c when marked", no own side, no
+  check, no step-2 row (`plant1_head_final.txt`) -- and is CAUGHT here
+  (`plant1_fix.txt`).
+- **`tests/test_headline_is_the_contract_bought.py`, 12**: all fail on the
+  archive of b39754c (`tests_on_head.txt`), all pass here.
+- **`plant.py` whole**: 415/415 caught, "Every law has a guard", exit 0,
+  20:24:30-20:34:01Z (`plant_all2.txt`; the first whole run, 20:13-20:23Z,
+  caught 414 of 415 and found the merge prover's planting assuming the old
+  headline -- moved, above).
+- **Gate step 2's rows**, dry-run on this tree (`step2_dry.py`, not
+  `tools/verify.py` whole; every record row on the copy through a read-only
+  handle, `GRIDIRON_VERIFYING` set, an empty scratch file for the env file):
+  113 of 115 pass, none fails, the two schema rows not run (no schema
+  change), the new row among them (11.3s), 21:04:54-21:11:01Z
+  (`step2_dry_final.txt`).
+- **The full suite**: 2,404 passed, 4 skipped, none failed, exit 0, with a
+  dummy non-secret `GRIDIRON_ACCESS_TOKEN` and TMP and TEMP at their
+  defaults, 20:34:35-21:04:25Z, no file edited while it ran (`suite.txt`);
+  the only test that reached the network is the suite's own marked one.
+- **The copy**: made 19:42:58Z, read only through `db.read_only` except the
+  test server's sign-in rows during the render, deleted with its -wal and
+  -shm at 2026-10-05T21:13:58Z. Nothing written to the live record; no
+  network; the main checkout, the held branches, the live app on 8848, every
+  scheduled task and `.env` untouched; nothing committed or pushed.
+
+### NOT HERE, AND NAMED *(FOLLOWUPS by the queue rule: none breaks LAW 1 or LAW 3, makes a gate count false or shows a wrong number on a pick)*
+
+- **Rec 117 is off the standing view.** Its final pass (3755) stands and is
+  not shortlisted, so the default page prices nothing on ATL at NO and draws
+  "venue has not listed this yet" beside "Atlanta +9.5 · 58%", where the
+  venue's contract at -2.5 was read for that pass too (claims 1881, 1882);
+  rec 117 stands in the record, drawn only on the early view, which no
+  control reaches. As released; a shortlist and view matter, not a number.
+- **Two NFL clubs are drawn by their codes.** The teams table holds
+  Washington as WSH and the Rams as LAR, and the NFL's games use WAS and
+  LA, so a pick naming either is "WAS +4.5" (rec 118's question, headlined
+  from today) or "LA +1.5" (forecast 2330's own side) where every other club
+  is a city. As released for any card naming them.
+- **A prop tile** (the Props page) would headline the contract bought and
+  not draw the own side, which only the row's tile draws: no prop is priced
+  at the venue (no prop claim on the record), and the Props board is ruling
+  C's, next in the order.
+- **A finished pick's contract** on the board stays the question's (step A's
+  prover's companion item; READINGS TAKEN above).
+
+### THE PROVER *(2026-10-05, alone in the worktree, on the change as first built; ONE verified copy through `rebuild.verified_backup`, made 21:31:18Z-21:32:14Z, integrity ok, 64 tables, none mismatched, deleted with its -wal and -shm at 21:47:19Z; scratchpad `a2/q37-prove/`)*
+
+**Three paths the ruling covers that the change as first built missed**,
+each shown on rec 117's scratch world before it was fixed
+(`probe_misses.py` -> `misses_as_built.txt`; the change as first built
+rebuilt in scratch by taking the prover's edits back out, `make_asbuilt.py`
+-> `asbuilt/`, `misses_asbuilt_tree.txt`), each fixed with a test and a
+planting form:
+
+- **My day's chip named the model's own side nowhere.** The chip headlined
+  "NO · New Orleans -2.5" and its tooltip said "New Orleans covers -2.5"
+  alone, where the row it scrolls to, the taken rail and the line all name
+  the model's side -- and the check passed it. The chip is a tap target with
+  no room for a sentence, so its tooltip says it (`language.
+  my_day_line_tip`: "New Orleans covers -2.5. The model's own side: Atlanta
+  +2.5, 32%."); `audit.headline_faults` holds the tooltip, and the words
+  alone beside a recommendation on the model's own side.
+- **The check held the numbers and not the words.** It held a row's and a
+  tile's `prob`, `price` and `pays` and a card's `payout` -- which the page
+  does not draw as text: they place the bar and its tick -- and not
+  `prob_words`, `price_words` and `pays_words`, or the card's `venue_words`,
+  `payout_words` and `price_words`, which it draws. The model's side's
+  "32%", "48c", "2.06x" and "48c · pays 2.06x" beside numbers of the
+  contract bought passed. The builder composes both from one number, so
+  nothing drew it; a check of the headline holds what the operator reads
+  (step A's prover's precedent: the drawn words, never the payload's own
+  fields). It holds the drawn words now.
+- **The model's own side on a live row.** The sentence carries a chance,
+  and a game being played shows its pregame figure with its word and
+  nothing else (LAW 5; LIVE TAB). The builder draws it on a row still to
+  start only, and no live check named the new field, so a row put in play
+  with it passed. `own_side_words` is in `audit.LIVE_TAB_FORBIDDEN_FIELDS`
+  (so `BOARD_LIVE_FORBIDDEN_FIELDS` too): the live check names it on a live
+  card, row or prop tile.
+
+**Asked and found right**, on scratch worlds (`probe_shapes.py`): a TOTAL
+bought on the other side of the model's words ("over 60.5 total points" at
+38% and 24c, "The model's own side: Under 60.5 total, 62%"; the chip wears
+the home club as the game's mark, as a total always has); a spread where the
+model's side IS the claim's proposition and the recommendation buys the no
+side ("Atlanta covers +2.5" at 40% and 30c beside the model's New Orleans
+-2.5 at 60%); a moneyline either way (the change's own tests); every
+surface named by every check, none faulted. Every other view and payload
+read for a recommendation's words: the Results table, the digest and a
+forecast's detail are the forecast's own; notifications carry counts only;
+the Props page draws no prop price (no prop is read at the venue,
+`language.MARKETS_READ_AT_THE_VENUE`); combos name each leg on the side it
+buys (step B). `audit.prose_reaching_the_raw_side()` is `[]`. A.2's void tool,
+untouched, dry on the copy: "--write would void 51", 62, 63 and 66 left and
+listed, 114 and 115 waiting (`void_dry.txt`).
+
+**Measured on the copy** (`measure.py`, the change as first built against
+this tree, each in a process of its own, the clock held at 21:32:00Z): every
+slate carrying a recommendation (20), both forecasters, as held and in the
+time machine, and NFL week 4's early view (rec 117) -- 81 payloads: no
+errors; every check that reads a pick's headline (the headline, side, board
+price, combo, number-line and both live checks) names nothing on either
+tree; 0 of 2,296,242 values differ (`compare.txt`): no game pick carrying a
+recommendation is taken on the record, so no chip moves, and nothing else
+does.
+
+**The render** (`render.py`; the copy served by the test server on a free
+local port with this tree's app and a dummy, non-secret token, never the
+live app on 8848; rec 117's forecast 3583 tapped on the copy only, one
+`picks_taken` row; the early view asked for in the server process only;
+Chromium at 1300px and 390px, waits by opacity, no fixed wait): My day's
+chip "NO · NEW ORLEANS -2.5 · UPCOMING · 57/100", 44px tall, its tooltip
+"New Orleans covers -2.5. The model's own side: Atlanta +2.5, 32%." at both
+widths; the row as the change drew it ("MODEL'S PICK · THE OTHER SIDE / NEW
+ORLEANS -2.5 / 68% · 52c · 1.94x / $15 ... / The model's own side: Atlanta
++2.5, 32%", outlined, YOURS); the taken rail "New Orleans covers -2.5 ·
++15.0c when marked — the model's own side: Atlanta covers +2.5, 32%"; no tap
+target under 44px, no sideways scroll, no page error (`render/`).
+
+**Proved.** The planting, with its prover's four forms -- the chip naming the
+model's side nowhere, the row's and tile's drawn words and the card's chips
+at the model's side, and the own side planted on a live row (with step 2
+calling the live check) -- ESCAPES on the `git archive` of b39754c with
+this `plant.py` copied in (`plant_head.txt`) and on the change as first
+built (`plant_asbuilt.txt`: the four forms named as passing), and is CAUGHT
+here (`plant_fix.txt`); the moved `plant_a_board_row_priced_off_the_other_side`
+escapes on b39754c and is caught here. `tests/test_headline_is_the_contract_
+bought.py` is 15: all fail on b39754c (`newtests_head.txt`), the prover's
+three fail on the change as first built (`newtests_asbuilt.txt`), all pass
+here. `plant.py` whole: 415/415 caught, "Every law has a guard", exit 0,
+21:47:38-21:56:45Z, 547 seconds (`plant_all.txt`). Gate step 2's rows,
+dry-run on the copy (`step2_dry.py`, not `tools/verify.py` whole; every
+record row through a read-only handle, `GRIDIRON_VERIFYING` set, an empty
+scratch file for the env file): 113 of 115 pass, none fails, the two schema
+rows not run (no schema change), 21:41:18-21:46:58Z (`step2_dry.txt`). The
+full suite: 2,407 passed, 4 skipped, none failed, exit 0, with a dummy
+non-secret `GRIDIRON_ACCESS_TOKEN` and TMP and TEMP at their defaults,
+21:57:05-22:25:05Z, no file edited while it ran (`suite.txt`); the only test
+that reached the network is the suite's own marked one. The copy: deleted
+with its -wal and -shm at 21:47:19Z, and the two record-derived payload
+dumps after the comparison (`copies_deleted.txt`). Nothing written to the
+live record; no network; the main checkout, the held branches, the live app
+on 8848, every scheduled task and `.env` untouched; nothing pushed.
+
+**Not here, and named** *(none breaks LAW 1 or LAW 3, makes a gate count
+false or shows a wrong number on a pick)*:
+
+- **The taken rail on a side it cannot place** names the question's words
+  beside the edge, where every other surface refuses (the ruling of
+  2026-09-30). The gate's check names it ("which side the model took cannot
+  be said"), and `audit.check_every_side_is_placed` refuses such a stored
+  side on the record first; none on the record, and no spread on the record
+  is asked of the away club.
+- **A combo's leg** names the contract it buys (step B) and not the model's
+  own side: the reading taken is that a proposal's leg is not the
+  recommendation's headline. Ruling B.5 takes Kalshi game markets out of
+  every combo proposal until their market passes its gate.
+- **A taken recommendation's chip once its game starts** names the question
+  (READINGS TAKEN above); the taken rail beside it keeps naming the contract
+  bought.

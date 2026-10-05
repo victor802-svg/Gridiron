@@ -2889,6 +2889,12 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 /* 16px lines, not 1.4 (the board merge, 2026-09-29): the note sits in the
    row's head, a tap target, and 11px at 1.4 put the head off whole pixels. */
 .pick-method, .q-method { margin: 6px 0 0; font-size: 11px; font-style: italic; color: var(--faint); line-height: 16px; }
+/* THE MODEL'S OWN SIDE, beside a pick that headlines the contract its
+   recommendation buys on the other side of it (operator question 37, ruled
+   2026-10-05). Plain muted words under the size, on 16px lines, as the
+   method note is, because it sits in the row's head, a tap target that
+   stands on whole pixels. No value colour: it is a fact, not a signal. */
+.pick-own, .q-own { margin: 4px 0 0; font-size: 12px; color: var(--muted); line-height: 16px; }
 
 /* --- props ----------------------------------------------------------------- */
 /* `.pchips`, `.propsgrid`, `.tiles`, `.ptile`, `.ptop`, `.jsvg`, `.pwho`,

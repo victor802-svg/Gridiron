@@ -945,21 +945,34 @@ def test_a_priced_row_is_its_cards_corrected_number_on_the_side_it_names(tmp_pat
     the price and the payout were the claim's fixed proposition's, unturned:
     this away side's question read 57% beside the home side's 48c and 2.06x
     where the card's chip said 46c against 52c (the wrong-side defect of
-    2026-09-07, and GRIDIRON_REPAIR item 3's chip)."""
+    2026-09-07, and GRIDIRON_REPAIR item 3's chip).
+
+    AND FROM OPERATOR QUESTION 37 (ruled 2026-10-05: "headline the contract
+    the recommendation buys; the model's own side named beside it"): the
+    correction in force makes the home side 53.58% against its 48.5c, so the
+    recommendation buys the home side, AAA -- the other side of the model's
+    words -- and the card and the row headline AAA at its corrected 54%, its
+    48.5c and 2.06x, the model's own side (BBB, 46%) beside it. Until the
+    ruling this asserted the row at BBB's 46%, 51.5c and 1.94x beside AAA's
+    size and outline."""
     from gridiron.market import recommend
 
     conn, pid = _priced_away_pick(tmp_path, monkeypatch)
     entry = recommend.for_predictions(conn, [pid])[0]
     assert entry["question_takes_the_proposition"] is False
     assert entry["fair_value"] == pytest.approx(0.5358, abs=1e-4)
+    assert entry["side"] == "yes"
     payload = views.week(conn, "mlb", 2026, 1)
     block, card = _block_and_card(payload, pid)
-    assert block["prob"] == pytest.approx(1.0 - entry["fair_value"]), block["prob"]
-    assert block["prob_words"] == card["model_words"].replace("¢", "%") == "46%"
-    assert block["price"] == pytest.approx(0.515)
-    assert block["pays"] == recommend.payout_multiple(1.0 - 0.485)
-    assert block["price_words"].startswith("52"), block["price_words"]
+    assert card["question_takes_the_proposition"] is True and card["question"] == "AAA to win"
+    assert block["prob"] == pytest.approx(entry["fair_value"]), block["prob"]
+    assert block["prob_words"] == card["model_words"].replace("¢", "%") == "54%"
+    assert block["price"] == pytest.approx(0.485)
+    assert block["pays"] == recommend.payout_multiple(0.485)
+    assert block["price_words"].startswith("48"), block["price_words"]
+    assert block["own_side_words"] == "The model's own side: BBB to win, 46%"
     assert audit.board_price_side_faults(payload) == []
+    assert audit.headline_faults(payload) == []
     # AS THE MERGE LEFT IT: the Today card without the two numbers.
     real = views._today_card
 
@@ -988,11 +1001,13 @@ def test_a_priced_row_is_its_cards_corrected_number_on_the_side_it_names(tmp_pat
                   "pays": recommend.payout_multiple(0.485)})
     faults = audit.board_price_side_faults(merged)
     assert faults and "carries no `fair_value`" in faults[0], faults
-    # AND A BLOCK LEFT ON THE PROPOSITION'S PRICE is named by its numbers.
+    # AND A BLOCK LEFT ON THE OTHER SIDE'S PRICE is named by its numbers
+    # (from operator question 37 the side its words name is AAA, the
+    # proposition, so the other side's is BBB's 51.5c).
     monkeypatch.setattr(views, "_today_card", real)
     fixed = views.week(conn, "mlb", 2026, 1)
     block, _ = _block_and_card(fixed, pid)
-    block["price"], block["pays"] = 0.485, recommend.payout_multiple(0.485)
+    block["price"], block["pays"] = 0.515, recommend.payout_multiple(0.515)
     faults = audit.board_price_side_faults(fixed)
     assert any("wrong-side" in f for f in faults) and any("payout" in f for f in faults), faults
 

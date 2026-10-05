@@ -1231,6 +1231,10 @@ const Gridiron = (function () {
     }
     node.appendChild(mini);
     if (q.size_words) node.appendChild(el('div', 'q-size', q.size_words));
+    // THE MODEL'S OWN SIDE, beside a tile headlining the contract its
+    // recommendation buys on the other side of it (operator question 37,
+    // ruled 2026-10-05). The server's words.
+    if (q.own_side_words) node.appendChild(el('p', 'q-own', q.own_side_words));
     if (q.method_note) node.appendChild(el('p', 'q-method', q.method_note));
     // PRICED ACROSS TWO CONTRACTS: why there is no price (step A, 2026-09-30).
     if (q.across_words) node.appendChild(el('p', 'q-method', q.across_words));
@@ -1331,6 +1335,10 @@ const Gridiron = (function () {
       }
       pickBox.appendChild(under);
       if (pick.size_words) pickBox.appendChild(el('div', 'pick-size', pick.size_words));
+      // THE MODEL'S OWN SIDE AND NUMBER, beside a pick that headlines the
+      // contract its recommendation buys on the other side of it (operator
+      // question 37, ruled 2026-10-05). The server's words.
+      if (pick.own_side_words) pickBox.appendChild(el('p', 'pick-own', pick.own_side_words));
       // THE FLAGGED-METHOD NOTE, on the face and not one tap in (operator
       // ruling 2, 2026-09-04).
       if (pick.method_note) pickBox.appendChild(el('p', 'pick-method', pick.method_note));

@@ -891,6 +891,18 @@ def step_2_guards() -> bool:
                       _record_conn(), _slate_payload(sport, forecaster))
                   for sport in _config().SPORTS
                   for forecaster in ("statistical", "llm")] and None),
+        # OPERATOR QUESTION 37 (ruled 2026-10-05: "headline the contract the
+        # recommendation buys; the model's own side named beside it"): a
+        # recommendation's card, row, tile, My day chip, line and taken rail
+        # headline the contract it buys -- the other side of its question's
+        # words where the price made that side the one worth buying -- and
+        # name the model's own side and number beside it. Every sport's slate,
+        # both forecasters, on the record's copy.
+        ("a recommendation headlines the contract it buys, the model's own side beside it",
+         lambda: [audit.check_every_recommendation_headlines_what_it_buys(
+                      _slate_payload(sport, forecaster))
+                  for sport in _config().SPORTS
+                  for forecaster in ("statistical", "llm")] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

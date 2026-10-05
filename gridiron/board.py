@@ -193,6 +193,16 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         question_words = card.get("phrase") or ""
     market = card.get("market") or card.get("market_type")
     signal = _signal(card, entry, state)
+    # THE CONTRACT BOUGHT IS THE HEADLINE (operator question 37, ruled
+    # 2026-10-05: "headline the contract the recommendation buys; the model's
+    # own side named beside it"). Where the Today card's recommendation buys
+    # the other side of its question's words, the card's words, its turned
+    # numbers (`question_takes_the_proposition` is the side its words name)
+    # and its size, edge and outline are all that contract's, and the
+    # model's own side and number travel beside them (`own_side_words`) --
+    # on an upcoming row only: a live row carries nothing that can be acted
+    # on, and a finished row is the forecast's own verdict.
+    own_side = (entry or {}).get("own_side_words") if state == "upcoming" else None
     price = entry.get("price") if entry else None
     pays = entry.get("payout") if entry else None
     # THE PRICE AND THE PAYOUT OF THE SIDE THE QUESTION NAMES (the prover of
@@ -223,7 +233,12 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         # THE CLUB THE PICK'S WORDS NAME, by the same flip as the words
         # (pick-number finding 6, 2026-09-30): My day's chip wears it. None
         # for a question about no club.
-        "named_club": language.club_named(card),
+        # THE TODAY CARD'S WHERE IT DRAWS THE CARD'S WORDS (operator question
+        # 37, ruled 2026-10-05): a card headlining the contract its
+        # recommendation buys -- the other side of the question's words --
+        # names that contract's club.
+        "named_club": (entry["named_club"] if entry is not None and "named_club" in entry
+                       and "line_words" in entry else language.club_named(card)),
         # THE CONTRACT'S WORDS, never the question's beside its numbers
         # (pick-number step A, 2026-09-30; above).
         "line_words": line_words,
@@ -247,9 +262,13 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
             # WHAT THE MODEL WAS ASKED, where the words name the venue's
             # contract at another line (step A): the chance is that
             # contract's, and the tooltip says so and names the question.
+            # AND THE MODEL'S OWN SIDE, where the words name the contract the
+            # recommendation buys on the other side of it (operator question
+            # 37, ruled 2026-10-05).
             "prob": language.prob_tip(
                 shown, label,
-                asked_words=(entry or {}).get("asked_words") if corrected else None),
+                asked_words=(entry or {}).get("asked_words") if corrected else None,
+                own_side=own_side if corrected else None),
             "badge": language.badge_tip(n_settled, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
                                         language.market_label(card)),
         },
@@ -309,6 +328,19 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
     if asked:
         out["tips"]["line"] = " ".join(
             x for x in (asked, out["tips"].get("line")) if x)
+    # THE MODEL'S OWN SIDE, ON THE FACE AND IN THE WORDS' TOOLTIP (operator
+    # question 37, ruled 2026-10-05). The words name the contract bought; the
+    # reasons beneath them are the model's for its own side, so the tooltip
+    # says whose they are -- after what the model was asked, which names the
+    # question at its own line first (step A's prover's order).
+    if own_side:
+        out["own_side_words"] = own_side
+        out["buys_the_other_side"] = True
+        reasons = out["tips"].get("line")
+        if asked and reasons and reasons.startswith(asked):
+            reasons = reasons[len(asked):].strip()
+        out["tips"]["line"] = " ".join(x for x in (
+            asked, language.own_side_reasons_words(own_side), reasons) if x)
     if state == "upcoming":
         # THE PRICE AND WHAT IT PAYS, beneath the pick, in the words the
         # Today card already used. A live row carries neither: LAW 5's
@@ -354,7 +386,9 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
             # name the claim's contract now, so the other side of them is the
             # other side of the figure's own contract. (A recommendation's
             # size and outline beside the words of the side it does not buy
-            # are operator question 37's, not ruled.)
+            # were operator question 37's; ruled 2026-10-05, the card
+            # headlines the contract bought, so its edge is that contract's
+            # own and is drawn bare.)
             out["edge_words"] = language.board_edge_words(
                 entry["edge_line_words"],
                 other_side=bool(entry.get("edge_on_the_other_side")))
@@ -644,8 +678,18 @@ def _my_day_entry(block: dict, game_id: str, state: str, club: dict,
         "badge_n": block.get("badge_n"),
         "club": {"tricode": club.get("tricode") or "", "colour": club.get("colour"),
                  "on_white": club.get("on_white")},
+        # THE MODEL'S OWN SIDE BESIDE THE CONTRACT BOUGHT, on the chip too
+        # (Q37's prover, 2026-10-05; operator question 37, ruled that day:
+        # "headline the contract the recommendation buys; the model's own side
+        # named beside it"). The chip headlined New Orleans -2.5 and said
+        # nowhere that the model's own side was Atlanta +2.5 at 32%, where the
+        # row it scrolls to, the taken rail and the line all say it. The chip
+        # is a tap target with no room for a sentence, so the words travel in
+        # its tooltip, beside the contract's own words (`own_side_words` is on
+        # a block only while its game is still to start).
         "tips": {"badge": (block.get("tips") or {}).get("badge"),
-                 "line": block.get("question") or ""},
+                 "line": language.my_day_line_tip(block.get("question") or "",
+                                                  block.get("own_side_words"))},
     }
 
 
@@ -750,8 +794,13 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         row = {
             "game_id": game_id,
             "state": state,
+            # THE LABEL SAYS WHEN THE PICK IS THE OTHER SIDE OF THE MODEL'S
+            # (operator question 37, ruled 2026-10-05): the row headlines the
+            # contract the recommendation buys, and its own-side line names
+            # the model's side beneath it.
             "pick_label_words": language.pick_label_words(
-                state, pick["signal"] if pick else "none"),
+                state, pick["signal"] if pick else "none",
+                other_side=bool(pick and pick.get("buys_the_other_side"))),
             "n": pick["badge_n"] if pick else 0,
             "away": away,
             "home": home,

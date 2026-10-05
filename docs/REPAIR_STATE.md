@@ -55,7 +55,8 @@
   rows not run: no schema change); the suite 2,391 passed, 4 skipped. The
   copies deleted 16:32:55Z. **TO APPLY AFTER THE RELEASE:** the
   tool dry on the record (it must say "--write would void 51"), then
-  `--write --live`. **Next: Q37, then A.5.**
+  `--write --live`. **Next: Q37, then A.5.** (Q37 built 2026-10-05,
+  below.)
   **Q36 (ii) PROVED (2026-10-05, its prover, alone in the worktree; one
   verified copy made 17:40:25Z, deleted after; FOLLOWUPS, "THE PROVER"; one
   local commit, "Q36 (ii): the 54 recommendations voided; ...", not
@@ -86,6 +87,66 @@
   release gate's step 1 can fail on the clock, which the one as-is rerun
   covers. **To apply after the release, unchanged:** the tool dry on the
   record ("--write would void 51"), then `--write --live`.
+  **Q37 BUILT (2026-10-05, on b39754c; uncommitted for its prover;
+  FOLLOWUPS "A recommendation headlines the contract it buys"; CLAUDE.md
+  row of that name):** the ruling, question 37's (A): "headline the
+  contract the recommendation buys; the model's own side named beside it."
+  MEASURED FIRST on one verified copy (made 19:42:58Z): 22 of the 127
+  recommendations buy the other side of their words (the 16, and 115,
+  117-119, 123, 126), all spreads, 7 priced across two contracts; rec 117
+  (ATL at NO, 6 Oct 00:15Z) the one still to start -- drawn on the early
+  view only, its final pass standing unshortlisted on the default view
+  (FOLLOWUPS). BUILT: `views._buys_the_other_side`, the one test; the Today
+  card headlines the contract bought through step C's side door at step A's
+  line (`question`, `line_words`, `named_club`, its numbers turned by
+  `question_takes_the_proposition`, now the side the card's WORDS name) and
+  carries `own_side_words` ("The model's own side: Atlanta +2.5, 32%"); the
+  board's row and tile draw it with the size, edge and outline and the own
+  side on the face and in the tooltips, the label "Model's pick · the other
+  side"; My day's chip the contract bought's club; the recommendation line
+  ends naming the model's side; the taken rail names the stored
+  recommendation's contract and the model's side. Live cards, finished
+  rows, a recommendation on the model's own side and combos are unchanged.
+  THE GATE: `audit.headline_faults` / `check_every_recommendation_headlines_
+  what_it_buys`, step 2's new row (every sport, both forecasters); step A's
+  and step C's checks read the headline's side from the side bought. On the
+  copy: 18 questions' drawing moves (all finished games; payload as held,
+  the row and tile in the time machine), nothing else; the check names 126
+  (as held) and 396 (time machine) faults on b39754c's payloads, none here.
+  Rendered (rec 117 on the early view, rec 47 in the time machine) at 1300
+  and 390: "NEW ORLEANS -2.5 · 68% · 52c · 1.94x · $15 · The model's own
+  side: Atlanta +2.5, 32%", "DETROIT -1.5 · 42% · 38c · 2.67x · $15 · The
+  model's own side: Washington +1.5, 58%". The planting escapes on b39754c
+  and is caught here; `plant.py` 415/415; 12 tests, each failing on
+  b39754c; step 2's rows 113 of 115 on the copy (the schema rows not run);
+  the suite 2,404 passed, 4 skipped. The copy deleted 21:13:58Z. Nothing
+  joins the queue (FOLLOWUPS: rec 117 off the standing view, WAS and LA
+  drawn as codes). **Next: A.5 (the spread edge re-run), then C.**
+  **Q37 PROVED (2026-10-05, its prover, alone in the worktree; one verified
+  copy made 21:31:18Z, deleted 21:47:19Z; FOLLOWUPS, its "THE PROVER"; one
+  local commit, "Q37: a recommendation headlines the contract it buys, the
+  model's own side named beside it", not pushed):** three paths the change
+  as first built missed, each fixed with a test and a planting form -- My
+  day's chip named the model's own side nowhere (its tooltip says it now,
+  `language.my_day_line_tip`); the check held the numbers (`prob`, `price`,
+  `pays`, `payout`) and not the words the page draws (it holds them now);
+  and the own side, a sentence carrying a chance, was named by no live
+  check (`own_side_words` in `audit.LIVE_TAB_FORBIDDEN_FIELDS`). Asked and
+  right: a total and a spread bought on the other side either way, every
+  other view (Results, digest, notifications, Props, combos), the void tool
+  dry ("--write would void 51"), `prose_reaching_the_raw_side()` empty. On
+  the copy, the change as first built against this tree, 81 payloads (every
+  recommendation's slate, both forecasters, as held, in the time machine and
+  the early view): 0 values differ, every check names nothing. Rendered at
+  1300 and 390 (rec 117 tapped on the copy only): the chip's tooltip "New
+  Orleans covers -2.5. The model's own side: Atlanta +2.5, 32%." The
+  planting and its four new forms escape on b39754c and on the change as
+  first built and are caught here; `plant.py` 415/415 (547s); 15 tests;
+  step 2's rows 113 of 115 on the copy; the suite 2,407 passed, 4 skipped.
+  Nothing joins the queue (FOLLOWUPS: the rail on a side it cannot place,
+  a combo leg's own side, a taken chip once its game starts). **To apply
+  after the release:** nothing for Q37 (no stored write); A.2's void tool as
+  before. **Next: A.5, then C.**
 
 - **THE ORDER NOW (30 Sep, second, ~15:30Z; wins over every order below):**
   Q36.1 (the claim writer reads an away-side spread contract at +s, the
@@ -2016,6 +2077,11 @@ depend on the answer.
       always the drawn one). Nothing else of this question is built.
     Default until ruled: nothing built; the list is in FOLLOWUPS ("Every pick
     names its own side", THE SWEEP).
+    - **RULED 2026-10-05 (docs/briefs/2026-10-05-rulings.md): "Q37: headline
+      the contract the recommendation buys; the model's own side named beside
+      it."** -- (A). Built 2026-10-05 (START HERE, "Q37 BUILT"; FOLLOWUPS, "A
+      recommendation headlines the contract it buys"); proved the same day
+      (START HERE, "Q37 PROVED"; FOLLOWUPS, its "THE PROVER").
     - **Step A's note (2026-09-30).** Step A moved a spread row's words to the
       line its numbers belong to and kept the side it drew, so on these rows
       the words, chance, price and payout are now one contract's -- the

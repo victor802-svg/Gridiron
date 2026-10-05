@@ -1474,6 +1474,27 @@ def _placed(entry: dict, card: dict, context: dict) -> bool | None:
         quantity=_recommend._quantity_of(forecast))
 
 
+def _buys_the_other_side(entry: dict, takes: bool | None, state: str) -> bool:
+    """Does this card's recommendation buy the OTHER side of its question's
+    words -- the side the model did not take?
+
+    OPERATOR QUESTION 37, RULED 2026-10-05: "headline the contract the
+    recommendation buys; the model's own side named beside it." An entry with
+    a side bought (`side`, 'yes' or 'no' of the claim's fixed proposition) is
+    a recommendation; its question's words name the proposition or not
+    (`takes`, placed by the one place). Where the two part, the card
+    headlines the contract bought. A live card is never one: nothing on it
+    can be acted on, and its entry carries no side. A side that cannot be
+    placed answers False here and is refused by `_on_the_question`, by name,
+    when the card's numbers are turned."""
+    side = entry.get("side")
+    if state == "live" or side not in ("yes", "no"):
+        return False
+    if takes is not True and takes is not False:
+        return False
+    return (side == "yes") != takes
+
+
 def _as_the_page_draws(entry: dict) -> dict:
     """A priced entry as the page may draw it: its numbers named by the line
     they belong to, or -- priced across two contracts -- no numbers at all.
@@ -1963,10 +1984,30 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     context = _card_context(conn, card) if conn is not None else {"state": "upcoming"}
     state = context.get("state", "upcoming")
     takes = _placed(entry, card, context)
-    flip = takes is False
+    # THE CARD HEADLINES THE CONTRACT THE RECOMMENDATION BUYS (operator
+    # question 37, ruled 2026-10-05: "headline the contract the recommendation
+    # buys; the model's own side named beside it"). A recommendation buys the
+    # side the price makes worth buying, which can be the OTHER side of the
+    # one its question's words name -- the model's side. The card drew the
+    # model's side's words, chance, price and payout beside the size, the edge
+    # and the outline of the contract bought: rec 117 read "Atlanta +2.5 · 32%
+    # · 48c · 2.06x · $15" with the green outline, and bought New Orleans -2.5
+    # (68%, 51.5c); 16 recommendations on the record when the question was
+    # asked (MLB 47, 82; NFL 67-69, 71-74, 76-78; NCAAF 89, 91, 102, 103),
+    # 22 when it was ruled (and 115, 117-119, 123, 126; measured on a
+    # verified copy, 2026-10-05). Where it does, every number and
+    # word on the card is the bought contract's -- `headline` is whether THAT
+    # side is the claim's proposition -- and the model's own side and its
+    # number are said beside it (`own_side_words`). A card with no side bought
+    # (watched, unpriced, live, settled) headlines its question's side, as
+    # before. A live card is never a recommendation's (nothing on it can be
+    # acted on).
+    buys_the_other_side = _buys_the_other_side(entry, takes, state)
+    headline = (not takes) if buys_the_other_side else takes
+    flip = headline is False
 
     def turned(number, what):
-        return _on_the_question(number, takes, what=what, entry=entry, card=card)
+        return _on_the_question(number, headline, what=what, entry=entry, card=card)
 
     price = turned(entry.get("price"), "a venue price")
     fair_on_the_question = turned(entry.get("fair_value"), "the model's number")
@@ -1983,8 +2024,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     pays_on_the_question = _payout_for(price) if flip else entry.get("payout")
     # WHICH CLUB THE QUESTION FAVOURS, for the accent and the payout chip.
     # The side the question names, which is the side its numbers are about.
+    # (The side the card headlines, from operator question 37: the contract
+    # bought, where that is the other side of the question's words.)
     favoured = context.get("home") if _favours_home(
-        dict(entry, question_takes_the_proposition=takes), card, context) \
+        dict(entry, question_takes_the_proposition=headline), card, context) \
         else context.get("away")
     favoured_colour = (context.get("home_colour") if favoured == context.get("home")
                        else context.get("away_colour")) or {}
@@ -1993,7 +2036,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # pick-number step C, 2026-09-30). It read `edge_side`, which is None when
     # neither side clears the fee, so a watched card whose figure was the
     # OTHER side's was labelled as the question's own.
-    edge_on = _edge_side_words(_edge_figure_side(entry), takes)
+    # AGAINST THE SIDE THE CARD HEADLINES (operator question 37, 2026-10-05):
+    # on a card headlining the contract bought, the edge is that contract's
+    # own and carries no "on the other side".
+    edge_on = _edge_side_words(_edge_figure_side(entry), headline)
     # THE CONTRACT THE NUMBERS BELONG TO, AND ITS WORDS (pick-number step A,
     # 2026-09-30): through the one door, after the side is placed. A priced
     # card's numbers are its claim's, read at the claim's line; a live card's
@@ -2013,6 +2059,23 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         numbers = entry
     contract = _the_contract(numbers, card)
     question = contract["words"]
+    # THE CONTRACT BOUGHT, AT THE SAME LINE, ON THE OTHER SIDE (operator
+    # question 37, 2026-10-05): through step C's side door
+    # (`_the_side_bought`, the one place the side a recommendation buys is
+    # placed and worded, the recommendation line's and a combo leg's), which
+    # asks step A's door for the line; the model's own side is step A's
+    # door's words, with the model's number for them at that line.
+    item = contract["item"]
+    line_words = contract["line_words"]
+    own_side = None
+    if buys_the_other_side:
+        bought = _the_side_bought(entry, card)
+        item, question = bought["item"], bought["words"]
+        line_words = language.pick_line_words(item)
+        own_side = language.own_side_words(
+            contract["line_words"],
+            _on_the_question(entry.get("fair_value"), takes,
+                             what="the model's own number", entry=entry, card=card))
     out = {
         "prediction_id": entry["prediction_id"],
         # LAW 4 travels with every row on this page, as it does everywhere.
@@ -2031,8 +2094,16 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # composing its own beside these numbers -- and the line they are
         # asked at, the subject's (`words_line_asked`).
         "question": question,
-        "line_words": contract["line_words"],
+        "line_words": line_words,
         "words_line_asked": contract["line_asked"],
+        # THE CLUB THE WORDS ABOVE NAME (operator question 37, 2026-10-05):
+        # the contract bought's where the card headlines it, so My day's chip
+        # wears the club of the words it carries (pick-number finding 6).
+        "named_club": language.club_named(item),
+        # WHETHER THE CARD HEADLINES THE OTHER SIDE OF ITS QUESTION'S WORDS
+        # (operator question 37), as a fact; `own_side_words` says the
+        # model's own side and number beside it.
+        "buys_the_other_side": buys_the_other_side,
         # WHICH MARKET, so the chips above can filter the groups. The chips
         # are declared a filter row on Upcoming and were filtering only the
         # slate beneath it: switching to a market with no picks left the
@@ -2082,8 +2153,14 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # card's `payout` is the question side's from 2026-09-30, pick-number
         # finding 3; `price` and `fair_value` stay the proposition's, the
         # board's inputs, `question_takes_the_proposition` beside them.)
+        # THE SIDE THE CARD'S WORDS NAME (operator question 37, 2026-10-05):
+        # the card's `question` is the contract it headlines, so this says
+        # whether THAT side is the claim's proposition -- the side bought,
+        # where the recommendation buys the other side of the model's words.
+        # The board turns `price` and `fair_value` by it, so the row and the
+        # tile draw the bought contract's chance, price and payout.
         "fair_value": entry.get("fair_value"),
-        "question_takes_the_proposition": takes,
+        "question_takes_the_proposition": headline,
         "gate_words": language.gate_status_words(entry["gate_n"], entry["gate"]),
         # THE TIER CHIP ONLY WHEN IT SAYS SOMETHING. Twelve chips reading
         # "STRONG · unproven" down one page is a group heading wearing a
@@ -2130,6 +2207,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # was about and its own number for it.
     if contract["asked_words"]:
         out["asked_words"] = contract["asked_words"]
+    # THE MODEL'S OWN SIDE AND NUMBER, beside a card headlining the other side
+    # of its words (operator question 37, 2026-10-05).
+    if own_side:
+        out["own_side_words"] = own_side
     # AND THE FORECAST'S OWN SENTENCES NAME THE QUESTION THEY ARE ABOUT (step
     # A's prover, 2026-09-30). Where the words above moved to the venue's
     # contract, the card still carried the forecast's numbers line and its why
@@ -2139,7 +2220,11 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     # -6.5's numbers under North Texas +1.5's words (payload only; the board
     # draws neither). Each is the forecast's, unchanged, and now names the
     # question it is about at the question's own line.
-    if contract["moved"]:
+    # AND BESIDE WORDS TURNED TO THE CONTRACT BOUGHT (operator question 37,
+    # 2026-10-05): "The model says 58%" under "Detroit covers -1.5", whose
+    # chance is 42%, is the model's side's numbers under the other side's
+    # words; it names the question it is about too.
+    if contract["moved"] or buys_the_other_side:
         asked_line = language.pick_line_words(card)
         if out.get("rail_line"):
             out["rail_line"] = language.as_the_model_was_asked(asked_line, out["rail_line"])
@@ -2267,9 +2352,12 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         # drawn from the settled group's card, which is the question's own:
         # unchanged.)
         settled_prob, settled_outcome = card.get("shown_prob"), card.get("outcome")
-        if contract["moved"]:
+        # AND WHERE THE CARD HEADLINES THE CONTRACT BOUGHT (operator question
+        # 37, 2026-10-05): its figure and verdict are that contract's, its
+        # claim's outcome turned to the side its words name.
+        if contract["moved"] or buys_the_other_side:
             settled_prob = fair_on_the_question
-            settled_outcome = _claim_outcome_on_the_words(conn, entry, takes)
+            settled_outcome = _claim_outcome_on_the_words(conn, entry, headline)
         out["settled_words"] = language.settled_outcome_words(
             settled_prob, settled_outcome, out.get("question", ""))
     return out
@@ -2973,9 +3061,14 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         # one door; an edge worked out across two contracts is not stated.
         # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01):
         # `julianday()` on both sides, never the stored text.
+        # AND THE SIDE IT BOUGHT AND ITS NUMBER (operator question 37, ruled
+        # 2026-10-05): the rail names the contract the recommendation bought,
+        # and where that is the other side of the question's words, the
+        # model's own side and number beside it.
         edge = conn.execute(
-            "SELECT r.edge_cents, c.id AS claim_id, c.line AS claim_line,"
-            "       q.line AS quote_line, q.yes_side AS quote_side, g.home"
+            "SELECT r.edge_cents, r.side, r.fair_value, r.calibrated_fair_value, r.price,"
+            "       c.id AS claim_id, c.line AS claim_line,"
+            "       q.line AS quote_line, q.yes_side AS quote_side, g.home, g.away"
             "  FROM recommendations r JOIN games g ON g.id = r.game_id"
             "  LEFT JOIN at_the_line_claims c ON c.id = ("
             "      SELECT c2.id FROM at_the_line_claims c2"
@@ -2997,12 +3090,39 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         numbers = (None if not edge or not edge["claim_id"] or across else
                    {"prediction_id": row["prediction_id"], "claim_id": edge["claim_id"],
                     "numbers_line": edge["claim_line"], "home": edge["home"]})
+        contract = _the_contract(numbers, card)
+        words, own_side, side, bought = contract["words"], None, None, None
+        if edge and not across:
+            side = edge["side"]
+            takes = _placed({}, card, {"home": edge["home"], "away": edge["away"]})
+            number = (edge["calibrated_fair_value"]
+                      if edge["calibrated_fair_value"] is not None else edge["fair_value"])
+            if takes is True or takes is False:
+                # THROUGH STEP C'S SIDE DOOR, as the recommendation line and
+                # the Today card are worded: the stored recommendation's side
+                # and number, at its claim's line through step A's door
+                got = _the_side_bought(
+                    dict(numbers or {"prediction_id": row["prediction_id"]},
+                         side=side, question_takes_the_proposition=takes,
+                         fair_value=number, price=edge["price"]), card)
+                words, bought = got["words"], got["fair_value"]
+                if got["buys_the_other_side"]:
+                    own_side = language.own_side_words(
+                        contract["words"], None if bought is None else 1.0 - bought,
+                        clause=True)
         entries.append({
             "prediction_id": row["prediction_id"],
             "taken_utc": row["taken_utc"],
             "words": language.taken_entry_words(
-                _the_contract(numbers, card)["words"],
-                edge["edge_cents"] if edge else None, across=across),
+                words, edge["edge_cents"] if edge else None, across=across,
+                own_side=own_side),
+            # WHAT THE WORDS ARE ABOUT (operator question 37, 2026-10-05): the
+            # side the recommendation bought, the line its words are asked at
+            # and the model's number for that side, for the gate's check
+            # (`audit.headline_faults`).
+            "side": side,
+            "words_line_asked": contract["line_asked"],
+            "fair_value": bought,
         })
     # AND THE PACKAGES HE MARKED (GRIDIRON_COMBOS C4, 2026-09-08). The rail
     # said "nothing marked yet" beneath a package card whose button read
@@ -3097,11 +3217,15 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
             "side_words": bought["words"],
             "fair_value": bought["fair_value"],
             "price": bought["price"],
+            # THE MODEL'S OWN SIDE, NAMED BESIDE THE CONTRACT BOUGHT (operator
+            # question 37, ruled 2026-10-05), where that is the other side of
+            # the question's words.
+            "buys_the_other_side": bought["buys_the_other_side"],
             "words": language.recommendation_line(
                 words=bought["words"], fair_value=bought["fair_value"],
                 price=bought["price"], edge_cents=entry["edge_cents"],
                 units=size["units"], flat=size["kind"] == "flat",
-                size_why=size.get("why")),
+                size_why=size.get("why"), own_side=bought["own_side"]),
         })
     considered = len(priced)
     return {
@@ -3148,17 +3272,33 @@ def _the_side_bought(entry: dict, card: dict) -> dict:
     fair = entry.get("fair_value")
     contract = _the_contract(entry, card)
     if buys_the_proposition == takes:
-        words = contract["words"]
+        item, words = contract["item"], contract["words"]
     else:
-        words = language.phrase_of_the_other_side(contract["item"])
+        # (`language.phrase_of_the_other_side`, by way of the item it words,
+        # so the Today card can headline the same contract -- operator
+        # question 37, 2026-10-05)
+        item = language.the_other_side(contract["item"])
+        words = language.phrase(item)
     # TURNED AS THE CARD TURNS THEM (`_on_the_question`: one minus the
     # number, unrounded), so a line and its card never round one half-cent
     # two ways -- 54.5c read 54c on one and 55c on the other.
+    bought = None if fair is None else (fair if buys_the_proposition else 1.0 - fair)
+    # AND THE MODEL'S OWN SIDE BESIDE IT, where the side bought is the other
+    # one (operator question 37, ruled 2026-10-05: "the model's own side named
+    # beside it"): the question's words at the same contract's line, and the
+    # model's number for them -- the rest of the hundred.
+    other = buys_the_proposition != takes and takes in (True, False)
     return {
         "words": words,
-        "fair_value": None if fair is None else (fair if buys_the_proposition
-                                                  else 1.0 - fair),
+        # THE CONTRACT BOUGHT, for every composer (`line_words`, `club_named`):
+        # the Today card headlines it through here (operator question 37).
+        "item": item,
+        "fair_value": bought,
         "price": _cost_of_the_side_bought(entry),
+        "buys_the_other_side": other,
+        "own_side": (language.own_side_words(
+            contract["words"], None if bought is None else 1.0 - bought)
+            if other else None),
     }
 
 

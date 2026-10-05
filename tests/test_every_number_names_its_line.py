@@ -345,20 +345,26 @@ def test_an_opening_read_at_another_rung_names_the_contract(tmp_path):
 # --- the edge's side at the claim's line (step C's hold on spreads) ----------------
 
 def test_a_spread_tile_names_the_other_side_of_its_claims_contract(tmp_path):
-    """Rec 117's shape: the words name Atlanta at the claim's -2.5 (Atlanta
-    +2.5), and the edge -- New Orleans -2.5's, the side bought -- says it is
-    the other side's; the recommendation line names New Orleans -2.5. (The
-    size and outline beside Atlanta's words are operator question 37's.)"""
+    """Rec 117's shape at the claim's line (-2.5). Until operator question 37
+    was ruled (2026-10-05) the words named Atlanta at that line (Atlanta
+    +2.5) and the edge -- New Orleans -2.5's, the side bought -- said it was
+    the other side's, beside New Orleans -2.5's size and outline. The ruling
+    ("headline the contract the recommendation buys; the model's own side
+    named beside it"): the row and the tile name New Orleans -2.5, at the
+    claim's line, with its own edge drawn bare, and Atlanta +2.5 beside it;
+    the recommendation line names New Orleans -2.5 as before."""
     conn, pid, sport, week = _world(tmp_path / "rec117.db", "rec117")
     payload = views.week(conn, sport, 2026, week)
     for block in _blocks(payload, pid):
-        assert block["line_words"] == "Atlanta +2.5"
-        assert block["edge_words"].endswith("on the other side")
+        assert block["line_words"] == "New Orleans -2.5"
+        assert not block["edge_words"].endswith("on the other side")
+        assert block["own_side_words"] == "The model's own side: Atlanta +2.5, 32%"
     line = next(x for x in payload["recommendations"]["lines"] if x["prediction_id"] == pid)
     assert line["words"].startswith("New Orleans covers -2.5 — the model makes it 68¢")
     assert _faults(conn, payload) == []
     assert audit.pick_side_faults(payload) == []
     assert audit.combo_side_faults(payload) == []
+    assert audit.headline_faults(payload) == []
 
 
 # --- the taken rail ---------------------------------------------------------------

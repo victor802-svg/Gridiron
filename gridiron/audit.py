@@ -7379,7 +7379,15 @@ def check_combo_package(packages) -> None:
 #: chip. Both belong to the pre-CARD_FACE card, and both read as a claim about
 #: a game whose score this app is up to ninety seconds late on.
 LIVE_TAB_FORBIDDEN_FIELDS = ("probability", "model_prob", "chance",
-                             "tier_chip", "tier_label", "tier")
+                             "tier_chip", "tier_label", "tier",
+                             # THE MODEL'S OWN SIDE AND ITS NUMBER (Q37's prover,
+                             # 2026-10-05): operator question 37's sentence
+                             # beside a recommendation's headline carries a chance
+                             # ("The model's own side: Atlanta +2.5, 32%"), and a
+                             # live row or card buys nothing -- its one figure is
+                             # the pregame one, with its word. The field was new
+                             # with question 37 and no live check named it.
+                             "own_side_words")
 
 #: The only headings the Live tab may carry. "In progress" is the group's own;
 #: "Yours" marks a pick the operator took. Any other heading on this tab is a
@@ -12836,6 +12844,9 @@ BOARD_TEXT_KEYS = (
     "factors_words", "factor_words",
     "alt_empty_words", "label", "heading", "empty", "kalshi_absent",
     "market_label", "forecaster_label", "player", "surname", "name",
+    # THE MODEL'S OWN SIDE, beside a pick headlining the contract bought on
+    # the other side of it (operator question 37, ruled 2026-10-05).
+    "own_side_words",
 )
 
 
@@ -13438,7 +13449,12 @@ _check_the_board_count_scanners_can_see()
 # `number_line_faults` below, which also holds the opening read's rung,
 # finding 5), a combo's legs (finding 1, step B), and a recommendation that
 # buys the other side of its question's words shown on the board and the
-# Today card under the model's own side's words (operator question 37).
+# Today card under the model's own side's words (operator question 37;
+# ruled 2026-10-05, the card headlines the contract bought, and
+# `headline_faults` below holds it -- these checks read the card's own
+# `question_takes_the_proposition`, which from then on says whether the
+# card's WORDS name the claim's proposition, and My day's chip of a
+# recommendation is held to the club of the contract it bought).
 # FROM STEP A (2026-09-30) the words these checks work out for the other
 # side are that side's at the line of the contract the card's numbers
 # belong to (`_at_the_cards_line`), and a spread's tile is held to "on the
@@ -13645,6 +13661,9 @@ def pick_side_faults(payload) -> list[str]:
 
     # MY DAY'S CHIP WEARS THE CLUB ITS PICK'S WORDS NAME.
     rows = {g.get("game_id"): g for g in (board.get("games") or []) if isinstance(g, dict)}
+    recommended = {x.get("prediction_id"): x
+                   for x in (((payload.get("recommendations") or {}).get("lines")) or [])
+                   if isinstance(x, dict)}
     for i, chip in enumerate(((board.get("my_day") or {}).get("entries")) or []):
         if not isinstance(chip, dict) or chip.get("prop"):
             continue
@@ -13667,16 +13686,26 @@ def pick_side_faults(payload) -> list[str]:
         market_type = forecast.get("market_type")
         if market_type not in ("moneyline", "spread"):
             continue  # a total names no club, and wears the game's home club
-        try:
-            taken = _subjects.side_taken(market_type, forecast.get("model_side"))
-        except _subjects.UnplaceableSide as exc:
-            faults.append(f"{where}: {exc}")
-            continue
         home = (game.get("home") or {}).get("tricode")
         away = (game.get("away") or {}).get("tricode")
-        subject = forecast.get("subject")
-        named = subject if taken == "yes" else (
-            away if subject == home else home if subject == away else None)
+        # A RECOMMENDATION'S CHIP NAMES THE CONTRACT IT BUYS (operator question
+        # 37, ruled 2026-10-05: "headline the contract the recommendation
+        # buys"): on a game still to start, a taken question with a
+        # recommendation on this slate is drawn as the contract bought -- the
+        # home club's on the yes side of the claim's proposition, the
+        # visitor's on the no side -- whichever side the model took.
+        bought = (recommended.get(pid) or {}).get("side")
+        if chip.get("state") == "upcoming" and bought in ("yes", "no"):
+            named = home if bought == "yes" else away
+        else:
+            try:
+                taken = _subjects.side_taken(market_type, forecast.get("model_side"))
+            except _subjects.UnplaceableSide as exc:
+                faults.append(f"{where}: {exc}")
+                continue
+            subject = forecast.get("subject")
+            named = subject if taken == "yes" else (
+                away if subject == home else home if subject == away else None)
         got = (chip.get("club") or {}).get("tricode")
         if named is not None and got != named:
             faults.append(
@@ -14344,12 +14373,14 @@ def pick_contracts(conn, payload) -> dict:
                       "main": {"line": float(main[0]["line"]), "implied": main[1]}}
         taken = []
         for r in conn.execute(
-                "SELECT r.id, r.created_utc FROM recommendations r"
+                "SELECT r.id, r.created_utc, r.side FROM recommendations r"
                 " WHERE r.prediction_id = ?" + _recommend.not_withdrawn(conn)
                 + " ORDER BY r.created_utc, r.id", (pid,)):
             mine = [c for c in before if c["created_utc"] <= r["created_utc"]]
+            # AND THE SIDE IT BOUGHT (operator question 37, 2026-10-05): the
+            # taken rail names the contract bought, read off the stored row
             taken.append({"rec": r["id"], "created_utc": r["created_utc"],
-                          "claim": mine[-1] if mine else None})
+                          "side": r["side"], "claim": mine[-1] if mine else None})
         out[pid] = {"market_type": f["market_type"], "home": f["home"],
                     "away": f["away"], "subject": f["subject"],
                     "subject_is_home": home_subject, "takes": takes,
@@ -14378,6 +14409,22 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
                 index[card.get("prediction_id")] = (group, card)
     priced_cards = {c.get("prediction_id") for g in groups for c in today.get(g) or []
                     if isinstance(c, dict)}
+    # THE SIDE A RECOMMENDATION'S HEADLINE NAMES (operator question 37, ruled
+    # 2026-10-05: "headline the contract the recommendation buys"): a Today
+    # card of a recommendation, and the board's row and tile drawn from it on
+    # a game still to start, name the contract bought -- the yes side of the
+    # claim's proposition or the no side, by its recommendation line -- and
+    # their words' line is read from that side; everything else names its
+    # question's side (`audit.headline_faults` holds which side the headline
+    # is; this holds its line).
+    bought = {x.get("prediction_id"): x.get("side") == "yes"
+              for x in (((payload.get("recommendations") or {}).get("lines")) or [])
+              if isinstance(x, dict) and x.get("side") in ("yes", "no")}
+
+    def headline_side(pid, *, upcoming: bool) -> bool | None:
+        """The side a recommendation's headline names, or None: the
+        question's own side, which `hold` reads from the record."""
+        return bought.get(pid) if upcoming else None
 
     def hold(where, pid, words, *, numbers: str, side: bool | None,
              draws_price: bool):
@@ -14472,7 +14519,8 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
                 from_claim = bool(block.get("priced")) or (
                     entry is not None and entry.get("fair_value") is not None)
                 if from_claim:
-                    hold(where, pid, words, numbers="priced", side=None,
+                    hold(where, pid, words, numbers="priced",
+                         side=headline_side(pid, upcoming=group in groups),
                          draws_price=True)
                 else:
                     if pid in priced_cards and across_now(pid, "priced"):
@@ -14514,8 +14562,9 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
         k = contracts.get(pid) or {}
         line_tip = (block.get("tips") or {}).get("line")
         if k and k.get("question_line") is not None and line_tip:
+            said_side = headline_side(pid, upcoming=state == "upcoming" and group in groups)
             drawn = _line_named(block.get("line_words"), k["market_type"],
-                                proposition_side=k["takes"],
+                                proposition_side=k["takes"] if said_side is None else said_side,
                                 subject_is_home=k["subject_is_home"])
             named = _line_named(line_tip, k["market_type"], proposition_side=k["takes"],
                                 subject_is_home=k["subject_is_home"])
@@ -14548,6 +14597,10 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
             where = f"today.{group}[{i}]"
             state = card.get("state")
             k = contracts.get(pid) or {}
+            # a recommendation's card, upcoming or finished, headlines the
+            # contract it buys (operator question 37, 2026-10-05)
+            said_side = headline_side(pid, upcoming=group in groups and state != "live")
+            words_side = k.get("takes") if said_side is None else said_side
             for words in (card.get("question"), card.get("line_words")):
                 if not words:
                     continue
@@ -14563,7 +14616,7 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
                         hold(where, pid, words, numbers="question", side=None,
                              draws_price=False)
                 elif card.get("fair_value") is not None or card.get("price") is not None:
-                    hold(where, pid, words, numbers="priced", side=None,
+                    hold(where, pid, words, numbers="priced", side=said_side,
                          draws_price=True)
                 else:
                     if group in groups and across_now(pid, "priced"):
@@ -14581,7 +14634,7 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
             # (the claim's outcome read from the record).
             if k and k.get("question_line") is not None:
                 said = _line_named(card.get("question"), k["market_type"],
-                                   proposition_side=k["takes"],
+                                   proposition_side=words_side,
                                    subject_is_home=k["subject_is_home"])
                 if said is not None and abs(said - k["question_line"]) > 1e-9:
                     why = card.get("why") if isinstance(card.get("why"), dict) else {}
@@ -14609,8 +14662,11 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
                         figure = re.search(r"had this at (\d+)%", settled)
                         claim = k.get("priced") or {}
                         outcome = claim.get("outcome")
+                        # the side the card's words name: the contract its
+                        # recommendation bought, where it headlines that
+                        # (operator question 37, 2026-10-05)
                         truth = (None if outcome is None
-                                 else (outcome if k["takes"] else 1 - outcome))
+                                 else (outcome if words_side else 1 - outcome))
                         says = (True if settled.endswith("it happened") else
                                 False if settled.endswith(("it did not",
                                                            "it did not happen"))
@@ -14702,8 +14758,13 @@ def number_line_faults(payload, contracts: dict) -> list[str]:
                     f"carries it (operator question 36, the conservative default)")
             continue
         want = k["question_line"] if claim is None else claim["stored"]
+        # THE WORDS NAME THE CONTRACT THE STORED RECOMMENDATION BOUGHT
+        # (operator question 37, 2026-10-05), so their line is read from that
+        # side of the claim's proposition, off the record's own row.
+        side = recs[-1].get("side") if recs else None
         got = _line_named(words.split(" · ")[0], k["market_type"],
-                          proposition_side=k["takes"],
+                          proposition_side=(k["takes"] if side not in ("yes", "no")
+                                            else side == "yes"),
                           subject_is_home=k["subject_is_home"])
         if want is not None and (got is None or abs(got - want) > 1e-9):
             faults.append(
@@ -15027,6 +15088,555 @@ def _check_the_number_line_scanner_can_see() -> None:
 
 
 _check_the_number_line_scanner_can_see()
+
+
+# ---------------------------------------------------------------------------
+# A RECOMMENDATION HEADLINES THE CONTRACT IT BUYS, THE MODEL'S OWN SIDE NAMED
+# BESIDE IT (operator question 37, ruled 2026-10-05; docs/briefs/
+# 2026-10-05-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# The ruling, whole: "Q37: headline the contract the recommendation buys; the
+# model's own side named beside it." A question's words name the side the
+# model took; a recommendation buys the side the price makes worth buying,
+# and that can be the OTHER one. Until this date the row, the tile, the Today
+# card and My day's chip drew the model's side's words, chance, price and
+# payout beside the size, the edge and the green outline of the contract
+# bought, and the taken rail named the model's side beside the edge of the
+# other: rec 117 read "Atlanta +2.5 · 32% · 48c · 2.06x · $15", outlined, and
+# bought New Orleans -2.5 (68%, 51.5c) -- 16 recommendations on the record
+# when question 37 was asked (MLB 47, 82; NFL 67-69, 71-74, 76-78; NCAAF 89,
+# 91, 102, 103), 22 when it was ruled (and 115, 117-119, 123, 126). Each now
+# headlines the contract bought -- its words, chance, price, payout, size,
+# edge and outline -- with the model's own side and number beside it ("The
+# model's own side: Atlanta +2.5, 32%"); the recommendation line, which named
+# the side bought from step C, ends by naming the model's side; the row's
+# label says the pick is the other side.
+#
+# `headline_faults` works each recommendation's headline out again from the
+# payload: the side it buys from its recommendation line (`side`, of the
+# claim's fixed proposition); the side the MODEL took from the slate's own
+# card -- its stored side through the one place (`subjects.side_taken`) and
+# its subject against the home club on the board's row, never the Today
+# card's say-so; the words of the contract bought at the line the card's
+# words are asked at (`_at_the_cards_line`, which `number_line_faults` holds
+# to the record); and that contract's chance, cost and payout from the card's
+# proposition number and price. Gate step 2 reads every sport's slate, both
+# forecasters, on the record's copy (`check_every_recommendation_headlines_
+# what_it_buys`).
+
+
+def _model_takes_the_proposition(card: dict, home: str | None) -> bool | None:
+    """Does the side the MODEL took -- its question's words -- name the
+    claim's fixed proposition (the home side, the over)? From the slate
+    card's stored side through the one place and, for a game market, its
+    subject against the home club; None where it cannot be said (operator
+    question 37, 2026-10-05)."""
+    from . import subjects as _subjects
+
+    market_type = card.get("market_type")
+    try:
+        said_yes = _subjects.side_taken(market_type, card.get("model_side")) == "yes"
+    except _subjects.UnplaceableSide:
+        return None
+    if market_type not in ("moneyline", "spread"):
+        return said_yes
+    if not home:
+        return None
+    if card.get("subject") == home:
+        return said_yes
+    if card.get("opponent") == home:
+        return not said_yes
+    return None
+
+
+def headline_faults(payload) -> list[str]:
+    """A recommendation whose headline -- on its Today card, the board's row
+    and tile, My day's chip, its recommendation line or the taken rail -- is
+    not the contract it buys, or that headlines the contract bought without
+    naming the model's own side and number beside it (operator question 37,
+    ruled 2026-10-05)."""
+    from . import language as _language, subjects as _subjects
+    from .market import recommend as _recommend
+
+    payload = payload or {}
+    today = payload.get("today") or {}
+    board = payload.get("board") or {}
+    faults: list[str] = []
+    slate = {c.get("prediction_id"): c for c in (payload.get("cards") or [])
+             if isinstance(c, dict)}
+    rows = {g.get("game_id"): g for g in (board.get("games") or []) if isinstance(g, dict)}
+    lines = {x.get("prediction_id"): x
+             for x in (((payload.get("recommendations") or {}).get("lines")) or [])
+             if isinstance(x, dict) and x.get("side") in ("yes", "no")}
+    cards: dict = {}
+    for group in ("clears", "below_floor"):
+        for i, c in enumerate(today.get(group) or []):
+            if isinstance(c, dict) and c.get("state") != "live":
+                cards[c.get("prediction_id")] = (f"today.{group}[{i}]", c)
+
+    def home_of(f: dict, card: dict | None) -> str | None:
+        game = rows.get(f.get("game_id")) or {}
+        return (game.get("home") or {}).get("tricode") or (card or {}).get("home")
+
+    def bought_contract(f: dict, card: dict | None, side: str, at: dict):
+        """(the contract bought, the model's own side, whether they part) at
+        the line `at` names (`words_line_asked`), or the fault in words."""
+        takes = _model_takes_the_proposition(f, home_of(f, card))
+        if takes is None:
+            stored = (f.get("model_side"), f.get("subject"))
+            return (f"which side the model took cannot be said from its stored "
+                    f"side and subject {stored!r}")
+        own = _at_the_cards_line(f, at)
+        other = (side == "yes") != takes
+        try:
+            item = _language.the_other_side(own) if other else own
+            _language.phrase(item)
+        except (_subjects.UnplaceableSide, ValueError, TypeError, KeyError) as exc:
+            return f"the contract it buys cannot be put in words: {exc}"
+        return item, own, other
+
+    def near(got, want) -> bool:
+        return isinstance(got, (int, float)) and abs(got - want) <= 1e-9
+
+    rule = ("a recommendation headlines the contract it buys, the model's own "
+            "side named beside it (operator question 37, ruled 2026-10-05)")
+
+    for pid, line in lines.items():
+        f = slate.get(pid)
+        got = cards.get(pid)
+        if f is None or got is None:
+            continue          # `pick_side_faults` names a line with no card
+        where, card = got
+        reading = bought_contract(f, card, line["side"], card)
+        if isinstance(reading, str):
+            faults.append(f"{where} (question {pid}): {reading}")
+            continue
+        item, own, other = reading
+        yes = line["side"] == "yes"
+        want_words = _language.phrase(item)
+        want_line = _language.pick_line_words(item)
+        want_club = _language.club_named(item)
+        fair, price = card.get("fair_value"), card.get("price")
+        number = None if fair is None else (fair if yes else 1.0 - fair)
+        cost = None if price is None else (price if yes else 1.0 - price)
+        pays = None if cost is None else _recommend.payout_multiple(cost)
+        want_own = (None if not other else _language.own_side_words(
+            _language.pick_line_words(own), None if number is None else 1.0 - number))
+        want_clause = (None if not other else _language.own_side_words(
+            _language.phrase(own), None if number is None else 1.0 - number))
+        whose = (f"(question {pid}, whose recommendation buys {want_words!r}"
+                 + (f", the other side of the model's {_language.phrase(own)!r})"
+                    if other else ")"))
+
+        # THE TODAY CARD
+        if card.get("question") != want_words or card.get("line_words") != want_line:
+            faults.append(
+                f"{where} {whose} headlines {card.get('question')!r} "
+                f"({card.get('line_words')!r}): {rule}")
+        if card.get("question_takes_the_proposition") is not yes:
+            faults.append(
+                f"{where} {whose} turns its numbers to the side "
+                f"question_takes_the_proposition="
+                f"{card.get('question_takes_the_proposition')!r} names, not the "
+                f"contract it buys (the {line['side']} side): {rule}")
+        if number is not None and card.get("model_words") != _language.price_chip_words(
+                number * 100):
+            faults.append(
+                f"{where} {whose} states the chance {card.get('model_words')!r} where "
+                f"the contract it buys is {_language.price_chip_words(number * 100)!r}: "
+                f"{rule}")
+        if pays is not None and not near(card.get("payout"), pays):
+            faults.append(
+                f"{where} {whose} says it pays {card.get('payout')!r} where the "
+                f"contract it buys pays {pays!r}: {rule}")
+        # AND THE WORDS IT DRAWS, not only the numbers beneath them (Q37's
+        # prover, 2026-10-05): the venue chip, the payout chip and the price
+        # beneath it are text, composed from the price and the payout, and a
+        # card whose numbers are the contract bought's could still say the
+        # model's side's "48c · pays 2.06x" and pass a check that read the
+        # numbers alone.
+        if cost is not None:
+            for key, want in (("venue_words", _language.venue_chip_words(cost, pays)),
+                              ("payout_words", _language.payout_chip_words(pays)),
+                              ("price_words", _language.price_under_payout_words(cost))):
+                if (key != "price_words" or key in card) and card.get(key) != want:
+                    faults.append(
+                        f"{where} {whose} says {card.get(key)!r} where the contract it "
+                        f"buys reads {want!r}: {rule}")
+        if str(card.get("edge_label") or "").endswith("on the other side"):
+            faults.append(
+                f"{where} {whose} labels its edge {card.get('edge_label')!r}, where the "
+                f"edge is the contract it headlines: {rule}")
+        if card.get("own_side_words") != want_own:
+            faults.append(
+                f"{where} {whose} says {card.get('own_side_words')!r} beside its "
+                f"headline, where the model's own side reads {want_own!r}: {rule}")
+        if "named_club" in card and card.get("named_club") != want_club:
+            faults.append(
+                f"{where} {whose} names the club {card.get('named_club')!r} where the "
+                f"contract it buys names {want_club!r}: {rule}")
+
+        # THE BOARD'S ROW AND TILE, on a game still to start
+        for i, game in enumerate(board.get("games") or []):
+            if not isinstance(game, dict):
+                continue
+            blocks = [(f"board.games[{i}].pick", game.get("pick"))]
+            blocks += [(f"board.games[{i}].questions[{j}]", q)
+                       for j, q in enumerate(game.get("questions") or [])]
+            for at, block in blocks:
+                if (not isinstance(block, dict) or block.get("prediction_id") != pid
+                        or block.get("state") != "upcoming"):
+                    continue
+                if block.get("line_words") != want_line or (
+                        "question" in block and block.get("question") != want_words):
+                    faults.append(
+                        f"{at} {whose} draws {block.get('line_words')!r} beside the "
+                        f"size, the edge and the outline of the contract it buys: {rule}")
+                for key, want in (("prob", number), ("price", cost), ("pays", pays)):
+                    if want is not None and not near(block.get(key), want):
+                        faults.append(
+                            f"{at} {whose} draws its {key} as {block.get(key)!r} where the "
+                            f"contract it buys has {round(want, 4)!r}: {rule}")
+                # AND THE WORDS THE ROW AND THE TILE DRAW (Q37's prover,
+                # 2026-10-05): the page draws `prob_words`, `price_words` and
+                # `pays_words`; `prob`, `price` and `pays` only place the bar
+                # and its tick, so words left at the model's side ("32%",
+                # "48c", "2.06x") beside numbers of the contract bought
+                # passed a check of the numbers alone.
+                for key, want in (
+                        ("prob_words", None if number is None else
+                         _language.price_chip_words(number * 100).replace("¢", "%")),
+                        ("price_words", None if cost is None else
+                         _language.venue_chip_words(cost, None)),
+                        ("pays_words", None if pays is None else
+                         _language.payout_chip_words(pays))):
+                    if want is not None and block.get(key) != want:
+                        faults.append(
+                            f"{at} {whose} draws {block.get(key)!r} where the contract "
+                            f"it buys reads {want!r}: {rule}")
+                if str(block.get("edge_words") or "").endswith("on the other side"):
+                    faults.append(
+                        f"{at} {whose} draws its edge {block.get('edge_words')!r}, the "
+                        f"contract it headlines' own, as the other side's: {rule}")
+                if block.get("own_side_words") != want_own:
+                    faults.append(
+                        f"{at} {whose} says {block.get('own_side_words')!r} beside its "
+                        f"headline, where the model's own side reads {want_own!r}: {rule}")
+                if "named_club" in block and block.get("named_club") != want_club:
+                    faults.append(
+                        f"{at} {whose} names the club {block.get('named_club')!r}, where "
+                        f"the contract it buys names {want_club!r}: {rule}")
+                if at.endswith(".pick"):
+                    label = _language.pick_label_words(
+                        "upcoming", block.get("signal") or "none", other_side=other)
+                    if game.get("pick_label_words") != label:
+                        faults.append(
+                            f"board.games[{i}] {whose} heads its pick "
+                            f"{game.get('pick_label_words')!r} where it reads {label!r}: "
+                            f"{rule}")
+
+        # MY DAY'S CHIP, on a game still to start
+        for i, chip in enumerate(((board.get("my_day") or {}).get("entries")) or []):
+            if (not isinstance(chip, dict) or chip.get("prediction_id") != pid
+                    or chip.get("prop") or chip.get("state") != "upcoming"):
+                continue
+            worn = (chip.get("club") or {}).get("tricode")
+            if chip.get("line_words") != want_line or (want_club and worn != want_club):
+                faults.append(
+                    f"board.my_day.entries[{i}] {whose} is the chip {worn!r} · "
+                    f"{chip.get('line_words')!r}: {rule}")
+            # AND THE MODEL'S OWN SIDE BESIDE IT, in the chip's tooltip (Q37's
+            # prover, 2026-10-05): the chip named the contract bought and the
+            # model's side nowhere, where every other headline names it; and
+            # none beside a recommendation on the model's own side.
+            tip = (chip.get("tips") or {}).get("line")
+            want_tip = _language.my_day_line_tip(want_words, want_own)
+            if tip != want_tip:
+                faults.append(
+                    f"board.my_day.entries[{i}] {whose} says {tip!r} where it reads "
+                    f"{want_tip!r}: {rule}")
+
+        # THE RECOMMENDATION LINE
+        words = str(line.get("words") or "")
+        if line.get("side_words") != want_words or not words.startswith(want_words):
+            faults.append(
+                f"recommendations.lines (question {pid}) names "
+                f"{line.get('side_words')!r} where it buys {want_words!r}: {rule}")
+        if other and not words.endswith(f" {want_clause}."):
+            faults.append(
+                f"recommendations.lines (question {pid}) says {words!r} and does not "
+                f"name the model's own side beside the contract it buys "
+                f"({want_clause!r}): {rule}")
+        if not other and "model's own side" in words:
+            faults.append(
+                f"recommendations.lines (question {pid}) names an own side of the "
+                f"model's beside the side the model took: {words!r}")
+
+    # THE TAKEN RAIL: each entry names the contract its stored recommendation
+    # bought, at that recommendation's line, and the model's own side beside it
+    for i, entry in enumerate(((today.get("taken_today") or {}).get("entries")) or []):
+        if not isinstance(entry, dict) or entry.get("prediction_id") is None:
+            continue
+        pid = entry["prediction_id"]
+        f = slate.get(pid)
+        words = str(entry.get("words") or "")
+        where = f"today.taken_today.entries[{i}] (question {pid})"
+        side = entry.get("side")
+        if side not in ("yes", "no"):
+            if "when marked" in words:
+                faults.append(
+                    f"{where} states an edge {words!r} and names no side its "
+                    f"recommendation bought, so which contract it headlines cannot be "
+                    f"held: {rule}")
+            continue
+        if f is None:
+            continue
+        reading = bought_contract(f, (cards.get(pid) or (None, None))[1], side, entry)
+        if isinstance(reading, str):
+            faults.append(f"{where}: {reading}")
+            continue
+        item, own, other = reading
+        want_words = _language.phrase(item)
+        if not words.startswith(f"{want_words} · "):
+            faults.append(
+                f"{where} says {words!r} where the contract its recommendation bought "
+                f"is {want_words!r}: {rule}")
+        fair = entry.get("fair_value")
+        if other:
+            clause = _language.own_side_words(
+                _language.phrase(own), None if fair is None else 1.0 - fair, clause=True)
+            if not words.endswith(f" — {clause}"):
+                faults.append(
+                    f"{where} says {words!r} and does not name the model's own side "
+                    f"beside the contract bought ({clause!r}): {rule}")
+        elif "model's own side" in words:
+            faults.append(f"{where} names an own side beside the model's own: {words!r}")
+
+    # AND A RECOMMENDATION'S CARD WITH NO LINE SAYING WHAT IT BUYS
+    for pid, (where, card) in cards.items():
+        if pid not in lines:
+            faults.append(
+                f"{where} (question {pid}) clears the bar and no recommendation line on "
+                f"this slate says which contract it buys, so its headline cannot be "
+                f"held to it: {rule}")
+    return faults
+
+
+def check_every_recommendation_headlines_what_it_buys(payload) -> None:
+    faults = headline_faults(payload)
+    if faults:
+        raise LawViolation(
+            "A RECOMMENDATION'S HEADLINE IS NOT THE CONTRACT IT BUYS (operator "
+            "question 37, ruled 2026-10-05: \"headline the contract the "
+            "recommendation buys; the model's own side named beside it\"):"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+#: REC 117 AS THIS RULING LEAVES IT (NFL week 4, ATL at NO, 6 October 00:15Z;
+#: forecast 3583, "NO covers -9.5" answered "not_cover" -- Atlanta +9.5 --
+#: priced off the home contract "New Orleans wins by over 2.5", claim 1789,
+#: the model's 68.48% for New Orleans -2.5 at a 51.5c mid; the recommendation
+#: buys New Orleans -2.5, the yes side, the other side of the model's words),
+#: as if tapped: the card, the row and the tile, My day's chip, the
+#: recommendation line and the taken rail each headline New Orleans -2.5 at
+#: 68%, 52c and 1.94x, and name the model's own side, Atlanta +2.5 at 32%.
+HEADLINE_FIXTURE_GOOD = {
+    "forecaster": "statistical",
+    "cards": [{"prediction_id": 3583, "game_id": "2026_04_ATL_NO", "sport": "nfl",
+               "market_type": "spread", "subject": "NO", "opponent": "ATL",
+               "line_asked": -9.5, "model_side": "not_cover",
+               "phrase": "Atlanta covers +9.5",
+               "team_names": {"ATL": {"full": "Atlanta Falcons", "city": "Atlanta",
+                                      "club": "Falcons"},
+                              "NO": {"full": "New Orleans Saints",
+                                     "city": "New Orleans", "club": "Saints"}}}],
+    "today": {
+        "clears": [{"prediction_id": 3583, "state": "upcoming",
+                    "question": "New Orleans covers -2.5",
+                    "line_words": "New Orleans -2.5", "words_line_asked": -2.5,
+                    "named_club": "NO", "buys_the_other_side": True,
+                    "own_side_words": "The model's own side: Atlanta +2.5, 32%",
+                    "model_words": "68¢", "venue_words": "52¢ · pays 1.94x",
+                    "payout": 1.942, "payout_words": "1.94x", "price": 0.515,
+                    "price_words": "52¢ a contract",
+                    "fair_value": 0.6848, "question_takes_the_proposition": True,
+                    "edge_cents": 14.98, "edge_words": "+15.0¢",
+                    "edge_label": "Edge after fees", "edge_on_the_other_side": False,
+                    "asked_words": ("The model was asked about Atlanta +9.5 and gives "
+                                    "it 58%."),
+                    "home": "NO", "away": "ATL"}],
+        "below_floor": [], "watching": [],
+        "taken_today": {"n": 1, "entries": [{
+            "prediction_id": 3583, "taken_utc": "2026-10-05T19:00:00Z",
+            "words": ("New Orleans covers -2.5 · +15.0¢ when marked — the model's "
+                      "own side: Atlanta covers +2.5, 32%"),
+            "side": "yes", "words_line_asked": -2.5, "fair_value": 0.6848}]}},
+    "recommendations": {"lines": [{
+        "prediction_id": 3583, "side": "yes", "edge_cents": 14.98,
+        "side_words": "New Orleans covers -2.5", "fair_value": 0.6848, "price": 0.515,
+        "buys_the_other_side": True,
+        "words": ("New Orleans covers -2.5 — the model makes it 68¢, the venue is at "
+                  "52¢, and it is worth +15.0¢ a contract after the fee. One flat unit "
+                  "— no measured edge yet. The model's own side: Atlanta covers +2.5, "
+                  "32%.")}]},
+    "board": {
+        "games": [{"game_id": "2026_04_ATL_NO", "state": "upcoming",
+                   "home": {"tricode": "NO"}, "away": {"tricode": "ATL"},
+                   "pick_label_words": "Model's pick · the other side",
+                   "pick": {"prediction_id": 3583, "state": "upcoming",
+                            "signal": "clears", "priced": True,
+                            "line_words": "New Orleans -2.5",
+                            "question": "New Orleans covers -2.5", "prob": 0.6848,
+                            "prob_words": "68%",
+                            "price": 0.515, "pays": 1.942, "edge_words": "+15.0¢",
+                            "price_words": "52¢", "pays_words": "1.94x",
+                            "own_side_words": "The model's own side: Atlanta +2.5, 32%",
+                            "named_club": "NO", "taken": True,
+                            "tips": {"line": (
+                                "The model was asked about Atlanta +9.5 and gives it "
+                                "58%. This buys the other side of the model's own. "
+                                "The model's own side: Atlanta +2.5, 32%.")}},
+                   "questions": [{"prediction_id": 3583, "state": "upcoming",
+                                  "signal": "clears", "priced": True,
+                                  "line_words": "New Orleans -2.5",
+                                  "question": "New Orleans covers -2.5",
+                                  "prob": 0.6848, "prob_words": "68%",
+                                  "price": 0.515, "pays": 1.942,
+                                  "edge_words": "+15.0¢",
+                                  "price_words": "52¢", "pays_words": "1.94x",
+                                  "own_side_words": ("The model's own side: Atlanta "
+                                                     "+2.5, 32%"),
+                                  "named_club": "NO", "taken": True}]}],
+        "my_day": {"n": 1, "entries": [{
+            "prediction_id": 3583, "game_id": "2026_04_ATL_NO", "prop": False,
+            "state": "upcoming", "line_words": "New Orleans -2.5",
+            "club": {"tricode": "NO"},
+            # the model's own side in the chip's tooltip (Q37's prover)
+            "tips": {"line": ("New Orleans covers -2.5. The model's own side: "
+                              "Atlanta +2.5, 32%.")}}]}},
+}
+
+#: The record's reading of rec 117, as `pick_contracts` gives it: the question
+#: at the home side's -9.5 (the model took Atlanta, the claim's other side),
+#: claim 1789 at -2.5 off the home contract it sells, and rec 117 bought on
+#: the yes side from it -- so `number_line_faults` reads the headline's line
+#: from the side bought.
+HEADLINE_CONTRACTS = {
+    3583: {"market_type": "spread", "home": "NO", "away": "ATL", "subject": "NO",
+           "subject_is_home": True, "takes": False, "question_line": -9.5,
+           "priced": {"claim": 1789, "stored": -2.5, "sold": -2.5, "across": False,
+                      "outcome": None, "created_utc": "2026-09-30T18:05:00Z"},
+           "latest": {"claim": 1789, "stored": -2.5, "sold": -2.5, "across": False,
+                      "outcome": None, "created_utc": "2026-09-30T18:05:00Z"},
+           "open": None,
+           "recs": [{"rec": 117, "created_utc": "2026-09-30T18:05:02Z", "side": "yes",
+                     "claim": {"claim": 1789, "stored": -2.5, "sold": -2.5,
+                               "across": False, "outcome": None,
+                               "created_utc": "2026-09-30T18:05:00Z"}}]},
+}
+
+
+def _headline_fixture(**changes):
+    """HEADLINE_FIXTURE_GOOD with places put back as released: each change is
+    (a path of keys and indexes, the fields to set; None removes a field)."""
+    out = json.loads(json.dumps(HEADLINE_FIXTURE_GOOD))
+    for path, fields in changes.values():
+        node = out
+        for step in path:
+            node = node[step]
+        for key, value in fields.items():
+            if value is None:
+                node.pop(key, None)
+            else:
+                node[key] = value
+    return out
+
+
+_RELEASED_117_BLOCK = {"line_words": "Atlanta +2.5", "question": "Atlanta covers +2.5",
+                       "prob": 1.0 - 0.6848, "prob_words": "32%",
+                       "price": 1.0 - 0.515, "pays": 2.062,
+                       "price_words": "48¢", "pays_words": "2.06x",
+                       "edge_words": "+15.0¢ on the other side", "own_side_words": None,
+                       "named_club": "ATL"}
+
+#: REC 117 AS THE RELEASED PAGE DREW IT (b39754c, and every release since the
+#: board merge): each place headlined the model's side, Atlanta +2.5 at 32%,
+#: 48c and 2.06x, beside New Orleans -2.5's "$15", "+15.0c" and outline.
+HEADLINE_FIXTURES_AS_RELEASED = {
+    "rec 117's Today card headlining the model's side": {
+        "card": (("today", "clears", 0), {
+            "question": "Atlanta covers +2.5", "line_words": "Atlanta +2.5",
+            "named_club": None, "buys_the_other_side": None, "own_side_words": None,
+            "model_words": "32¢", "venue_words": "48¢ · pays 2.06x", "payout": 2.062,
+            "payout_words": "2.06x", "question_takes_the_proposition": False,
+            "edge_label": "Edge after fees, on the other side",
+            "edge_on_the_other_side": True})},
+    "rec 117's row headlining Atlanta +2.5 beside New Orleans -2.5's size and outline": {
+        "pick": (("board", "games", 0, "pick"), dict(_RELEASED_117_BLOCK)),
+        "label": (("board", "games", 0), {"pick_label_words": "Model's pick"})},
+    "rec 117's tile on the open row, the same": {
+        "tile": (("board", "games", 0, "questions", 0), dict(_RELEASED_117_BLOCK))},
+    "the contract bought headlined with the model's own side unnamed": {
+        "card": (("today", "clears", 0), {"own_side_words": None}),
+        "pick": (("board", "games", 0, "pick"), {"own_side_words": None})},
+    "the row's label calling the other side the model's pick, as before": {
+        "label": (("board", "games", 0), {"pick_label_words": "Model's pick"})},
+    "My day's chip wearing Atlanta beside the model's side's words": {
+        "chip": (("board", "my_day", "entries", 0), {
+            "line_words": "Atlanta +2.5", "club": {"tricode": "ATL"}})},
+    "the recommendation line naming no model's side": {
+        "line": (("recommendations", "lines", 0), {"words": (
+            "New Orleans covers -2.5 — the model makes it 68¢, the venue is at 52¢, "
+            "and it is worth +15.0¢ a contract after the fee. One flat unit — no "
+            "measured edge yet.")})},
+    "the taken rail naming the model's side beside the edge of the contract bought": {
+        "rail": (("today", "taken_today", "entries", 0), {
+            "words": "Atlanta covers +2.5 · +15.0¢ when marked", "side": None,
+            "words_line_asked": None, "fair_value": None})},
+    # AND THREE FROM Q37'S PROVER (2026-10-05), each passed by the check as
+    # first built: the chip as first built (the contract bought, the model's
+    # side said nowhere); and the drawn words left at the model's side beside
+    # numbers of the contract bought, on the row and on the card, which a
+    # check reading the numbers alone did not see.
+    "My day's chip naming the contract bought and not the model's own side": {
+        "chip": (("board", "my_day", "entries", 0), {
+            "tips": {"line": "New Orleans covers -2.5"}})},
+    "the row drawing the model's side's chance, price and payout beside the "
+    "contract bought's numbers": {
+        "pick": (("board", "games", 0, "pick"), {
+            "prob_words": "32%", "price_words": "48¢", "pays_words": "2.06x"})},
+    "the Today card's chips at the model's side beside the contract bought's "
+    "numbers": {
+        "card": (("today", "clears", 0), {
+            "venue_words": "48¢ · pays 2.06x", "payout_words": "2.06x",
+            "price_words": "48¢ a contract"})},
+}
+
+
+def _check_the_headline_scanner_can_see() -> None:
+    problems = []
+    for name, scan in (("headline_faults", headline_faults),
+                       ("pick_side_faults", pick_side_faults),
+                       ("board_price_side_faults", board_price_side_faults),
+                       ("combo_side_faults", combo_side_faults)):
+        got = scan(HEADLINE_FIXTURE_GOOD)
+        if got:
+            problems.append(f"{name} refuses rec 117 headlining the contract it "
+                            f"buys: {got[0]}")
+    got = number_line_faults(HEADLINE_FIXTURE_GOOD, HEADLINE_CONTRACTS)
+    if got:
+        problems.append("number_line_faults refuses rec 117 headlining the contract "
+                        "it buys, at its claim's line: " + got[0])
+    for name, change in HEADLINE_FIXTURES_AS_RELEASED.items():
+        if not any("operator question 37" in f
+                   for f in headline_faults(_headline_fixture(**change))):
+            problems.append(f"headline_faults passes {name}")
+    if problems:
+        raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
+
+
+_check_the_headline_scanner_can_see()
 
 
 # ---------------------------------------------------------------------------

@@ -390,11 +390,26 @@ def test_the_card_the_line_sentence_and_the_pregame_figure_read_one_number(tmp_p
     with pytest.raises(language.LineNotNamed):
         views._today_card(entry, {"prediction_id": pid, "phrase": "x"},
                           taken=False, group_tier=None, unit_dollars=None)
-    card = views._today_card(views._as_the_page_draws(entry),
-                             {"prediction_id": pid, "phrase": "x"},
+    # THE CARD HEADLINES THE CONTRACT ITS RECOMMENDATION BUYS (operator
+    # question 37, ruled 2026-10-05). The corrected 54% makes the home side,
+    # AAA, the one worth buying -- the other side of the model's "BBB to win"
+    # -- so the card names AAA with AAA's 54%, and the model's own side and
+    # number beside it. (Until the ruling the chip was "46¢", BBB's, beside
+    # AAA's size; a card handed no market at all cannot word the side bought
+    # and is refused by name.)
+    asked = {"prediction_id": pid, "phrase": "BBB to win", "sport": "mlb",
+             "market_type": "moneyline", "subject": "BBB", "opponent": "AAA",
+             "model_side": "win", "line_asked": None}
+    from gridiron import subjects
+
+    with pytest.raises(subjects.UnplaceableSide):
+        views._today_card(views._as_the_page_draws(entry),
+                          {"prediction_id": pid, "phrase": "x"},
+                          taken=False, group_tier=None, unit_dollars=None)
+    card = views._today_card(views._as_the_page_draws(entry), asked,
                              taken=False, group_tier=None, unit_dollars=None)
-    # the question names the away side, so the chip is the other half of 54%
-    assert card["model_words"] == "46¢"
+    assert card["question"] == "AAA to win" and card["model_words"] == "54¢"
+    assert card["own_side_words"] == "The model's own side: BBB to win, 46%"
     # THE LINE STATES THE SIDE IT BUYS (pick-number finding 4, 2026-09-30):
     # the corrected 54% makes the home side the one worth buying, so the line
     # names it, in its own words, with its own number -- where the card it

@@ -9191,6 +9191,10 @@ def plant_a_board_row_priced_off_the_other_side() -> Result:
     the card's chip read 46c against 52c. Planted three ways on the real
     payload: the card without the two numbers (the merge's shape), the price
     left on the proposition, and the chance left at the stored number.
+    FROM OPERATOR QUESTION 37 (ruled 2026-10-05) this world's recommendation
+    buys the home side -- the other side of the model's words -- and the
+    card and the row headline it (54c against 48.5c), so the price planted
+    is the away side's, the side the card's words no longer name.
     """
     import json as _json
 
@@ -9256,12 +9260,19 @@ def plant_a_board_row_priced_off_the_other_side() -> Result:
                 return next(q for g in payload["board"]["games"] for q in g["questions"]
                             if q["prediction_id"] == pid)
 
+            # THE SIDE THE CARD'S WORDS NAME (operator question 37, ruled
+            # 2026-10-05: "headline the contract the recommendation buys").
+            # The corrected 53.58% against 48.5c makes the home side, AAA, the
+            # one bought -- the other side of the model's "BBB to win" -- so
+            # the card and the row headline AAA at its corrected number and
+            # its price; until the ruling they named BBB at 46.42% and 51.5c.
             shipped = _views.week(conn, "mlb", 2026, 1)
             faults = _audit.board_price_side_faults(shipped)
             got = block_of(shipped)
-            if faults or abs(got["prob"] - (1 - 0.5358)) > 1e-3 or abs(got["price"] - 0.515) > 1e-9:
-                missed.append(f"the shipped row is not the card's numbers on the away "
-                              f"side ({got.get('prob')}, {got.get('price')}): "
+            if faults or abs(got["prob"] - 0.5358) > 1e-3 or abs(got["price"] - 0.485) > 1e-9:
+                missed.append(f"the shipped row is not the card's numbers on the side "
+                              f"its words name, the home side bought ({got.get('prob')}, "
+                              f"{got.get('price')}): "
                               + (faults[0] if faults else "no fault named"))
 
             def as_merged(*args, **kwargs):
@@ -9298,8 +9309,11 @@ def plant_a_board_row_priced_off_the_other_side() -> Result:
             forms = {"the card without its corrected number (the merge's shape)": merged}
             left = _views.week(conn, "mlb", 2026, 1)
             block = block_of(left)
-            block["price"], block["pays"] = 0.485, _recommend.payout_multiple(0.485)
-            forms["the price and payout left on the proposition"] = left
+            # the other side's: the away side's 51.5c, where the card's words
+            # name the home side from operator question 37 (it was the
+            # proposition's 48.5c under the away side's words until then)
+            block["price"], block["pays"] = 0.515, _recommend.payout_multiple(0.515)
+            forms["the price and payout left on the side its words do not name"] = left
             stored = _views.week(conn, "mlb", 2026, 1)
             block = block_of(stored)
             block["prob"], block["prob_words"] = 0.57, "57%"
@@ -12001,6 +12015,324 @@ def plant_a_two_contract_sentence_dated_before_its_claims() -> Result:
         return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
                       "NOT CAUGHT - " + " | ".join(missed))
     return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
+# ---------------------------------------------------------------------------
+# A RECOMMENDATION HEADLINES THE CONTRACT IT BUYS, THE MODEL'S OWN SIDE NAMED
+# BESIDE IT (operator question 37, ruled 2026-10-05: "headline the contract
+# the recommendation buys; the model's own side named beside it")
+# ---------------------------------------------------------------------------
+#
+# A question's words name the side the model took; a recommendation buys the
+# side the price makes worth buying, and that can be the other one. The page
+# drew the model's side's words, chance, price and payout beside the size,
+# the edge and the outline of the contract bought (rec 117: "Atlanta +2.5 ·
+# 32% · 48c · 2.06x · $15", outlined, buying New Orleans -2.5). Planted on a
+# scratch world of rec 117's shape, recommended and tapped, and refused by
+# `audit.headline_faults`, which gate step 2 calls on every sport's slate.
+
+LAW_THE_HEADLINE_IS_THE_CONTRACT_BOUGHT = (
+    "A RECOMMENDATION HEADLINES THE CONTRACT IT BUYS, THE MODEL'S OWN SIDE NAMED "
+    "BESIDE IT")
+_HEADLINE_CHECK = "check_every_recommendation_headlines_what_it_buys"
+
+
+def _headline_world(path: Path):
+    """Rec 117's shape as the record holds it: NFL week 4, ATL at NO, "NO
+    covers -9.5" answered "not_cover" (Atlanta +9.5), its claim priced off
+    the home contract "New Orleans wins by over 2.5" at a 51.5c mid with the
+    model's 0.6848 for New Orleans -2.5 (claim 1789); the recommendation it
+    makes -- New Orleans -2.5, the other side of the model's words -- written
+    and tapped, the game in 2099. Returns (conn, prediction id)."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+    from gridiron.market import recommend as _recommend
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": -9.0, "sd": 14.0,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('g117', 'nfl', 2026, 4, 'REG',"
+        " 'NO', 'ATL', '2099-10-06T00:15:00Z', 'scheduled', '2026-10-05')")
+    for code, full, short, city in (("NO", "New Orleans Saints", "Saints", "New Orleans"),
+                                    ("ATL", "Atlanta Falcons", "Falcons", "Atlanta")):
+        conn.execute(
+            "INSERT INTO teams (sport, tricode, display_name, short_name, location,"
+            " source_url, fetched_utc) VALUES ('nfl', ?, ?, ?, ?, 'planting',"
+            " '2026-09-01T00:00:00Z')", (code, full, short, city))
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-30T18:00:00Z', 'nfl', 'g117', 'spread', 'NO', -9.5, 0.577186,"
+        " 'not_cover', 'statistical', 'final', 'fs2', ?, 'planting')",
+        (_json.dumps({"coverage": 1.0, "margin_distribution": dist}),))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', 'tNO3', 'e', 'nfl', 'g117', 'spread', 'home_margin', -2.5,"
+        " 'home', 0.505, 0.525, '2026-09-30T18:04:58Z')")
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'nfl', 'g117', 'spread', 'home_margin', -2.5,"
+        " 'home', 'rung_differs_margin', -9.0, 14.0, 0.6848, 0.515, 0.515, 'mid',"
+        " '2026-09-30T18:05:00Z')", (pid, quote))
+    conn.commit()
+    _shortlist.rank_rows(conn, [pid])
+    _recommend.record_for(conn, [pid])
+    conn.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
+                 (pid, db.utcnow()))
+    conn.commit()
+    return conn, pid
+
+
+#: Rec 117's board block as the released page drew it (b39754c): the model's
+#: side, Atlanta +2.5, at its 32%, 48.5c and 2.06x, the edge of the contract
+#: bought labelled the other side's, nothing said of the side bought.
+_RELEASED_HEADLINE_BLOCK = {"line_words": "Atlanta +2.5", "question": "Atlanta covers +2.5",
+                            "prob": 1.0 - 0.6848, "prob_words": "32%",
+                            "price": 1.0 - 0.515, "pays": 2.062,
+                            "price_words": "48¢", "pays_words": "2.06x",
+                            "edge_words": "+15.0¢ on the other side",
+                            "named_club": "ATL"}
+
+
+def plant_a_recommendation_headlining_the_side_it_does_not_buy() -> Result:
+    """A recommendation headlined by its question's side -- the model's --
+    while it buys the other: the Today card, the row, the tile, My day's
+    chip and the taken rail at the model's side's words and numbers beside
+    the size, the edge and the outline of the contract bought, and the line
+    naming the contract bought with no word of the model's side.
+
+    AS RELEASED (b39754c, and every release since the board merge): rec 117
+    read "Atlanta +2.5 · 32% · 48c · 2.06x · $15", outlined, its edge
+    "+15.0c on the other side", and bought New Orleans -2.5 (68%, 51.5c); a
+    tapped one's chip would have read "ATL · Atlanta +2.5" and its rail
+    "Atlanta covers +2.5 · +15.0c when marked"; and there was no check.
+    CAUGHT means: the shipped page headlines New Orleans -2.5 everywhere with
+    "The model's own side: Atlanta +2.5, 32%" beside it, each released form
+    -- and the builder's own door put back -- is named by
+    `audit.headline_faults`, the check raises, and the gate's step 2 makes the
+    call.
+
+    AND THREE FORMS FROM ITS PROVER (2026-10-05), each passed on the change
+    as first built: My day's chip naming the contract bought and the model's
+    own side nowhere (its tooltip "New Orleans covers -2.5" alone); the row's
+    and the card's drawn words -- "32%", "48c", "2.06x", "48c · pays 2.06x"
+    -- left at the model's side beside numbers of the contract bought, which
+    a check reading the numbers alone did not see; and the model's own side
+    and its number on a row of a game being played, which no live check
+    named (`audit.live_tab_faults`).
+    """
+    import json as _json
+
+    from gridiron import views as _views
+    from gridiron.priced import coverage as _coverage
+
+    guard = "audit.headline_faults"
+    violation = "a recommendation headlining the question's side while it buys the other"
+    missed, first = [], None
+    want_own = "The model's own side: Atlanta +2.5, 32%"
+    saved = _coverage.priceable
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        try:
+            _coverage.priceable = lambda conn, sport, market, **_: {
+                "priceable": True, "market": market, "why": "covered, in this planting"}
+            conn, pid = _headline_world(Path(tmp) / "headline.db")
+
+            def card_of(payload):
+                return next((c for g in ("clears", "below_floor")
+                             for c in payload["today"][g] if c["prediction_id"] == pid), {})
+
+            def blocks_of(payload):
+                game = next((g for g in payload["board"]["games"]
+                             if g["game_id"] == "g117"), {})
+                return game, [b for b in [game.get("pick")] + list(game.get("questions") or [])
+                              if b and b["prediction_id"] == pid]
+
+            def chip_of(payload):
+                return next((e for e in payload["board"]["my_day"]["entries"]
+                             if e["prediction_id"] == pid), {})
+
+            def rail_of(payload):
+                return next((e for e in payload["today"]["taken_today"]["entries"]
+                             if e.get("prediction_id") == pid), {})
+
+            def line_of(payload):
+                return next((x for x in payload["recommendations"]["lines"]
+                             if x["prediction_id"] == pid), {})
+
+            shipped = _views.week(conn, "nfl", 2026, 4)
+            card, (game, blocks) = card_of(shipped), blocks_of(shipped)
+            said = [card.get("question"), card.get("own_side_words")]
+            said += [(b.get("line_words"), b.get("own_side_words")) for b in blocks]
+            said += [chip_of(shipped).get("line_words"),
+                     (chip_of(shipped).get("club") or {}).get("tricode"),
+                     rail_of(shipped).get("words"), line_of(shipped).get("words")]
+            want = ["New Orleans covers -2.5", want_own]
+            want += [("New Orleans -2.5", want_own)] * 2
+            want += ["New Orleans -2.5", "NO",
+                     ("New Orleans covers -2.5 · +15.0¢ when marked — the model's own "
+                      "side: Atlanta covers +2.5, 32%")]
+            if said[:-1] != want or not str(said[-1]).endswith(
+                    " The model's own side: Atlanta covers +2.5, 32%."):
+                missed.append(f"the shipped page headlines {said!r}, where rec 117 buys "
+                              f"New Orleans -2.5 and the model's own side is Atlanta "
+                              f"+2.5 at 32%")
+            scan = getattr(audit, "headline_faults", None)
+            if scan is None:
+                missed.append("the gate has no check that a recommendation headlines "
+                              "the contract it buys")
+            else:
+                def released_card(p):
+                    c = card_of(p)
+                    for key in ("own_side_words", "buys_the_other_side", "named_club"):
+                        c.pop(key, None)
+                    c.update({"question": "Atlanta covers +2.5", "line_words": "Atlanta +2.5",
+                              "model_words": "32¢", "venue_words": "48¢ · pays 2.06x",
+                              "payout": 2.062, "payout_words": "2.06x",
+                              "question_takes_the_proposition": False,
+                              "edge_label": "Edge after fees, on the other side",
+                              "edge_on_the_other_side": True})
+
+                def released_blocks(p, which):
+                    g, bs = blocks_of(p)
+                    for b in bs[:1] if which == "row" else bs[1:]:
+                        b.pop("own_side_words", None)
+                        b.update(_RELEASED_HEADLINE_BLOCK)
+                    if which == "row":
+                        g["pick_label_words"] = "Model's pick"
+
+                def unnamed(p):
+                    card_of(p).pop("own_side_words", None)
+                    for b in blocks_of(p)[1]:
+                        b.pop("own_side_words", None)
+
+                def released_chip(p):
+                    chip_of(p).update({"line_words": "Atlanta +2.5",
+                                       "club": {"tricode": "ATL"}})
+
+                def released_rail(p):
+                    r = rail_of(p)
+                    for key in ("side", "words_line_asked", "fair_value"):
+                        r.pop(key, None)
+                    r["words"] = "Atlanta covers +2.5 · +15.0¢ when marked"
+
+                def released_line(p):
+                    x = line_of(p)
+                    x["words"] = x["words"].rsplit(" The model's own side", 1)[0]
+
+                # THE PROVER'S FORMS (2026-10-05), each passed by the change as
+                # first built: the chip with the model's side said nowhere,
+                # and the drawn words at the model's side beside numbers of
+                # the contract bought.
+                def chip_without_own_side(p):
+                    chip_of(p)["tips"] = dict(chip_of(p).get("tips") or {},
+                                              line="New Orleans covers -2.5")
+
+                def drawn_words_at_the_models_side(p):
+                    for b in blocks_of(p)[1]:
+                        b.update({"prob_words": "32%", "price_words": "48¢",
+                                  "pays_words": "2.06x"})
+
+                def card_chips_at_the_models_side(p):
+                    card_of(p).update({"venue_words": "48¢ · pays 2.06x",
+                                       "payout_words": "2.06x",
+                                       "price_words": "48¢ a contract"})
+
+                forms = {"the Today card at the model's side": released_card,
+                         "the row at the model's side, its label the model's pick":
+                             lambda p: released_blocks(p, "row"),
+                         "the tile at the model's side": lambda p: released_blocks(p, "tile"),
+                         "the contract bought with the model's own side unnamed": unnamed,
+                         "My day's chip wearing Atlanta": released_chip,
+                         "the taken rail naming the model's side": released_rail,
+                         "the line naming no model's side": released_line,
+                         "My day's chip naming the model's own side nowhere":
+                             chip_without_own_side,
+                         "the row's and the tile's drawn chance, price and payout at "
+                         "the model's side": drawn_words_at_the_models_side,
+                         "the Today card's chips at the model's side":
+                             card_chips_at_the_models_side}
+                for name, put_back in forms.items():
+                    planted = _json.loads(_json.dumps(shipped, default=str))
+                    put_back(planted)
+                    faults = [f for f in scan(planted) if "operator question 37" in f]
+                    if not faults:
+                        missed.append(f"{name} passed")
+                        continue
+                    first = first or faults[0]
+                    try:
+                        audit.check_every_recommendation_headlines_what_it_buys(planted)
+                        missed.append(f"{name}: the check raised nothing")
+                    except audit.LawViolation:
+                        pass
+                # AND THE BUILDER'S DOOR PUT BACK: every card headlining its
+                # question's side, as released
+                door = getattr(_views, "_buys_the_other_side", None)
+                if door is None:
+                    missed.append("the page has no door deciding that a card headlines "
+                                  "the contract bought")
+                else:
+                    _views._buys_the_other_side = lambda *a, **k: False
+                    try:
+                        released = _views.week(conn, "nfl", 2026, 4)
+                    finally:
+                        _views._buys_the_other_side = door
+                    if card_of(released).get("question") != "Atlanta covers +2.5" or not any(
+                            "operator question 37" in f for f in scan(released)):
+                        missed.append("the page with its door put back passed: "
+                                      f"{card_of(released).get('question')!r}")
+            # AND THE MODEL'S OWN SIDE ON A ROW OF A GAME BEING PLAYED (Q37's
+            # prover, 2026-10-05): the sentence carries a chance, and a live
+            # row's one figure is its pregame one. The shipped row, put in
+            # play with everything a live row may not carry taken off it and
+            # the model's own side planted on it, must be named by the live
+            # check, by that field, and the gate's step 2 must make the call.
+            from gridiron import language as _language
+
+            live = _json.loads(_json.dumps(shipped, default=str))
+            game, blocks = blocks_of(live)
+            game["state"] = "live"
+            game["pick_label_words"] = _language.pick_label_words("live", "none")
+            for b in blocks:
+                b["state"] = "live"
+                for key in ("prob", "prob_words", "price", "pays", "price_words",
+                            "pays_words", "edge_words", "size_words"):
+                    b.pop(key, None)
+                b["pregame_words"] = "pregame 68%"
+                b["own_side_words"] = want_own
+            named = [f for f in audit.live_tab_faults(live) if "own_side_words" in f]
+            if not blocks or not named:
+                missed.append("a live row carrying the model's own side and its number "
+                              f"({want_own!r}) passed the live check")
+            elif not _step_2_calls("check_the_live_tab_shows_only_the_game"):
+                missed.append("the gate's step 2 does not call "
+                              "`audit.check_the_live_tab_shows_only_the_game`")
+            else:
+                first = first or named[0]
+                try:
+                    audit.check_the_live_tab_shows_only_the_game(live)
+                    missed.append("a live row carrying the model's own side: the live "
+                                  "check raised nothing")
+                except audit.LawViolation:
+                    pass
+            conn.close()
+        finally:
+            _coverage.priceable = saved
+    if not _step_2_calls(_HEADLINE_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_HEADLINE_CHECK}`")
+    if missed:
+        return Result(LAW_THE_HEADLINE_IS_THE_CONTRACT_BOUGHT, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_HEADLINE_IS_THE_CONTRACT_BOUGHT, violation, guard, True,
+                  first or "")
 
 
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
@@ -25234,6 +25566,9 @@ def main() -> int:
     # AND ITS PROVER'S (2026-10-05): every sentence of the rule says when, and
     # the record bears the date out -- "before 30 September" did not.
     results.append(plant_a_two_contract_sentence_dated_before_its_claims())
+    # OPERATOR QUESTION 37 (ruled 2026-10-05): a recommendation headlines the
+    # contract it buys, the model's own side named beside it.
+    results.append(plant_a_recommendation_headlining_the_side_it_does_not_buy())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())
