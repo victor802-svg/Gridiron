@@ -11321,6 +11321,688 @@ def _plant_the_questions_own_numbers(_views, guard, violation, missed, caught) -
     return Result(LAW_THE_NUMBER_NAMES_ITS_LINE, violation, guard, True, "; ".join(caught))
 
 
+# ---------------------------------------------------------------------------
+# A CLAIM PRICED ACROSS TWO CONTRACTS IS IN NO PRICE COMPARISON (operator
+# ruling A.2 of 2026-10-05, docs/briefs/2026-10-05-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# "The 269 claims stay in the blind record (model against outcome at its own
+# line) and are excluded by a dated rule from every price comparison:
+# at-the-line record, closing line, edge figures, combos." And "Void the 54
+# recommendations by append-only rows (reason: 'priced across two contracts,
+# Q36')". Four plantings, each on a scratch world in the record's own shape --
+# a claim stored at -s off a contract naming the visiting side, which sells
+# +s, as the released writer wrote 275 of them before Q36.1 -- and each
+# escaping on c829daa, the release before the rule (no rule leaves the claim
+# out, no guard asks, no tool exists), and caught here: the at-the-line record
+# (its curve, edge, ledger, coverage line, the venue's drift pair, the card's
+# count), the closing line, a proposed combo, and the void tool writing
+# outside its ruled set.
+
+LAW_ACROSS_TWO_CONTRACTS = ("A CLAIM PRICED ACROSS TWO CONTRACTS IS IN NO PRICE "
+                            "COMPARISON (operator ruling A.2, 2026-10-05)")
+_ACROSS_CHECK = "check_no_price_comparison_holds_a_claim_across_two_contracts"
+
+#: The three finished questions of the world: (name, game, home, away, the
+#: question's subject and line, its side and number; the contract the look
+#: was priced off -- ticker, the line it is stored at, its side, bid, ask;
+#: the claim's stored line, the model's number there and the price read for
+#: the claim's proposition; the score; the recommendation's side; the later
+#: read of the same contract that closed it, bid and ask; and the opening
+#: read of the home contract at the claim's stored line, bid and ask).
+_Q36II_QUESTIONS = (
+    ("across", "g_pit_cle", "CLE", "PIT", "CLE", 0.5, "not_cover", 0.561059,
+     ("tPIT3", 2.5, "away", 0.515, 0.535), -2.5, 0.3834, 0.475, (20, 24), "no",
+     (0.55, 0.57), ("tCLE3", -2.5, 0.30, 0.32)),
+    ("one", "g_sea_was", "WAS", "SEA", "WAS", -3.5, "cover", 0.6,
+     ("tWAS4", -3.5, "home", 0.49, 0.51), -3.5, 0.6, 0.5, (27, 20), "yes",
+     (0.53, 0.55), ("tWAS4", -3.5, 0.40, 0.42)),
+    ("across2", "g_kc_lv", "LV", "KC", "LV", 1.5, "not_cover", 0.58,
+     ("tKC4", 3.5, "away", 0.52, 0.54), -3.5, 0.33, 0.47, (17, 24), "no",
+     (0.55, 0.57), ("tLV4", -3.5, 0.25, 0.27)),
+)
+
+
+def _q36ii_world(path: Path):
+    """A scratch NFL world of three FINISHED spread questions, each priced
+    off one near-start look, settled, recommended from it in the closing
+    line's window and closed on a later read of its own contract:
+
+      * "across": PIT at CLE, "CLE covers +0.5" answered "not_cover", priced
+        off "Pittsburgh wins by over 2.5" -- which sells CLE +2.5 -- with its
+        claim stored at -2.5: the model's 0.3834 about CLE -2.5 beside 0.475
+        about CLE +2.5, rec 114's shape as the released writer wrote it at
+        18:05Z on 30 September; recommended on the no side;
+      * "one": SEA at WAS, priced off the home contract at the line it sells
+        (-3.5): the record's ordinary claim; recommended on the yes side;
+      * "across2": KC at LV, "across"'s shape again, at -3.5.
+
+    Each game has an opening read of the home contract at the claim's
+    stored line, so the venue's drift pair can set any claim beside it.
+    Returns (conn, {name: {"pid", "claim", "rec", "game"}})."""
+    import json as _json
+
+    from gridiron.market import at_the_line as _atl
+
+    conn = db.open_db(path)
+    made = {}
+    for (name, game, home, away, subject, asked, side, prob, quote, claim_line,
+         claim_prob, implied, score, rec_side, close, opening) in _Q36II_QUESTIONS:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES (?, 'nfl', 2026, 3, 'REG', ?, ?, '2026-09-29T17:00:00Z',"
+            " 'final', '2026-09-29', ?, ?)", (game, home, away, *score))
+        dist = {"quantity": "home_margin", "family": "normal", "mean": -2.0,
+                "sd": 13.5, "declared": "2026-08-31T00:00:00Z",
+                "written_blind": True}
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-28T15:00:00Z', 'nfl', ?, 'spread', ?, ?, ?, ?,"
+            " 'statistical', 'final', 'fs2', ?, 'planting')",
+            (game, subject, asked, prob, side,
+             _json.dumps({"coverage": 1.0, "margin_distribution": dist})))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        ticker, line, yes_side, bid, ask = quote
+
+        def read(tick, at, yes, bid_, ask_, kind, line_=line):
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " volume, fetched_utc, read_kind) VALUES ('kalshi', ?, 'e',"
+                " 'nfl', ?, 'spread', 'home_margin', ?, ?, ?, ?, 900, ?, ?)",
+                (tick, game, line_, yes, bid_, ask_, at, kind))
+            return conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+
+        # THE OPEN, after the forecast (LAW 1: no quote before a prediction)
+        o_ticker, o_line, o_bid, o_ask = opening
+        read(o_ticker, "2026-09-28T15:00:10Z", "home", o_bid, o_ask, "open",
+             line_=o_line)
+        priced_by = read(ticker, "2026-09-28T15:00:44Z", yes_side, bid, ask,
+                         "near_start")
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+            " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " VALUES (?, ?, 'kalshi', 'nfl', ?, 'spread', 'home_margin', ?, 'home',"
+            " 'rung_differs_margin', -2.0, 13.5, ?, ?, ?, 'mid',"
+            " '2026-09-28T15:00:45Z')",
+            (pid, priced_by, game, claim_line, claim_prob,
+             round((bid + ask) / 2, 4), implied))
+        claim = conn.execute("SELECT MAX(id) FROM at_the_line_claims").fetchone()[0]
+        closed_by = read(ticker, "2026-09-29T16:30:00Z", yes_side, *close,
+                         "near_start")
+        close_mid = (close[0] + close[1]) / 2
+        close_implied = round(close_mid if yes_side == "home" else 1 - close_mid, 4)
+        clv = round(((close_implied - implied) if rec_side == "yes"
+                     else (implied - close_implied)) * 100, 2)
+        conn.execute(
+            "INSERT INTO recommendations (prediction_id, sport, game_id, market,"
+            " side, fair_value, price, edge_cents, size_kind, size_units, gate_n,"
+            " created_utc, close_price, clv_cents, closed_utc) VALUES"
+            " (?, 'nfl', ?, 'spread', ?, ?, ?, 5.0, 'flat', 1.0, 0,"
+            " '2026-09-28T15:01:00Z', ?, ?, '2026-09-29T17:05:00Z')",
+            (pid, game, rec_side, claim_prob, implied, close_implied, clv))
+        rec = conn.execute("SELECT MAX(id) FROM recommendations").fetchone()[0]
+        conn.execute(
+            "INSERT INTO recommendation_closes (recommendation_id, written_utc,"
+            " pricing_quote_id, close_quote_id, close_price, clv_cents,"
+            " minutes_before_start, restated, reason) VALUES (?,"
+            " '2026-09-29T17:05:00Z', ?, ?, ?, ?, 30.0, 0, 'the last near-start"
+            " read of its own contract before the start')",
+            (rec, priced_by, closed_by, close_implied, clv))
+        made[name] = {"pid": pid, "claim": claim, "rec": rec, "game": game}
+    conn.commit()
+    _atl.resolve_claims(conn)
+    conn.commit()
+    return conn, made
+
+
+def plant_a_two_contract_claim_in_the_at_the_line_record() -> Result:
+    """A claim priced across two contracts counted in the at-the-line
+    record: its curve, edge figure, hypothetical ledger, coverage line, the
+    venue's drift pair and the settled count beside a card.
+
+    AS RELEASED (c829daa): the door (`at_the_line.standing_claims`) kept any
+    claim before the start, so the statistical model's spread curve counted
+    "across" and "across2" -- each a model number about one contract beside a
+    price about another -- with "one", and the venue's pair set them beside
+    the home contract's open; nothing refused it. CAUGHT means: the shipped
+    curve, ledger and drift pairs hold "one" alone, the coverage line says the
+    other two were read only across two contracts; with the door put back
+    (`on_one_contract` reading nothing) the builders' guard refuses the
+    at-the-line record, the venue's drift pair and the card's count by name,
+    the gate's check names it, and the gate's step 2 makes the call."""
+    from gridiron import views as _views
+    from gridiron.market import at_the_line as _atl
+
+    guard = ("calibration.refuse_a_comparison_across_two_contracts, "
+             f"audit.{_ACROSS_CHECK}")
+    violation = "a claim priced across two contracts in the at-the-line record"
+    missed, caught = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, made = _q36ii_world(Path(tmp) / "atl.db")
+        try:
+            sc = calibration.at_the_line_scorecard(conn, sport="nfl")
+            curve = next(c for c in sc["categories"] if c["market"] == "spread"
+                         and c["predictor"] == "statistical")
+            ledger = next(e for e in sc["paper"] if e["market"] == "spread"
+                          and e["predictor"] == "statistical")
+            pairs = [p for m in _views.drift_report(conn, "nfl")["venue_markets"]
+                     if m["predictor"] == "statistical"
+                     for p in [m] if m["market_type"] == "spread"]
+            shipped = (curve["n"], ledger["n"], pairs[0]["n"] if pairs else None)
+            if not hasattr(calibration, "ComparedAcrossTwoContracts"):
+                return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                              f"NOT CAUGHT - the shipped spread curve, ledger and "
+                              f"venue pairs (statistical) count {shipped}, claims "
+                              f"{made['across']['claim']} and "
+                              f"{made['across2']['claim']} -- each a model number "
+                              f"about one contract beside a price about another -- "
+                              f"among them; no rule leaves them out and no guard asks")
+            if shipped != (1, 1, 1):
+                missed.append(f"the shipped curve, ledger and venue pairs count "
+                              f"{shipped}, where only 'one' is priced off one contract")
+            cover = next(r for r in sc["coverage"] if r["market"] == "spread"
+                         and r["predictor"] == "statistical")
+            if (cover["with_a_claim"], cover["across_two_contracts"]) != (1, 2) \
+                    or "read only across two contracts" not in cover["words"]:
+                missed.append(f"the shipped coverage line reads {cover['words']!r}")
+            if audit.two_contract_comparison_faults(conn):
+                missed.append("the gate's check refuses the shipped record")
+            real = _atl.on_one_contract
+            _atl.on_one_contract = lambda claim="c": ""
+            try:
+                for what, build in (
+                        ("the at-the-line record",
+                         lambda: calibration.at_the_line_scorecard(conn, sport="nfl")),
+                        ("the venue's drift pair",
+                         lambda: _views.drift_report(conn, "nfl")),
+                        ("the settled count beside a card",
+                         lambda: _views._at_the_line(
+                             conn, "nfl", [made["across"]["pid"]], {}))):
+                    try:
+                        build()
+                        missed.append(f"{what}, its door put back, passed")
+                    except calibration.ComparedAcrossTwoContracts as exc:
+                        if str(made["across"]["claim"]) not in str(exc):
+                            missed.append(f"{what} was refused without naming the claim")
+                        else:
+                            caught.append(f"{what}: refused by name")
+                faults = audit.two_contract_comparison_faults(conn)
+                if not any("at-the-line record" in f for f in faults):
+                    missed.append(f"the gate's check passed the door put back ({faults})")
+                else:
+                    caught.append("the gate's check names it")
+            finally:
+                _atl.on_one_contract = real
+        finally:
+            conn.close()
+    if not _step_2_calls(_ACROSS_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_ACROSS_CHECK}`")
+    if missed:
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
+def plant_a_two_contract_claim_in_the_closing_line() -> Result:
+    """A recommendation priced from a claim across two contracts counted in
+    the closing line -- and so in its window line, its mean and share once
+    they may be read, and the kill criterion that reads them.
+
+    AS RELEASED (c829daa): `recommend.counted_once` kept every standing
+    recommendation, so the statistical model's NFL line counted "across" and
+    "across2" -- sides, edges and sizes worked out across two contracts --
+    with "one". CAUGHT means: the shipped line counts "one" alone and names
+    the other two beside it in their own row; with the measurement door's
+    rule put back (`_priced_on_one_contract` reading nothing) the builder's
+    guard refuses the line by name, and with the guard silenced too the
+    closing line's recount (`audit.pair_counted_faults`) names the rows; and
+    the gate's step 2 makes the call."""
+    from gridiron.market import recommend as _recommend
+
+    guard = ("calibration.refuse_recommendations_across_two_contracts, "
+             "audit.pair_counted_faults")
+    violation = "a recommendation priced across two contracts in the closing line"
+    missed, caught = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, made = _q36ii_world(Path(tmp) / "clv.db")
+        try:
+            report = calibration.clv_report(conn, sport="nfl")
+            block = next(b for b in report["forecasters"]
+                         if b["predictor"] == "statistical")
+            if not hasattr(calibration, "ComparedAcrossTwoContracts"):
+                return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                              f"NOT CAUGHT - the shipped closing line (statistical) "
+                              f"counts {block['n']} measured closes, recs "
+                              f"{made['across']['rec']} and {made['across2']['rec']} "
+                              f"-- priced across two contracts -- among them, and "
+                              f"nothing names them")
+            across = block.get("across_two_contracts") or {}
+            line = block.get("across_line") or {}
+            if (block["n"], across.get("n"), line.get("n")) != (1, 2, 2):
+                missed.append(f"the shipped line counts {block['n']} and names "
+                              f"{across.get('n')}, where 'one' counts and two are named")
+            if audit.pair_counted_faults(conn, report) or \
+                    audit.withdrawn_counted_faults(conn, report):
+                missed.append("the closing line's recounts refuse the shipped line")
+            real_rule = _recommend._priced_on_one_contract
+            real_guard = calibration.refuse_recommendations_across_two_contracts
+            _recommend._priced_on_one_contract = lambda alias: ""
+            try:
+                try:
+                    calibration.clv_report(conn, sport="nfl")
+                    missed.append("the closing line, its door's rule put back, passed")
+                except calibration.ComparedAcrossTwoContracts as exc:
+                    if str(made["across"]["rec"]) not in str(exc):
+                        missed.append("the line was refused without naming the rec")
+                    else:
+                        caught.append("the builder's guard refuses the line by name")
+                calibration.refuse_recommendations_across_two_contracts = (
+                    lambda *a, **k: None)
+                planted = calibration.clv_report(conn, sport="nfl")
+                faults = audit.pair_counted_faults(conn, planted)
+                if not any(str(made["across"]["rec"]) in f for f in faults):
+                    missed.append(f"the recount passed the line with its guard "
+                                  f"silenced ({faults})")
+                else:
+                    caught.append("the recount names the rows: "
+                                  + next(f for f in faults
+                                         if str(made["across"]["rec"]) in f)[:120])
+            finally:
+                _recommend._priced_on_one_contract = real_rule
+                calibration.refuse_recommendations_across_two_contracts = real_guard
+        finally:
+            conn.close()
+    if not _step_2_calls(_ACROSS_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_ACROSS_CHECK}`")
+    if missed:
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
+def _q36ii_slate_world(path: Path):
+    """Rec 114's shape on a game still to start (`_line_world`'s "rec114":
+    PIT at CLE, its claim stored at -2.5 off "Pittsburgh wins by over 2.5"),
+    and two more games of the same NFL week priced off home contracts at the
+    lines they sell, each clearing the bar by less than rec 114's shape does
+    -- so the engine, ordering legs by edge, takes rec 114's first if nothing
+    stops it. Returns (conn, {"across": pid, "one": pid, "two": pid})."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    conn, across, _sport, _season, _week = _line_world(path, "rec114")
+    made = {"across": across}
+    dist = _json.dumps({"coverage": 1.0, "margin_distribution": {
+        "quantity": "home_margin", "family": "normal", "mean": 4.0, "sd": 13.5,
+        "declared": "2026-08-31T00:00:00Z", "written_blind": True}})
+    for name, game, home, away, ticker in (("one", "g_one", "BAL", "CIN", "tBAL4"),
+                                           ("two", "g_two", "DEN", "LAC", "tDEN4")):
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'nfl', 2026, 4, 'REG',"
+            " ?, ?, '2099-10-02T01:00:00Z', 'scheduled', '2026-10-01')",
+            (game, home, away))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-09-28T15:00:00Z', 'nfl', ?, 'spread', ?, -3.5, 0.56, 'cover',"
+            " 'statistical', 'final', 'fs2', ?, 'planting')", (game, home, dist))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+            " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+            " VALUES ('kalshi', ?, 'e', 'nfl', ?, 'spread', 'home_margin', -3.5,"
+            " 'home', 0.49, 0.51, '2026-09-28T15:00:44Z')", (ticker, game))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+            " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+            " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+            " VALUES (?, ?, 'kalshi', 'nfl', ?, 'spread', 'home_margin', -3.5,"
+            " 'home', 'rung_matched', NULL, NULL, 0.56, 0.5, 0.5, 'mid',"
+            " '2026-09-28T15:00:45Z')", (pid, quote, game))
+        made[name] = pid
+    conn.commit()
+    _shortlist.rank_rows(conn, [made["one"], made["two"]])
+    conn.commit()
+    return conn, made
+
+
+def plant_a_two_contract_claim_in_a_combo() -> Result:
+    """A leg priced across two contracts put into a proposed combo.
+
+    AS RELEASED (c829daa): `combos.propose` took every entry with a side, and
+    `recommend.for_predictions` hands on rec 114's shape with one -- the no
+    side, its edge the largest -- so the engine proposed it first, its worth
+    a model number about one contract and its cost a price about another (the
+    page's `_as_the_page_draws` took the side away, and nothing in the engine
+    or the gate asked). CAUGHT means: the shipped engine proposes the other
+    two games and never rec 114's shape; with the engine's rule and the page's
+    put back the slate's builder refuses the combos by name; a payload with
+    such a leg is named by the gate's check; and the gate's step 2 makes the
+    call."""
+    from gridiron import views as _views
+    from gridiron.market import combos as _combos
+    from gridiron.market import recommend as _recommend
+    from gridiron.priced import coverage as _coverage
+
+    guard = ("combos.propose, calibration.refuse_a_comparison_across_two_contracts, "
+             f"audit.{_ACROSS_CHECK}")
+    violation = "a leg priced across two contracts in a proposed combo"
+    missed, caught = [], []
+    saved = _coverage.priceable
+    # every market priceable here, so each question is recommended as the
+    # released page would recommend it
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    try:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            conn, made = _q36ii_slate_world(Path(tmp) / "combo.db")
+            try:
+                ids = list(made.values())
+                entries = _recommend.for_predictions(conn, ids)
+                sided = sorted(e["prediction_id"] for e in entries if e["side"])
+                proposed = [leg for p in _combos.propose(entries, sport="nfl")
+                            for leg in p["leg_ids"]]
+                if not hasattr(calibration, "refuse_a_comparison_across_two_contracts"):
+                    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                                  f"NOT CAUGHT - the shipped engine, handed the "
+                                  f"entries {sided} with sides, proposes the legs "
+                                  f"{proposed}, rec 114's shape ({made['across']}) "
+                                  f"among them; nothing in the engine or the gate "
+                                  f"asks which contract a leg's numbers belong to")
+                if sided != sorted(ids):
+                    missed.append(f"the world's entries with a side are {sided}, "
+                                  f"where every one of {sorted(ids)} should clear")
+                if made["across"] in proposed or sorted(proposed) != sorted(
+                        [made["one"], made["two"]]):
+                    missed.append(f"the shipped engine proposes {proposed}")
+                payload = _views.week(conn, "nfl", 2026, 4)
+                if audit.two_contract_comparison_faults(conn, [payload]):
+                    missed.append("the gate's check refuses the shipped slate")
+                real_propose = _combos.propose
+                real_draws = _views._as_the_page_draws
+                _combos.propose = lambda entries_, *, sport: real_propose(
+                    [dict(e, priced_across_two_contracts=False) for e in entries_],
+                    sport=sport)
+                _views._as_the_page_draws = lambda entry: dict(
+                    entry, numbers_line=entry.get("venue_line"))
+                try:
+                    _views.week(conn, "nfl", 2026, 4)
+                    missed.append("the slate, the engine's rule and the page's put "
+                                  "back, passed")
+                except calibration.ComparedAcrossTwoContracts as exc:
+                    if "combos" not in str(exc):
+                        missed.append("the slate was refused, but not as a combo's")
+                    else:
+                        caught.append("the slate's builder refuses the combo by name")
+                finally:
+                    _combos.propose = real_propose
+                    _views._as_the_page_draws = real_draws
+                cards = ((payload.get("today") or {}).get("combos") or {}).get("cards")
+                if not cards:
+                    missed.append("the shipped slate proposes no combo to plant into")
+                else:
+                    planted = dict(payload, today=dict(payload["today"], combos=dict(
+                        payload["today"]["combos"], cards=[dict(cards[0], legs=list(
+                            cards[0]["legs"]) + [{"prediction_id": made["across"]}])])))
+                    faults = audit.two_contract_comparison_faults(conn, [planted])
+                    if not any(f"question {made['across']}" in f for f in faults):
+                        missed.append(f"the gate's check passed a combo leg on rec "
+                                      f"114's shape ({faults})")
+                    else:
+                        caught.append("the gate's check names the leg")
+            finally:
+                conn.close()
+    finally:
+        _coverage.priceable = saved
+    if not _step_2_calls(_ACROSS_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_ACROSS_CHECK}`")
+    if missed:
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
+def plant_a_void_tool_writing_outside_its_ruled_set() -> Result:
+    """The void tool of ruling A.2 writing a void outside the set the ruling
+    names: a selection that does not hold every ruled recommendation, a check
+    put back to write everything the rule selects (recs 114 and 115's case),
+    and a write handed a recommendation the ruling does not name.
+
+    AS RELEASED (c829daa): there is no tool, so a void of a recommendation
+    priced across two contracts is an insert by hand, with nothing to say
+    which ones the ruling named. CAUGHT means: on a world whose rule selects
+    recommendations the ruling does not name (their numbers are not the 54),
+    the tool refuses and writes nothing; with its check put back to write all
+    it selects, its write refuses by name and writes nothing; its write
+    handed an id outside the ruled set refuses; and with the ruled set the
+    world's own, it writes exactly that set, lists the rest as waiting, and
+    a second run writes nothing."""
+    import importlib.util as _ilu
+
+    guard = ("tools/void_two_contract_recommendations.py (check, "
+             "write_voids: OutsideTheRuledSet)")
+    violation = "a void tool writing outside its ruled set"
+    path = REPO / "tools" / "void_two_contract_recommendations.py"
+    if not path.exists():
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - there is no tool: a void of a recommendation "
+                      "priced across two contracts is an insert by hand, and "
+                      "nothing names the set the ruling voids")
+    spec = _ilu.spec_from_file_location("void_two_contracts_planted", path)
+    tool = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    missed, caught = [], []
+    import contextlib as _contextlib
+    import io as _io
+
+    def run(args):
+        out = _io.StringIO()
+        with _contextlib.redirect_stdout(out):
+            try:
+                code = tool.main(args)
+            except SystemExit as exc:
+                code = exc.code
+            except tool.OutsideTheRuledSet as exc:
+                code = f"refused: {exc}"
+        return code, out.getvalue()
+
+    def voids(db_path):
+        conn = db.read_only(db_path, "the planting's own world")
+        try:
+            return {r[0]: r[1] for r in conn.execute(
+                "SELECT recommendation_id, reason FROM recommendation_voids")}
+        finally:
+            conn.close()
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        world = Path(tmp) / "voids.db"
+        conn, made = _q36ii_world(world)
+        conn.close()
+        across = sorted([made["across"]["rec"], made["across2"]["rec"]])
+        # THE RULED SET IS NOT WHAT THIS WORLD'S RULE SELECTS
+        code, said = run(["--database", str(world), "--write"])
+        if code != 2 or voids(world):
+            missed.append(f"the tool, the ruling's 54 not selected, ran ({code})")
+        else:
+            caught.append("a ruled set the rule does not select is refused")
+        # ITS CHECK PUT BACK TO WRITE EVERYTHING THE RULE SELECTS
+        real_check, real_ruled = tool.check, tool.RULED
+        tool.check = lambda found: {"to_write": sorted(r["id"] for r in found),
+                                    "already": [], "withdrawn_otherwise": [],
+                                    "waiting": []}
+        try:
+            code, said = run(["--database", str(world), "--write"])
+            if voids(world) or not str(code).startswith("refused"):
+                missed.append(f"a check writing all it selects wrote "
+                              f"{sorted(voids(world))} ({code})")
+            else:
+                caught.append("its write refuses a void outside the ruled set")
+        finally:
+            tool.check = real_check
+        conn = db.connect(world)
+        try:
+            tool.write_voids(conn, [made["one"]["rec"]])
+            missed.append("a write handed an id outside the ruled set wrote it")
+        except tool.OutsideTheRuledSet:
+            caught.append("a write handed an id outside the ruled set is refused")
+        finally:
+            conn.close()
+        # THE HONEST RUN, ITS RULED SET THIS WORLD'S FIRST
+        tool.RULED = (across[0],)
+        try:
+            code, said = run(["--database", str(world), "--write"])
+            got = voids(world)
+            again_code, again = run(["--database", str(world), "--write"])
+            if (code != 0 or set(got) != {across[0]}
+                    or got[across[0]] != tool.REASON
+                    or f"NOT written: [{across[1]}]" not in said
+                    or "wrote 0 void(s)" not in again or set(voids(world)) != set(got)):
+                missed.append(f"the honest run wrote {got} ({code}): {said[-300:]}")
+            else:
+                caught.append("the ruled set alone is written, the rest listed, "
+                              "once")
+        finally:
+            tool.RULED = real_ruled
+    if missed:
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
+#: THE RULE'S SENTENCES AS FIRST BUILT (2026-10-05, before its prover): each
+#: said the claims were priced across two contracts "before 30 September".
+_Q36II_FIRST_BUILT_REASON = (
+    "priced across two contracts before 30 September: the venue's contract "
+    "naming the visiting side was read at the wrong sign, so the model's "
+    "number was about one contract and the price about another")
+_Q36II_FIRST_BUILT_HOLE = ("its only claims were priced across two contracts "
+                           "before 30 September, and are left out of every "
+                           "comparison with a price")
+
+
+def plant_a_two_contract_sentence_dated_before_its_claims() -> Result:
+    """A sentence of the rule of 2026-10-05 saying the claims were priced
+    across two contracts "before 30 September", on a record holding one
+    written at 18:05Z that day -- run 8464's six, two of them recommended
+    (recs 114 and 115).
+
+    AS RELEASED (c829daa): there is no rule, none of its sentences, and no
+    check holding a sentence's date to the record. AS FIRST BUILT (the change
+    before its prover, 2026-10-05): the coverage line's clause and its hole, a
+    withdrawal's reason and the closing line's own row each said "before 30
+    September" -- and once the 54 are voided, that row names exactly recs 114
+    and 115, priced at 18:05Z on 30 September; nothing said so. CAUGHT means:
+    the shipped sentences say "before the fix of 30 September" and pass on a
+    world holding a claim across two contracts written at 18:05Z that day;
+    put back as first built, the gate's check names each of the four by the
+    claim that makes it false; and the gate's step 2 makes the call."""
+    import json as _json
+
+    from gridiron import language as _language
+    from gridiron.market import at_the_line as _atl
+
+    guard = f"audit.two_contract_words_faults, audit.{_ACROSS_CHECK}"
+    violation = ("a sentence of the rule dating its claims before the day six of "
+                 "them were written")
+    if not hasattr(audit, "two_contract_words_faults"):
+        said = ("the shipped sentences say 'before 30 September' of claims "
+                "written at 18:05Z that day, the closing line's row naming recs "
+                "114 and 115 so once the 54 are voided"
+                if hasattr(_language, "ACROSS_TWO_CONTRACTS_REASON_WORDS") else
+                "there is no rule and no sentence of it, and nothing that would "
+                "say a date in one is false")
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - no check holds a sentence of the rule to the "
+                      "record's dates: " + said)
+    missed, caught = [], []
+    want = {"the coverage line's hole", "the coverage line",
+            "a withdrawal's reason", "the closing line's row"}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, _made = _q36ii_world(Path(tmp) / "words.db")
+        try:
+            # RUN 8464'S SHAPE: GB at TB, priced at 18:05Z on 30 September off
+            # "Green Bay wins by over 3.5", which sells TB +3.5, its claim
+            # stored at -3.5 -- rec 115's.
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+                " kickoff_utc, status, league_date) VALUES ('g_gb_tb', 'nfl', 2026,"
+                " 4, 'REG', 'TB', 'GB', '2026-10-04T17:00:00Z', 'scheduled',"
+                " '2026-10-04')")
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES"
+                " ('2026-09-30T18:00:00Z', 'nfl', 'g_gb_tb', 'spread', 'TB', 1.5,"
+                " 0.55, 'cover', 'statistical', 'final', 'fs2', ?, 'planting')",
+                (_json.dumps({"coverage": 1.0, "margin_distribution": {
+                    "quantity": "home_margin", "family": "normal", "mean": -1.0,
+                    "sd": 13.5, "declared": "2026-08-31T00:00:00Z",
+                    "written_blind": True}}),))
+            pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                " volume, fetched_utc, read_kind) VALUES ('kalshi', 'tGB4', 'e',"
+                " 'nfl', 'g_gb_tb', 'spread', 'home_margin', 3.5, 'away', 0.44,"
+                " 0.46, 900, '2026-09-30T18:04:59Z', 'near_start')")
+            quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+                " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+                " created_utc) VALUES (?, ?, 'kalshi', 'nfl', 'g_gb_tb', 'spread',"
+                " 'home_margin', -3.5, 'home', 'rung_differs_margin', -1.0, 13.5,"
+                " 0.43, 0.45, 0.55, 'mid', '2026-09-30T18:05:00Z')", (pid, quote))
+            conn.commit()
+            shipped = audit.two_contract_comparison_faults(conn)
+            if shipped:
+                missed.append(f"the shipped sentences are refused: {shipped[:2]}")
+            saved = (_language.ACROSS_TWO_CONTRACTS_REASON_WORDS,
+                     _language.ACROSS_TWO_CONTRACTS_WHEN,
+                     _atl.ACROSS_TWO_CONTRACTS_HOLE)
+            _language.ACROSS_TWO_CONTRACTS_REASON_WORDS = _Q36II_FIRST_BUILT_REASON
+            _language.ACROSS_TWO_CONTRACTS_WHEN = "before 30 September"
+            _atl.ACROSS_TWO_CONTRACTS_HOLE = _Q36II_FIRST_BUILT_HOLE
+            try:
+                faults = audit.two_contract_comparison_faults(conn)
+                named = {f.split(" says ")[0] for f in faults
+                         if "written at 2026-09-30T18:05:00Z" in f}
+                if named != want:
+                    missed.append(f"the sentences as first built, named {sorted(named)} "
+                                  f"of {sorted(want)}")
+                else:
+                    caught.append("the four sentences as first built are named, "
+                                  "each by the claim written at 18:05Z on 30 "
+                                  "September")
+                try:
+                    audit.check_no_price_comparison_holds_a_claim_across_two_contracts(
+                        conn)
+                    missed.append("the gate's check passed the sentences as first built")
+                except audit.LawViolation:
+                    caught.append("the gate's check refuses them")
+            finally:
+                (_language.ACROSS_TWO_CONTRACTS_REASON_WORDS,
+                 _language.ACROSS_TWO_CONTRACTS_WHEN,
+                 _atl.ACROSS_TWO_CONTRACTS_HOLE) = saved
+        finally:
+            conn.close()
+    if not _step_2_calls(_ACROSS_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_ACROSS_CHECK}`")
+    if missed:
+        return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, True, "; ".join(caught))
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -13359,7 +14041,11 @@ def plant_an_at_the_line_curve_pooling_two_forecasters() -> Result:
                 "n": n, "distinct_bets": bets, "with_a_claim": read,
                 # THE RECOUNT BESIDE THE DOORS (operator question 17,
                 # 2026-09-28): an honest builder's, agreeing with its counts.
-                "recounted": n, "read_recounted": read}
+                "recounted": n, "read_recounted": read,
+                # AND, FROM 2026-10-05 (operator ruling A.2), the questions
+                # read only across two contracts and the recount's count of
+                # them: none, in an honest builder's row of this shape.
+                "across_two_contracts": 0, "across_recounted": 0}
 
     honest = {"sport": "mlb", "record": "at_the_line", "categories": [
         _atl_category("statistical", 54, 54), _atl_category("llm", 54, 54)],
@@ -24538,6 +25224,16 @@ def main() -> int:
     # and the forecast's own sentences, beside words moved to the claim's
     # contract; and a live tile with no Today card left unrefused.
     results.append(plant_the_questions_own_numbers_under_the_contracts_words())
+    # OPERATOR RULING A.2 (2026-10-05): a claim priced across two contracts
+    # is in no price comparison -- the at-the-line record, the closing line,
+    # a combo -- and the void tool writes only the set the ruling names.
+    results.append(plant_a_two_contract_claim_in_the_at_the_line_record())
+    results.append(plant_a_two_contract_claim_in_the_closing_line())
+    results.append(plant_a_two_contract_claim_in_a_combo())
+    results.append(plant_a_void_tool_writing_outside_its_ruled_set())
+    # AND ITS PROVER'S (2026-10-05): every sentence of the rule says when, and
+    # the record bears the date out -- "before 30 September" did not.
+    results.append(plant_a_two_contract_sentence_dated_before_its_claims())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

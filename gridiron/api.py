@@ -476,12 +476,15 @@ def week(request: Request, sport: str | None = None, season: int | None = None,
     # AND A NUMBER WHOSE LINE THE PAGE CANNOT NAME (pick-number step A,
     # 2026-09-30): the builders refuse to draw a claim's numbers under words
     # they have not composed at the claim's line, and say so by name.
+    # AND A COMBO HOLDING A LEG PRICED ACROSS TWO CONTRACTS (operator ruling
+    # A.2, 2026-10-05): the builder's guard refuses it by name.
     from . import subjects
 
     try:
         payload = views.week(get_conn(), _sport(sport), season, week, forecaster,
                              early_view=early_view)
-    except (subjects.UnplaceableSide, language.LineNotNamed) as exc:
+    except (subjects.UnplaceableSide, language.LineNotNamed,
+            calibration.ComparedAcrossTwoContracts) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     # THE FORM TOKEN TRAVELS WITH THE SLATE (T2, 2026-09-07), because the one
     # write this page can make -- marking a pick as taken -- lives on it. It

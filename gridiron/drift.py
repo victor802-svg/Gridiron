@@ -514,9 +514,21 @@ def _venue_claims(conn: sqlite3.Connection, *, sport: str, market_type: str,
     # claim, and the morning and final pass each hold one. The door keeps the
     # last claim before the start on each distinct bet (`bet.of`, operator
     # question 17, 2026-09-28), for one forecaster.
-    return at_the_line.standing_claims(
+    #
+    # AND NONE PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05):
+    # a pair set a model number about one contract and a near price about
+    # another beside an open -- the prover of Q36.1 found 31 of the 73 venue
+    # pairs so (2026-09-30). The door leaves them out; the guard asks the
+    # stored claims its rows name.
+    from . import calibration
+
+    claims = at_the_line.standing_claims(
         conn, sport=sport, market=market_type, predictor=predictor,
         event_tier=event_tier)
+    calibration.refuse_a_comparison_across_two_contracts(
+        conn, [c["id"] for c in claims],
+        what=f"the venue's drift pair for {sport} {market_type}, {predictor}")
+    return claims
 
 
 def _pairs_of(conn: sqlite3.Connection, claims) -> list[dict]:

@@ -205,18 +205,47 @@ def claims(conn: sqlite3.Connection, *, sport: str, market: str,
     card, params = _on_the_card("c.game_id", event_tier)
     # EACH CLAIM'S FORECAST'S PASS AND WRITE TIME (operator question 27,
     # 2026-09-29): the claim that stands is chosen by its forecast's pass.
+    # AND THE CONTRACT ITS PRICE CAME FROM (operator ruling A.2, 2026-10-05):
+    # its line and side as stored, so the rule leaving a claim priced across
+    # two contracts out is worked out here by the one place, in Python
+    # (`_across`), never by the door's SQL.
     return [dict(r) for r in conn.execute(
         f"SELECT c.id, c.prediction_id, c.market, c.line, c.model_prob,"
         f"       c.venue_implied, c.created_utc, c.resolved_utc, c.outcome,"
         f"       p.pass_kind, p.created_utc AS forecast_utc,"
         f"       {bet.columns('p')}, g.kickoff_utc, g.season, g.week,"
+        "       q.line AS sold_line, q.yes_side AS sold_side,"
         "       EXISTS (SELECT 1 FROM prediction_voids v"
         "                WHERE v.prediction_id = c.prediction_id) AS voided"
         "  FROM at_the_line_claims c"
         "  JOIN predictions p ON p.id = c.prediction_id"
         "  JOIN games g ON g.id = c.game_id"
+        "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         f" WHERE c.sport = ? AND c.market = ? AND p.predictor = ?{card}",
         [sport, market, predictor] + params)]
+
+
+def _across(row: dict) -> bool:
+    """Was this claim priced across two contracts? The one place
+    (`at_the_line.priced_across_two_contracts`), asked of the claim's own
+    line and its contract as `claims` read them (operator ruling A.2,
+    2026-10-05)."""
+    from .market import at_the_line
+
+    quote = (None if row.get("sold_side") is None else
+             {"line": row.get("sold_line"), "yes_side": row["sold_side"]})
+    return at_the_line.priced_across_two_contracts(row["line"], quote)
+
+
+def _a_candidate(row: dict) -> bool:
+    """A claim the at-the-line record's standing rule may choose: its
+    forecast withdrawn by no void, and written before the start -- as
+    instants (operator question 35, 2026-10-01), as the door's window reads
+    it."""
+    if row["voided"]:
+        return False
+    return (row["kickoff_utc"] is None
+            or _before_the_start(row["created_utc"], row["kickoff_utc"]))
 
 
 def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
@@ -230,7 +259,12 @@ def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
     CHOSEN BY PASS (operator question 27, ruled 2026-09-28; built
     2026-09-29): the claim's forecast's pass first, as
     `calibration.standing_pass_order` orders the door's window; the last
-    claim written before the start, whatever its pass, until then."""
+    claim written before the start, whatever its pass, until then.
+
+    AND NEVER ONE PRICED ACROSS TWO CONTRACTS (operator ruling A.2,
+    2026-10-05), asked of the one place in Python (`_across`), where the
+    door asks its SQL spelling (`at_the_line.on_one_contract`): a door that
+    forgot the rule counts other claims than these."""
     def order(row: dict) -> tuple:
         return (_final_before_the_start(row["pass_kind"], row["forecast_utc"],
                                         row["kickoff_utc"]),
@@ -238,12 +272,11 @@ def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:
 
     out: dict[tuple, dict] = {}
     for row in rows:
-        if row["voided"]:
+        # WITHDRAWN BY NO VOID, AND BEFORE THE START AS INSTANTS (operator
+        # question 35, 2026-10-01), as the door's window reads it.
+        if not _a_candidate(row):
             continue
-        # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01), as
-        # the door's window reads it.
-        if (row["kickoff_utc"] is not None
-                and not _before_the_start(row["created_utc"], row["kickoff_utc"])):
+        if _across(row):
             continue
         key = bet.of(row)
         held = out.get(key)
@@ -264,16 +297,19 @@ def at_the_line(conn: sqlite3.Connection, *, sport: str, market: str,
     hypothetical ledger's qualifying settled claims at `threshold` (the
     ledger's own, `paper.qualifying`), and the coverage line's standing
     questions (`questions`) and how many of them hold a standing claim
-    (`read`)."""
+    (`read`) -- and, from 2026-10-05 (operator ruling A.2), how many of the
+    rest were read only across two contracts (`left_out`), the coverage
+    line's hole."""
     from .market import paper
 
-    chosen = standing_claims_of(claims(conn, sport=sport, market=market,
-                                       predictor=predictor,
-                                       event_tier=event_tier))
+    rows = claims(conn, sport=sport, market=market, predictor=predictor,
+                  event_tier=event_tier)
+    chosen = standing_claims_of(rows)
     settled = [c for c in chosen.values() if _settled_claim(c)]
     questions = standing_of(forecasts(conn, sport=sport, predictor=predictor,
                                       market_type=market, prop_type=None,
                                       event_tier=event_tier))
+    across = {bet.of(r) for r in rows if _a_candidate(r) and _across(r)}
     return {
         "claims": len(chosen),
         "settled": len(settled),
@@ -281,6 +317,7 @@ def at_the_line(conn: sqlite3.Connection, *, sport: str, market: str,
             c["model_prob"], c["venue_implied"], threshold) is not None),
         "questions": len(questions),
         "read": len(questions.keys() & chosen.keys()),
+        "left_out": len((questions.keys() - chosen.keys()) & across),
     }
 
 

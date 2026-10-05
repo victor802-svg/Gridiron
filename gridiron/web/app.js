@@ -907,6 +907,19 @@ const Gridiron = (function () {
         row.appendChild(el('div', 'gate-why', gone.words));
         clv.appendChild(row);
       });
+      // PRICED ACROSS TWO CONTRACTS, NAMED AND NEVER COUNTED (operator
+      // ruling A.2, 2026-10-05): left out by a rule rather than withdrawn,
+      // beside the line, each forecaster's own. Placed, not composed.
+      blocks.forEach(block => {
+        const across = block.across_line;
+        if (!across) return;
+        requireN(across, 'the recommendations priced across two contracts, "'
+          + across.label + '"');
+        const row = el('div', 'gate-row');
+        row.appendChild(el('div', 'gate-name', across.label));
+        row.appendChild(el('div', 'gate-why', across.words));
+        clv.appendChild(row);
+      });
       // WOULD NOT HAVE CLEARED, NAMED AND STILL COUNTED (GRIDIRON_REPAIR
       // item 4, 2026-09-26): a re-grade is a label beside the closing line,
       // not a withdrawal, and the words say so; each forecaster's own.

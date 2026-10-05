@@ -307,13 +307,112 @@ def priced_across_two_contracts(claim_line, quote) -> bool:
     docs/REPAIR_STATE.md). Every claim written from Q36.1 on reads its
     contract at the line it sells, so this is True only of those rows.
 
-    A winner market's claim and contract both have no line: not across."""
+    A winner market's claim and contract both have no line: not across.
+
+    AND FROM 2026-10-05 THE RULE THAT LEAVES SUCH A CLAIM OUT OF EVERY PRICE
+    COMPARISON (operator ruling A.2; `ON_ONE_CONTRACT_RULED` below) asks
+    here in Python -- `across_two_contracts_among`, which every builder's
+    guard and the recount read -- and `on_one_contract` says the same thing
+    in SQL for the doors."""
     if quote is None:
         return False
     sold = home_view_line(quote)
     if claim_line is None or sold is None:
         return (claim_line is None) != (sold is None)
     return abs(float(claim_line) - float(sold)) > 1e-9
+
+
+# ---------------------------------------------------------------------------
+# A CLAIM PRICED ACROSS TWO CONTRACTS IS LEFT OUT OF EVERY PRICE COMPARISON
+# (operator ruling A.2 of 2026-10-05, docs/briefs/2026-10-05-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# THE RULING, in the operator's words: "Void the 54 recommendations by
+# append-only rows (reason: 'priced across two contracts, Q36'). The 269
+# claims stay in the blind record (model against outcome at its own line)
+# and are excluded by a dated rule from every price comparison: at-the-line
+# record, closing line, edge figures, combos. List every released number
+# that moves."
+#
+# A READ RULE, NOT A WRITE (LAW 3): nothing stored changes. The claims are
+# the stored claims whose line is not the line their contract sells
+# (`priced_across_two_contracts`, the one place): every claim priced off an
+# away contract before Q36.1 was released (4b1facb, 2026-09-30T18:44Z) --
+# 269 when question 36 was written, 275 with the six `predict:nfl` wrote at
+# 18:05Z that day (run 8464), measured on one verified copy of the record on
+# 2026-10-05: MLB 139, NFL 96, NCAAF 40, all the statistical model's, all
+# settled, the first written 2026-09-07T19:41:47Z and the last
+# 2026-09-30T18:05:00Z. None since: the writer reads every contract at the
+# line it sells from Q36.1 on.
+#
+# THE RULE IS NOT BOUNDED BY THE DATE: a claim priced across two contracts is
+# left out whenever it was written -- the stricter reading, and the same set
+# on the record. One written at or after Q36.1's release would be the
+# writer's fault, not a claim this rule covers in silence, and the gate names
+# it (`audit.check_no_price_comparison_holds_a_claim_across_two_contracts`).
+#
+# A CLAIM LEFT OUT TAKES BACK THAT CLAIM, NOT THE BET: where a bet holds
+# another claim priced off one contract -- an earlier look whose rung was a
+# home contract -- that claim stands, as a voided forecast's bet stands on
+# another forecast's claim (ruling 1 of 2026-09-24, `standing_claims`). The
+# ruling names the claims; nothing else is taken out.
+
+#: When the rule was ruled, and the instant from which no claim may be priced
+#: across two contracts (Q36.1's release).
+ON_ONE_CONTRACT_RULED = "2026-10-05"
+ONE_CONTRACT_FROM = "2026-09-30T18:44:00Z"
+
+#: The alias the rule's SQL reads a claim's contract under.
+_SOLD = "q36_sold"
+
+
+def on_one_contract(claim: str = "c") -> str:
+    """` AND ...`: the claim `claim` (an alias of `at_the_line_claims`) was
+    priced off ONE contract -- its stored line is the line its contract
+    sells -- so it may stand in a price comparison.
+
+    THE DOOR'S SPELLING OF THE ONE PLACE (`priced_across_two_contracts`):
+    the contract's line as stored is the line it sells for every side
+    `home_view_line` has a rule for, and `venue_quotes`' own CHECK admits no
+    other side; two numbers are one line within 1e-9, and a claim and a
+    contract that both have no line (a winner market) are one. A claim whose
+    contract cannot be found is not across, as the one place says of a
+    missing quote. `gridiron.recount` asks the one place itself, in Python,
+    and the guards hold the two to each other."""
+    if not claim.isidentifier() or claim == _SOLD:
+        raise ValueError(f"{claim!r} is not a claim alias")
+    return (f" AND NOT EXISTS (SELECT 1 FROM venue_quotes {_SOLD}"
+            f"                  WHERE {_SOLD}.id = {claim}.quote_id"
+            f"                    AND ((({claim}.line IS NULL)"
+            f"                          <> ({_SOLD}.line IS NULL))"
+            f"                         OR abs({claim}.line - {_SOLD}.line)"
+            f"                            > 1e-9))")
+
+
+def across_two_contracts_among(conn: sqlite3.Connection,
+                               claim_ids) -> list[int]:
+    """Of these claims, the ones priced across two contracts, read off the
+    table by their own ids and their contracts, through the one place.
+
+    WHAT EVERY BUILDER'S GUARD ASKS (`calibration.
+    refuse_a_comparison_across_two_contracts`): not the rows a door handed
+    it, which a door that forgot the rule would hand it unchanged, but the
+    stored claims those rows name."""
+    ids = sorted({int(i) for i in claim_ids if i is not None})
+    out: list[int] = []
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for row in conn.execute(
+                f"SELECT c.id, c.line, q.line AS sold_line, q.yes_side"
+                f"  FROM at_the_line_claims c"
+                f"  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
+                f" WHERE c.id IN ({marks})", chunk):
+            quote = (None if row["yes_side"] is None else
+                     {"line": row["sold_line"], "yes_side": row["yes_side"]})
+            if priced_across_two_contracts(row["line"], quote):
+                out.append(row["id"])
+    return out
 
 
 #: The claim table as it stands after AT_THE_PRICE. A database built before
@@ -866,6 +965,15 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     A claim written at or after the start never stands (a forecast written
     exactly at the start stands in the blind record with a claim it cannot
     have: `standing_row_clause` reads `<=`, this reads `<`).
+
+    AND A CLAIM PRICED ACROSS TWO CONTRACTS IS NEVER A CANDIDATE (operator
+    ruling A.2, 2026-10-05: the claims "are excluded by a dated rule from
+    every price comparison: at-the-line record, closing line, edge figures,
+    combos"; `on_one_contract`). Every count of this record goes through
+    here -- the curve, its outlook, the edge, the ledger, the coverage line,
+    the card's count and the venue's drift pair -- so each leaves them out.
+    As with a void, it takes back the claim and not the bet: a bet holding
+    another claim priced off one contract stands on it.
     """
     # THE TIE-BREAK IS THE ROW ID, and it is not decoration (2026-09-10).
     #
@@ -938,6 +1046,10 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         # one before a start stored to the minute ("...T19:00Z").
         "    AND (g.kickoff_utc IS NULL"
         "         OR julianday(c.created_utc) < julianday(g.kickoff_utc))"
+        # PRICED OFF ONE CONTRACT (operator ruling A.2, 2026-10-05): a claim
+        # whose stored line is not the line its contract sells -- an away
+        # contract read at -s before Q36.1 -- is in no price comparison.
+        f"{on_one_contract('c')}"
         f"{tier_clause})"
         " WHERE latest_first = 1 ORDER BY id", params).fetchall()
 
@@ -1062,9 +1174,21 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
     out = []
     with db.one_instant(conn):
         for market in BET_MARKETS:
-            read = {bet.of(c) for c in standing_claims(
+            standing = standing_claims(
                 conn, sport=sport, market=market, predictor=predictor,
-                event_tier=event_tier)}
+                event_tier=event_tier)
+            # NO CLAIM PRICED ACROSS TWO CONTRACTS IS READ AS A QUESTION READ
+            # (operator ruling A.2, 2026-10-05): asked of the stored claims
+            # the door's rows name, through the one place.
+            calibration.refuse_a_comparison_across_two_contracts(
+                conn, [c["id"] for c in standing],
+                what=f"the coverage line for {sport} {market}, {predictor}")
+            read = {bet.of(c) for c in standing}
+            # THE QUESTIONS THE RULE LEFT UNREAD, named as their own hole:
+            # each was read at the venue, but only across two contracts.
+            left_out = bets_with_a_claim_left_out(
+                conn, sport=sport, market=market, predictor=predictor,
+                event_tier=event_tier)
             rows = conn.execute(
                 f"SELECT p.id, {bet.columns('p')}, p.factors_json,"
                 "  (SELECT COUNT(*) FROM venue_quotes q WHERE q.game_id = p.game_id"
@@ -1083,9 +1207,14 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
                 continue
             unread = [r for r in rows if bet.of(r) not in read]
             with_claim = len(rows) - len(unread)
-            no_dist = sum(1 for r in unread if not carries(r))
-            no_quotes = sum(1 for r in unread if carries(r) and not r["quotes"])
-            rest = len(unread) - no_dist - no_quotes
+            # FIRST, A QUESTION READ ONLY ACROSS TWO CONTRACTS (2026-10-05):
+            # a baseball run line carries no distribution, so these would
+            # otherwise be put down to a missing one, which is not why.
+            across = [r for r in unread if bet.of(r) in left_out]
+            others = [r for r in unread if bet.of(r) not in left_out]
+            no_dist = sum(1 for r in others if not carries(r))
+            no_quotes = sum(1 for r in others if carries(r) and not r["quotes"])
+            rest = len(others) - no_dist - no_quotes
             out.append({
                 "market": market,
                 "predictor": predictor,
@@ -1096,8 +1225,13 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
                 "with_a_claim": with_claim,
                 "recounted": again["questions"],
                 "read_recounted": again["read"],
+                # THE QUESTIONS THE RULE LEFT UNREAD, and the recount's count
+                # of them made without the door (2026-10-05).
+                "across_two_contracts": len(across),
+                "across_recounted": again["left_out"],
                 "share": round(with_claim / len(rows), 4) if rows else None,
                 "holes": [
+                    {"reason": ACROSS_TWO_CONTRACTS_HOLE, "n": len(across)},
                     {"reason": "the prediction carries no frozen distribution",
                      "n": no_dist},
                     {"reason": "the venue quoted nothing for the game",
@@ -1107,3 +1241,50 @@ def coverage(conn: sqlite3.Connection, *, sport: str, predictor: str,
                 ],
             })
     return out
+
+
+#: A coverage hole's reason in words: the question was read at the venue, but
+#: only across two contracts, and the rule of 2026-10-05 leaves those out.
+#: "Before the fix of 30 September", `language.ACROSS_TWO_CONTRACTS_WHEN`'s
+#: phrase (the prover, 2026-10-05: "before 30 September" was false of the
+#: six claims written at 18:00-18:05Z that day; this module imports no
+#: `language`, and `audit.two_contract_words_faults` holds the date here to
+#: the record as it holds every sentence of the rule).
+ACROSS_TWO_CONTRACTS_HOLE = ("its only claims were priced across two contracts "
+                             "before the fix of 30 September, and are left out "
+                             "of every comparison with a price")
+
+
+def bets_with_a_claim_left_out(conn: sqlite3.Connection, *, sport: str,
+                               market: str, predictor: str,
+                               event_tier: str | None) -> set[tuple]:
+    """One forecaster's distinct bets (`bet.of`) in one market holding a
+    claim the rule of 2026-10-05 leaves out -- one that would otherwise be a
+    candidate in `standing_claims` (written before the start, its forecast
+    withdrawn by no void) and is priced across two contracts.
+
+    THE COVERAGE LINE'S HOLE (operator ruling A.2, 2026-10-05): a question
+    whose only such claims were priced across two contracts is not read, and
+    is said to be so for that reason, never put down to a missing
+    distribution. `gridiron.recount` works the same set out again."""
+    refuse_a_pooled_count(sport, market, predictor, event_tier)
+    tier_clause, params = "", [sport, market, predictor]
+    if event_tier is not None:
+        tier_clause = (
+            " AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+            "               ON e.id = b.event_id"
+            "              WHERE b.id = c.game_id AND e.event_tier = ?)")
+        params.append(event_tier)
+    rows = conn.execute(
+        f"SELECT c.id, {bet.columns('p')}"
+        "  FROM at_the_line_claims c"
+        "  JOIN predictions p ON p.id = c.prediction_id"
+        "  JOIN games g ON g.id = c.game_id"
+        " WHERE c.sport = ? AND c.market = ? AND p.predictor = ?"
+        "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+        "                    WHERE v.prediction_id = c.prediction_id)"
+        "   AND (g.kickoff_utc IS NULL"
+        "        OR julianday(c.created_utc) < julianday(g.kickoff_utc))"
+        + tier_clause, params).fetchall()
+    across = set(across_two_contracts_among(conn, [r["id"] for r in rows]))
+    return {bet.of(r) for r in rows if r["id"] in across}

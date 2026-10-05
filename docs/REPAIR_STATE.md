@@ -16,6 +16,76 @@
   order: A.1 (4b1facb), A.3 and A.4 (48c4ddd), item 1 (e159be2), Q35
   (3508c7f). The queue rule: LAW 1, LAW 3, a false gate count, or a wrong
   number on a pick.
+  **Q36 (ii) BUILT (2026-10-05, on c829daa; uncommitted for its prover;
+  FOLLOWUPS "A claim priced across two contracts is in no price
+  comparison; the 54 voided by rule"; CLAUDE.md row of that name):**
+  MEASURED FIRST on one verified copy (made 15:25:58Z, deleted after): the
+  rule (a claim's stored line is not the line its contract sells) selects
+  275 claims -- MLB 139, NFL 96, NCAAF 40, all statistical, all settled,
+  all written before Q36.1's release, none since -- and 56 recommendations
+  priced from them, the 54 named and 114, 115. BUILT: a dated READ rule,
+  nothing stored changed -- the at-the-line door (`at_the_line.
+  on_one_contract`) and the measurement door (`recommend.
+  priced_on_one_contract`, in `counted_once`) leave them out of the
+  at-the-line record (curves, outlooks, edge, ledgers, coverage, the
+  venue's drift pairs, the card's count), the closing line and all it
+  feeds, the re-grade line and the empty bar; never one of a pair; the
+  closing line names them in a row of its own; combos propose no such leg;
+  the writer writes no recommendation from one; a guard inside each builder
+  reads the stored claims its rows name (`calibration.
+  ComparedAcrossTwoContracts`); the recounts work the rule out in Python;
+  gate step 2's `audit.check_no_price_comparison_holds_a_claim_across_two_
+  contracts`. THE READINGS (each the conservative default, FOLLOWUPS): the
+  claims are left out, not the bets (ruling 1's void precedent; one MLB bet
+  stands on an earlier claim); the rule is not bounded by the date; the
+  closing line leaves out all 56 from the release, withdrawn or not. THE
+  TOOL, `tools/void_two_contract_recommendations.py`, rehearsed on a
+  scratch copy only: 51 written (the 54 less 62, 63 and 66, withdrawn under
+  ruling 1, left and listed), 114 and 115 listed as waiting
+  (`ON_THE_OPERATORS_WORD` empty), idempotent, `--live` refused on the
+  copy. WHAT MOVES AT THE RELEASE (FOLLOWUPS has every figure): MLB spread
+  at the venue's line 102 "past the 100" -> 64 of 100, NFL 29 -> 23, NCAAF
+  91 -> 71; ledgers 67/25/70 -> 28/19/52; NCAAF's venue drift "47% over 59"
+  -> 48 of 50, its direction withdrawn; the closing line's window line
+  (statistical) MLB 15 -> 3, NFL 15 -> 6, NCAAF 14 -> 11; the empty bar
+  NFL 7 of 10 -> 6 of 9, MLB +1 empty day. When the voids are written no
+  count moves -- only which row names them. Four plantings escape on
+  c829daa and are caught here; `plant.py` 413/413; 19 tests, each failing
+  on c829daa; gate step 2's rows 112 of 114 on the copy (the two schema
+  rows not run: no schema change); the suite 2,391 passed, 4 skipped. The
+  copies deleted 16:32:55Z. **TO APPLY AFTER THE RELEASE:** the
+  tool dry on the record (it must say "--write would void 51"), then
+  `--write --live`. **Next: Q37, then A.5.**
+  **Q36 (ii) PROVED (2026-10-05, its prover, alone in the worktree; one
+  verified copy made 17:40:25Z, deleted after; FOLLOWUPS, "THE PROVER"; one
+  local commit, "Q36 (ii): the 54 recommendations voided; ...", not
+  pushed):** one defect found and fixed -- the
+  rule's sentences (the coverage clause and hole, a withdrawal's reason, the
+  closing line's row) said the claims were priced "before 30 September",
+  false of run 8464's six written at 18:00-18:05Z that day and of recs 114
+  and 115 priced from two of them, the very two the closing line's row
+  names once the 54 are voided; they say "before the fix of 30 September"
+  (`language.ACROSS_TWO_CONTRACTS_WHEN`), and `audit.two_contract_words_faults`
+  (in the gate's A.2 check) holds each sentence's date to the record; a
+  fifth planting, `plant_a_two_contract_sentence_dated_before_its_claims`,
+  escapes on c829daa and on the change as first built and is caught here;
+  one test more (20). Nothing else the ruling covers was found missed: the
+  tool rehearsed on the copy wrote exactly 51 (the 54 less 62, 63, 66,
+  listed), listed 114 and 115 as waiting, wrote nothing a second time and
+  refused `--live` off the record; every NFL, NCAAF and MLB slate with a
+  recommendation and every Record page built on the voided copy without a
+  refusal. `plant.py` 414/414; step 2's rows 112 of 114 on the copy (the
+  schema rows not run), the touched eight again on the voided copy; the
+  suite 2,392 passed, 4 skipped on its one as-is rerun (the first run's one
+  failure was the planting harness killed by its own 600-second limit, not
+  a planting escaping). Found, not built (FOLLOWUPS; no queue): step A's
+  own sentence "Priced across two contracts before 30 September" is false
+  of the same six rows; MLB's run line labelled "point spread" on the
+  Record page; and plant.py whole now runs at 527-600+ seconds against that
+  600-second limit (the orphan scan's two plantings half of it) -- the
+  release gate's step 1 can fail on the clock, which the one as-is rerun
+  covers. **To apply after the release, unchanged:** the tool dry on the
+  record ("--write would void 51"), then `--write --live`.
 
 - **THE ORDER NOW (30 Sep, second, ~15:30Z; wins over every order below):**
   Q36.1 (the claim writer reads an away-side spread contract at +s, the
@@ -1879,6 +1949,14 @@ depend on the answer.
       away one, so rec 111 reads "North Texas +1.5" before its kickoff
       (2026-10-02T01:00Z)?
     Default until ruled: nothing built; step A not started.
+    - **RULED (i) 2026-09-30 (built, 4b1facb); (iii) by step A's default
+      (48c4ddd); (ii) 2026-10-05, A.2: "Void the 54 recommendations by
+      append-only rows (reason: 'priced across two contracts, Q36'). The
+      269 claims stay in the blind record ... and are excluded by a dated
+      rule from every price comparison".** Built 2026-10-05 (START HERE,
+      "Q36 (ii) BUILT"): 275 claims and 56 recommendations by the rule; the
+      54 voided by `tools/void_two_contract_recommendations.py` after the
+      release; recs 114 and 115 listed for the operator's word.
 37. **A recommendation that buys the OTHER side of its question's words is
     drawn under the model's own side's words: its size, its edge and the
     green outline beside the other side's chance, price and payout. (Found

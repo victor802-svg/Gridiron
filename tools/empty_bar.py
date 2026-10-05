@@ -35,7 +35,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from gridiron import config, db  # noqa: E402
-from gridiron.market import recommend  # noqa: E402
+from gridiron.market import at_the_line, recommend  # noqa: E402
 
 
 def spans(conn, sport: str) -> dict:
@@ -56,12 +56,18 @@ def spans(conn, sport: str) -> dict:
     split = config.PRICEABLE_FIRST_FROM
     out = {"sport": sport, "split_on": split, "forecasters": []}
     for predictor in recommend.FORECASTERS:
+        # A DAY THE BAR COULD BE TESTED is one with a claim priced off ONE
+        # contract (operator ruling A.2, 2026-10-05: a claim priced across
+        # two contracts is excluded "from every price comparison", and the
+        # bar is one); a recommendation priced from one is left out by
+        # `counted_once` below, as the voids of the same ruling leave it out.
         claim_days = {
             r[0] for r in conn.execute(
                 "SELECT DISTINCT substr(c.created_utc, 1, 10)"
                 "  FROM at_the_line_claims c"
                 "  JOIN predictions p ON p.id = c.prediction_id"
-                " WHERE c.sport = ? AND p.predictor = ?", (sport, predictor))
+                " WHERE c.sport = ? AND p.predictor = ?"
+                + at_the_line.on_one_contract("c"), (sport, predictor))
         }
         # THROUGH THE DOOR (ruling 1, 2026-09-24). A day whose only
         # recommendations were withdrawn is a day nothing that stands cleared

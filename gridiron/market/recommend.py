@@ -837,9 +837,19 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     never as `already`, which means a forecast written twice.
     """
     counts = {"recommended": 0, "no_side": 0, "already": 0, "in_game": 0,
-              "second_on_game_market": 0, "both_sides": 0}
+              "second_on_game_market": 0, "both_sides": 0,
+              "across_two_contracts": 0}
     refused: list[dict] = []
+    # NONE FROM A CLAIM PRICED ACROSS TWO CONTRACTS (operator ruling A.2,
+    # 2026-10-05: such a claim is excluded "from every price comparison", and
+    # a recommendation is one -- its side, edge and size are the model's
+    # number set against a price). Every claim written from Q36.1's release
+    # on is priced off one contract, so this refuses nothing the record holds
+    # still to start; it is counted by its own name, never as no side.
     entries = for_predictions(conn, prediction_ids)
+    across = [e for e in entries if e.get("priced_across_two_contracts")]
+    counts["across_two_contracts"] = len(across)
+    entries = [e for e in entries if not e.get("priced_across_two_contracts")]
     decided = one_per_game_and_market(conn, [
         e for e in entries
         if e["side"] is not None and e["size"]["kind"] in ("flat", "fraction")])
@@ -947,6 +957,166 @@ def _has_withdrawals(conn: sqlite3.Connection) -> bool:
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table'"
         "   AND name = 'recommendation_voids'").fetchone() is not None
+
+
+# ---------------------------------------------------------------------------
+# A RECOMMENDATION PRICED FROM A CLAIM ACROSS TWO CONTRACTS (operator ruling
+# A.2 of 2026-10-05, docs/briefs/2026-10-05-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# "Void the 54 recommendations by append-only rows (reason: 'priced across
+# two contracts, Q36'). The 269 claims stay in the blind record (model
+# against outcome at its own line) and are excluded by a dated rule from
+# every price comparison: at-the-line record, closing line, edge figures,
+# combos."
+#
+# A recommendation is priced from a claim -- its PRICING CLAIM, the latest
+# written on its forecast by its own stamp and before the start, the close's
+# own rule (`pricing_claim`) -- so a recommendation priced from a claim
+# across two contracts (`at_the_line.priced_across_two_contracts`) chose its
+# side, edge and size from a model number about one contract and a price
+# about another. Measured on one verified copy of the record on 2026-10-05:
+# 56 of the 127 -- the 54 question 36 names and recs 114 and 115, written
+# 44 minutes before Q36.1 was released.
+#
+# THE READ RULE (`priced_on_one_contract`, in `counted_once`): such a
+# recommendation is in no measurement -- not the closing line and all it
+# feeds (its N, mean and share, the window line, the kill criterion), the
+# re-grade line or the empty-bar count -- and never one member of a pair;
+# `priced_across_two_contracts` lists it so the closing line names it.
+# THE VOIDS (`tools/void_two_contract_recommendations.py`, after the release
+# that carries this rule): one append-only `recommendation_voids` row for
+# each of the 54, in the ruling's reason, `TWO_CONTRACTS_VOID_REASON`; 114
+# and 115 are selected by the same rule and written only on the operator's
+# word. Withdrawn or not, the rule leaves each out of every count alike, so
+# nothing counted moves when the voids are written -- only which line names
+# them.
+
+#: The reason each of the 54 is voided with, as the operator wrote it.
+TWO_CONTRACTS_VOID_REASON = "priced across two contracts, Q36"
+
+#: Why `priced_across_two_contracts` lists a recommendation.
+ACROSS_TWO_CONTRACTS = "priced_across_two_contracts"
+
+#: The aliases the rule reads a recommendation's pricing claim, its contract
+#: and its game under.
+_PRICED_BY = "q36_claim"
+_PRICED_BY_LOOK = "q36_look"
+_PRICED_BY_GAME = "q36_game"
+
+
+def priced_on_one_contract(conn: sqlite3.Connection, alias: str = "r") -> str:
+    """` AND ...`: the recommendation `alias` was not priced from a claim
+    across two contracts -- its pricing claim (the latest written on its
+    forecast by its own stamp and before the start, as instants: the
+    close's rule, `pricing_claim`) is priced off one contract, or it has
+    none (operator ruling A.2, 2026-10-05).
+
+    PART OF THE MEASUREMENT DOOR (`counted_once`), never of `not_withdrawn`:
+    the closer, the write rule and the tools keep the record as written and
+    see these rows; every measurement leaves them out. The claim's rule is
+    the at-the-line door's own (`at_the_line.on_one_contract`)."""
+    return _priced_on_one_contract(_alias(alias))
+
+
+def _priced_on_one_contract(alias: str) -> str:
+    """`priced_on_one_contract`'s SQL, for an alias already checked -- the
+    pair rule's own `_OTHER` among them, which `_alias` keeps from callers."""
+    from . import at_the_line
+
+    if not alias.isidentifier():
+        raise ValueError(f"{alias!r} is not a table alias")
+    return (
+        f" AND NOT EXISTS (SELECT 1 FROM at_the_line_claims {_PRICED_BY}"
+        f"   WHERE {_PRICED_BY}.id = ("
+        f"     SELECT {_PRICED_BY_LOOK}.id FROM at_the_line_claims {_PRICED_BY_LOOK}"
+        f"       JOIN games {_PRICED_BY_GAME}"
+        f"         ON {_PRICED_BY_GAME}.id = {_PRICED_BY_LOOK}.game_id"
+        f"      WHERE {_PRICED_BY_LOOK}.prediction_id = {alias}.prediction_id"
+        f"        AND julianday({_PRICED_BY_LOOK}.created_utc)"
+        f"            <= julianday({alias}.created_utc)"
+        f"        AND ({_PRICED_BY_GAME}.kickoff_utc IS NULL"
+        f"             OR julianday({_PRICED_BY_LOOK}.created_utc)"
+        f"                < julianday({_PRICED_BY_GAME}.kickoff_utc))"
+        f"      ORDER BY julianday({_PRICED_BY_LOOK}.created_utc) DESC,"
+        f"               {_PRICED_BY_LOOK}.id DESC LIMIT 1)"
+        f"   AND NOT (1{at_the_line.on_one_contract(_PRICED_BY)}))")
+
+
+def pricing_claim(conn: sqlite3.Connection, prediction_id: int,
+                  created_utc: str, kickoff: str | None):
+    """A recommendation's PRICING CLAIM: the latest claim on its forecast
+    written by its own stamp and before the start -- instants, then the id,
+    as the text order broke a tie -- or None.
+
+    ONE PLACE FOR THE CLOSE AND THE RULE OF 2026-10-05 (operator ruling
+    A.2): `close_of` reads the contract the close is a later read of from
+    it, and `pricing_claim_ids` the claim a recommendation was priced from.
+    Moved out of `close_of`, unchanged (2026-10-05)."""
+    start = instant(kickoff)
+    written = instant(created_utc)
+    return max(
+        (c for c in conn.execute(
+            "SELECT id, quote_id, venue_implied, created_utc"
+            "  FROM at_the_line_claims WHERE prediction_id = ?",
+            (prediction_id,)).fetchall()
+         if instant(c["created_utc"]) <= written
+         and (start is None or instant(c["created_utc"]) < start)),
+        key=lambda c: (instant(c["created_utc"]), c["id"]), default=None)
+
+
+def pricing_claim_ids(conn: sqlite3.Connection,
+                      recommendation_ids) -> dict[int, int | None]:
+    """Each recommendation's pricing claim's id (`pricing_claim`), in
+    Python, read straight off the tables -- for the guard that holds a
+    measurement to the rule (`calibration.
+    refuse_recommendations_across_two_contracts`) and for the void tool's
+    selection, so neither shares the measurement door's SQL."""
+    ids = sorted({int(i) for i in recommendation_ids if i is not None})
+    out: dict[int, int | None] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for rec in conn.execute(
+                f"SELECT r.id, r.prediction_id, r.created_utc, g.kickoff_utc"
+                f"  FROM recommendations r JOIN games g ON g.id = r.game_id"
+                f" WHERE r.id IN ({marks})", chunk).fetchall():
+            claim = pricing_claim(conn, rec["prediction_id"], rec["created_utc"],
+                                  rec["kickoff_utc"])
+            out[rec["id"]] = None if claim is None else claim["id"]
+    return out
+
+
+def priced_across_two_contracts(conn: sqlite3.Connection, *, sport: str,
+                                predictor: str) -> list[dict]:
+    """One forecaster's standing recommendations in this sport priced from
+    a claim across two contracts, which every measurement leaves out
+    (`priced_on_one_contract`), each with its reason.
+
+    THE OTHER SIDE OF THE RULE, as `withdrawn` is of `not_withdrawn` and
+    `not_counted_once` of the pair rule: listed so the closing line names
+    them beside itself rather than letting them vanish (operator ruling
+    A.2, 2026-10-05). Never a withdrawn row: once the void tool has written
+    the 54, they are named as withdrawn, and this lists what stands -- recs
+    114 and 115 until the operator rules on them."""
+    config.require_sport(sport, "recommend.priced_across_two_contracts")
+    refuse_a_pooled_count(predictor, "recommend.priced_across_two_contracts")
+    rows = conn.execute(
+        "SELECT r.id, r.game_id, r.market, r.side, r.created_utc,"
+        "       r.closed_utc IS NOT NULL AS closed,"
+        "       EXISTS (SELECT 1 FROM recommendation_closes k"
+        "                WHERE k.recommendation_id = r.id AND k.restated = 0"
+        "                  AND k.clv_cents IS NOT NULL) AS measured"
+        "  FROM recommendations r"
+        f" JOIN predictions {_WHOSE} ON {_WHOSE}.id = r.prediction_id"
+        f" WHERE r.sport = ? AND {_WHOSE}.predictor = ?" + not_withdrawn(conn)
+        + " AND NOT (1" + priced_on_one_contract(conn, "r") + ")"
+        + " ORDER BY r.created_utc, r.id", (sport, predictor)).fetchall()
+    return [{"id": r["id"], "game_id": r["game_id"], "market": r["market"],
+             "side": r["side"], "created_utc": r["created_utc"],
+             "closed": bool(r["closed"]), "measured": bool(r["measured"]),
+             "predictor": predictor, "why": ACROSS_TWO_CONTRACTS}
+            for r in rows]
 
 
 def withdrawn(conn: sqlite3.Connection, *, sport: str,
@@ -1065,7 +1235,10 @@ _OTHER = "q12_other"
 _OTHER_FORECAST = "q12_other_forecast"
 _OWN_FORECAST = "q12_own_forecast"
 _WHOSE = "q22_whose"
-_RESERVED = (_OTHER, _OTHER_FORECAST, _OWN_FORECAST, _WHOSE)
+# AND THE RULE OF 2026-10-05'S (operator ruling A.2): a caller's alias may be
+# none of them.
+_RESERVED = (_OTHER, _OTHER_FORECAST, _OWN_FORECAST, _WHOSE,
+             _PRICED_BY, _PRICED_BY_LOOK, _PRICED_BY_GAME)
 
 
 class PooledCount(ValueError):
@@ -1114,13 +1287,18 @@ def _an_earlier_row_of_the_same_bet(conn: sqlite3.Connection,
     `counted_once` and `not_counted_once` are both made of it, so the count
     and the list of what it leaves out cannot disagree."""
     alias = _alias(alias)
+    # PAIRED AFTER THE RULE OF 2026-10-05 TOO (operator ruling A.2), as after
+    # the withdrawals: a recommendation priced from a claim across two
+    # contracts is in no measurement, so it is never the earlier row a later
+    # one repeats -- the later one counts alone, as NFL 73 after 62 does.
     return (f"EXISTS (SELECT 1 FROM recommendations {_OTHER}"
             f"          JOIN predictions {_OTHER_FORECAST}"
             f"            ON {_OTHER_FORECAST}.id = {_OTHER}.prediction_id"
             f"          JOIN predictions {_OWN_FORECAST}"
             f"            ON {_OWN_FORECAST}.id = {alias}.prediction_id"
             f"         WHERE {pairs_with(alias)}"
-            + not_withdrawn(conn, _OTHER) + ")")
+            + not_withdrawn(conn, _OTHER)
+            + _priced_on_one_contract(_OTHER) + ")")
 
 
 def counted_once(conn: sqlite3.Connection, alias: str = "r", *,
@@ -1143,7 +1321,11 @@ def counted_once(conn: sqlite3.Connection, alias: str = "r", *,
     refuse_a_pooled_count(predictor, "recommend.counted_once")
     # THE FORECASTER, CHECKED AGAINST THE TWO BEFORE IT IS WRITTEN INTO THE
     # SQL, so the literal can only ever be one of them.
+    # AND PRICED OFF ONE CONTRACT (operator ruling A.2, 2026-10-05): a
+    # recommendation priced from a claim across two contracts is in no
+    # measurement, withdrawn or not (`priced_on_one_contract`).
     return (not_withdrawn(conn, alias)
+            + _priced_on_one_contract(alias)
             + f" AND EXISTS (SELECT 1 FROM predictions {_WHOSE}"
               f"              WHERE {_WHOSE}.id = {alias}.prediction_id"
               f"                AND {_WHOSE}.predictor = '{predictor}')"
@@ -1157,7 +1339,10 @@ def not_counted_once(conn: sqlite3.Connection, *, sport: str,
     THE OTHER SIDE OF THE DOOR, as `withdrawn` is of `not_withdrawn`: listed
     so the page can say what the counts leave out, in words. Each is a
     REPEAT -- a later row of one distinct bet and side, counted once as the
-    first. First first, by stamp then number. Never a withdrawn row.
+    first. First first, by stamp then number. Never a withdrawn row, and
+    from 2026-10-05 never one priced from a claim across two contracts
+    (operator ruling A.2): that one is left out for its own reason, and
+    `priced_across_two_contracts` names it.
     """
     config.require_sport(sport, "recommend.not_counted_once")
     refuse_a_pooled_count(predictor, "recommend.not_counted_once")
@@ -1167,6 +1352,7 @@ def not_counted_once(conn: sqlite3.Connection, *, sport: str,
         "  FROM recommendations r"
         f" JOIN predictions {_WHOSE} ON {_WHOSE}.id = r.prediction_id"
         f" WHERE r.sport = ? AND {_WHOSE}.predictor = ?" + not_withdrawn(conn)
+        + _priced_on_one_contract("r")
         + " AND " + _an_earlier_row_of_the_same_bet(conn, "r")
         + " ORDER BY r.created_utc, r.id", (sport, predictor)).fetchall()
     return [{"id": r["id"], "game_id": r["game_id"], "market": r["market"],
@@ -1411,18 +1597,11 @@ def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
            "close_price": None, "clv_cents": None,
            "minutes_before_start": None}
     start = instant(kickoff)
-    written = instant(rec["created_utc"])
     # THE PRICING CLAIM: the latest written by the recommendation's own
     # stamp and before the start -- instants, then the id, as the text order
-    # broke a tie.
-    claim = max(
-        (c for c in conn.execute(
-            "SELECT id, quote_id, venue_implied, created_utc"
-            "  FROM at_the_line_claims WHERE prediction_id = ?",
-            (rec["prediction_id"],)).fetchall()
-         if instant(c["created_utc"]) <= written
-         and (start is None or instant(c["created_utc"]) < start)),
-        key=lambda c: (instant(c["created_utc"]), c["id"]), default=None)
+    # broke a tie. One place from 2026-10-05 (`pricing_claim`), which the
+    # rule of that day reads too (operator ruling A.2).
+    claim = pricing_claim(conn, rec["prediction_id"], rec["created_utc"], kickoff)
     if claim is None or round(claim["venue_implied"], 4) != round(rec["price"], 4):
         return {**out, "why": UNTRACEABLE_WHY}
     pricing = conn.execute("SELECT * FROM venue_quotes WHERE id = ?",

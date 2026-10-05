@@ -2378,6 +2378,75 @@ class MergedRecord(RuntimeError):
     """The blind record and the at-the-line record were filed as one."""
 
 
+class ComparedAcrossTwoContracts(MergedCurve):
+    """A price comparison holds a claim priced across two contracts, or a
+    recommendation priced from one (operator ruling A.2, 2026-10-05).
+
+    A `MergedCurve`, so every route that answers a pooled count with a 500
+    and its reason answers this one the same way: a figure setting a model
+    number about one contract beside a price about another describes no
+    contract, as a pooled curve describes no forecaster."""
+
+
+#: WHY, in the refusal's words. "Before the fix of 30 September" (the prover,
+#: 2026-10-05: "before 30 September" was false of the six claims written at
+#: 18:00-18:05Z that day; `audit.two_contract_words_faults` holds it).
+ACROSS_TWO_CONTRACTS_LAW = (
+    "OPERATOR RULING A.2 (2026-10-05): a claim priced across two contracts "
+    "-- an away contract read at -s before the fix of 30 September, its "
+    "model number about one contract and its price about another -- stays in "
+    "the blind record and is excluded by a dated rule from every price "
+    "comparison: the at-the-line record, the closing line, edge figures and "
+    "combos")
+
+
+def refuse_a_comparison_across_two_contracts(conn: sqlite3.Connection,
+                                             claim_ids, *, what: str) -> None:
+    """THE GUARD INSIDE EACH BUILDER THAT SETS THE MODEL AGAINST A PRICE
+    (operator ruling A.2, 2026-10-05): refuse, by name, a comparison whose
+    claims include one priced across two contracts.
+
+    It reads the stored claims the builder's rows name -- their own lines
+    and contracts, through the one place (`at_the_line.
+    across_two_contracts_among`) -- never the rows' own say-so, so a door
+    that forgot the rule (`at_the_line.on_one_contract`) is seen here
+    whatever it hands on. The at-the-line curve, its edge figure, the
+    hypothetical ledger, the coverage line, the venue's drift pair and the
+    card's count ask it; the closing line asks
+    `refuse_recommendations_across_two_contracts`, and a proposed combo
+    asks it of its legs' claims."""
+    from .market import at_the_line
+
+    found = at_the_line.across_two_contracts_among(conn, claim_ids)
+    if found:
+        shown = ", ".join(str(i) for i in found[:12])
+        more = f" and {len(found) - 12} more" if len(found) > 12 else ""
+        raise ComparedAcrossTwoContracts(
+            f"{ACROSS_TWO_CONTRACTS_LAW}. {what} holds {len(found)} such "
+            f"claim(s): {shown}{more}.")
+
+
+def refuse_recommendations_across_two_contracts(conn: sqlite3.Connection,
+                                                recommendation_ids, *,
+                                                what: str) -> None:
+    """The same guard for a comparison of recommendations -- the closing
+    line and all it feeds: refuse, by name, one that counts a
+    recommendation priced from a claim across two contracts, its pricing
+    claim found by the close's own rule (`recommend.pricing_claim_ids`)."""
+    from .market import at_the_line, recommend
+
+    priced_from = recommend.pricing_claim_ids(conn, recommendation_ids)
+    across = set(at_the_line.across_two_contracts_among(
+        conn, priced_from.values()))
+    found = sorted(rec for rec, claim in priced_from.items() if claim in across)
+    if found:
+        shown = ", ".join(str(i) for i in found[:12])
+        more = f" and {len(found) - 12} more" if len(found) > 12 else ""
+        raise ComparedAcrossTwoContracts(
+            f"{ACROSS_TWO_CONTRACTS_LAW}. {what} counts {len(found)} "
+            f"recommendation(s) priced from such a claim: {shown}{more}.")
+
+
 AT_THE_LINE_NOTE = (
     "The model's own distribution, read at the venue's published line after the "
     "forecast was written and frozen. Two probabilities for the same question, "
@@ -2442,13 +2511,21 @@ def at_the_line_items(conn: sqlite3.Connection, *, sport: str, market: str,
     final pass and its every look are one claim, two rungs of one game are
     two, and the two forecasters are never counted together (item 6;
     operator question 17, 2026-09-28).
+
+    AND NONE PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05):
+    the door leaves them out, and the guard asks the stored claims its rows
+    name before any item is made of them -- the edge figure reads these.
     """
     from .market import at_the_line
 
     require_sport(sport, "calibration.at_the_line_items")
-    return _at_the_line_items_of(at_the_line.standing_claims(
+    claims = at_the_line.standing_claims(
         conn, sport=sport, market=market, predictor=predictor,
-        event_tier=event_tier))
+        event_tier=event_tier)
+    refuse_a_comparison_across_two_contracts(
+        conn, [c["id"] for c in claims],
+        what=f"the at-the-line figures for {sport} {market}, {predictor}")
+    return _at_the_line_items_of(claims)
 
 
 def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
@@ -2475,6 +2552,12 @@ def at_the_line_curve(conn: sqlite3.Connection, *, sport: str, market: str,
         bets = at_the_line.standing_claims(conn, sport=sport, market=market,
                                            predictor=predictor,
                                            event_tier=event_tier)
+        # NO CLAIM PRICED ACROSS TWO CONTRACTS IN THE CURVE, ITS GATE LINE
+        # OR ITS OUTLOOK (operator ruling A.2, 2026-10-05), asked of the
+        # stored claims the door's rows name.
+        refuse_a_comparison_across_two_contracts(
+            conn, [c["id"] for c in bets],
+            what=f"the at-the-line curve for {sport} {market}, {predictor}")
         again = recount.at_the_line(conn, sport=sport, market=market,
                                     predictor=predictor, event_tier=event_tier)
         outlook = horizon.at_the_line_outlook(
@@ -2541,6 +2624,9 @@ def at_the_line_edge(conn: sqlite3.Connection, *, sport: str, market: str,
 
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
     with db.one_instant(conn):
+        # NO CLAIM PRICED ACROSS TWO CONTRACTS IN AN EDGE FIGURE (operator
+        # ruling A.2, 2026-10-05: "edge figures"): `at_the_line_items` asks
+        # the guard of the claims it reads.
         items = at_the_line_items(conn, sport=sport, market=market,
                                   predictor=predictor, event_tier=event_tier)
         again = recount.at_the_line(conn, sport=sport, market=market,
@@ -2631,9 +2717,12 @@ def at_the_line_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
                                    tiers.index(row["event_tier"]),
                                    at_the_line.FORECASTERS.index(row["predictor"])))
     for row in coverage:
+        # AND HOW MANY MORE WERE READ ONLY ACROSS TWO CONTRACTS, left out of
+        # every comparison with a price (operator ruling A.2, 2026-10-05).
         row["words"] = language.at_the_line_coverage_line(
             row["market"], row["with_a_claim"], row["n"],
-            predictor=row["predictor"], event_tier=row["event_tier"])
+            predictor=row["predictor"], event_tier=row["event_tier"],
+            across=row.get("across_two_contracts") or 0)
     headline_market = markets[0] if markets else None
     payload = {
         "sport": sport,
@@ -2792,6 +2881,18 @@ def assert_no_pooled_claims(payload: dict) -> None:
                 f"one per distinct bet by the one key (`bet.of`). A rule keyed "
                 f"any other way counts other bets than the record holds "
                 f"(operator question 17, 2026-09-28).")
+        # AND THE QUESTIONS IT LEFT UNREAD BECAUSE THEIR ONLY CLAIMS WERE
+        # PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05): a
+        # count the page says in words, held to the recount's.
+        across = row.get("across_two_contracts")
+        if (not isinstance(across, int) or not 0 <= across <= n - read
+                or across != row.get("across_recounted")):
+            raise ComparedAcrossTwoContracts(
+                f"{ACROSS_TWO_CONTRACTS_LAW}. {what} says {across!r} of its "
+                f"questions were read only across two contracts, where the "
+                f"recount made without the door finds "
+                f"{row.get('across_recounted')!r} of the {n - read} it did "
+                f"not read.")
 
 
 def assert_the_records_stay_apart(payload: dict) -> None:
@@ -3037,6 +3138,16 @@ def clv_report(conn: sqlite3.Connection, *, sport: str,
         ("counted once, as the earlier one"). The rows stay as written; the
         tallies of what was set aside (`set_aside`) are in the payload so
         the withdrawn recount can still add up every standing row.
+      * PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05: the
+        claims "are excluded by a dated rule from every price comparison:
+        at-the-line record, closing line, edge figures, combos") -- a
+        recommendation priced from a claim whose model number is about one
+        contract and whose price is about another. Through
+        `recommend.counted_once` it is in no figure above and never one of a
+        pair; it is named once beside the closing line in its own line
+        (`across_line`), tallied (`across_two_contracts`) as the repeats
+        are. The 54 the ruling voids are then withdrawn, and named as
+        withdrawn; nothing counted moves when they are.
 
     ONE LINE PER MARKET AND FORECASTER, AND NO TOTAL (operator question 22,
     ruled 2026-09-28: "(A). Recommendation counts split per forecaster, like
@@ -3113,8 +3224,12 @@ def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
     # COUNTED ONCE (operator questions 12 and 22): a same-side pair of one
     # distinct bet is its earlier row here, and only this forecaster's rows
     # are read at all.
+    # AND NONE PRICED FROM A CLAIM ACROSS TWO CONTRACTS (operator ruling
+    # A.2, 2026-10-05: the claims are excluded from "the closing line"), the
+    # door's own rule (`recommend.priced_on_one_contract`), with the guard
+    # asked of the rows it hands back below.
     rows = conn.execute(
-        "SELECT r.market, r.side, r.price, c.clv_cents, c.restated,"
+        "SELECT r.id, r.market, r.side, r.price, c.clv_cents, c.restated,"
         "       r.closed_utc,"
         "       c.recommendation_id IS NOT NULL AS accounted,"
         "       r.created_utc >= ? AS in_window"
@@ -3215,11 +3330,23 @@ def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
             entry["category_label"], n)
         entries.append(entry)
 
-    open_rows = conn.execute(
-        "SELECT COUNT(*) FROM recommendations r"
+    open_ids = [r[0] for r in conn.execute(
+        "SELECT r.id FROM recommendations r"
         " WHERE r.sport = ? AND r.closed_utc IS NULL"
         + recommend.counted_once(conn, predictor=predictor),
-        (sport,)).fetchone()[0]
+        (sport,))]
+    open_rows = len(open_ids)
+    # THE GUARD (operator ruling A.2, 2026-10-05): no recommendation this
+    # line counts -- closed or awaiting its close -- was priced from a claim
+    # across two contracts, asked of each one's pricing claim in Python
+    # (`recommend.pricing_claim_ids`), never of the door's SQL.
+    refuse_recommendations_across_two_contracts(
+        conn, [r["id"] for r in rows] + open_ids,
+        what=f"the {sport} closing line, {whose}")
+    # NAMED, NEVER COUNTED: the recommendations the rule leaves out, with the
+    # tallies the withdrawn recount adds back, as it adds the repeats back.
+    across = recommend.priced_across_two_contracts(conn, sport=sport,
+                                                   predictor=predictor)
     # WHAT WAS SET ASIDE, TALLIED AS THE COUNTS ABOVE ARE (question 12), so
     # `audit.withdrawn_counted_faults` can still add every standing row up:
     # a measured close is one with its account written at the time.
@@ -3280,6 +3407,27 @@ def _closing_line_of(conn: sqlite3.Connection, *, sport: str, predictor: str,
             "closed": sum(1 for row in aside if row["closed"]),
             "awaiting_close": sum(1 for row in aside if not row["closed"]),
         },
+        # PRICED FROM A CLAIM ACROSS TWO CONTRACTS (operator ruling A.2,
+        # 2026-10-05): this forecaster's standing recommendations the rule
+        # leaves out, named beside the line and in no figure above, tallied
+        # as the repeats are so the withdrawn recount can add every standing
+        # row up. Once the void tool has written the 54 they are withdrawn
+        # and named there; until the operator rules on recs 114 and 115,
+        # they are named here.
+        "across_two_contracts": {
+            "n": len(across),
+            "measured": sum(1 for row in across
+                            if row["closed"] and row["measured"]),
+            "closed": sum(1 for row in across if row["closed"]),
+            "awaiting_close": sum(1 for row in across if not row["closed"]),
+        },
+        "across_line": ({
+            "label": language.closing_line_label(
+                language.ACROSS_TWO_CONTRACTS_LABEL, predictor),
+            "n": len(across),
+            "words": language.across_two_contracts_recommendations_line(
+                len(across)),
+        } if across else None),
     }
     return block, entries
 

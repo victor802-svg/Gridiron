@@ -443,12 +443,23 @@ def propose(entries: list[dict], *, sport: str) -> list[dict]:
     Each leg carries its side, its number and its cost; the page names it in
     that side's words. Until this date the worth was the product of each
     leg's YES-side number, and the singles line was priced off the yes price.
+
+    AND NO LEG PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05:
+    such a claim is excluded "from every price comparison: at-the-line
+    record, closing line, edge figures, combos"). A leg whose claim's model
+    number is about one contract and its price about another clears no bar
+    on either, so it is never proposed, whatever side the entry carries --
+    as `recommend.for_predictions` hands it on, it still carries one; the
+    page's `views._as_the_page_draws` took the side away, and this is the
+    engine's own rule. `views._combo_block` asks the guard of every leg it
+    is handed back.
     """
     clearing = [e for e in entries
                 if e.get("side") is not None
                 and e.get("sport") == sport
                 and e.get("fair_value") is not None
-                and e.get("game_id")]
+                and e.get("game_id")
+                and not e.get("priced_across_two_contracts")]
     clearing.sort(key=lambda e: (-(e.get("edge_cents") or 0.0),
                                  e.get("prediction_id") or 0))
 

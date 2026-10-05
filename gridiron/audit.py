@@ -8314,6 +8314,17 @@ RECOMMENDATION_DOOR_EXEMPT = {
         "the tool that voids the passes written at or after their start reads "
         "every recommendation on them, withdrawn or not, to refuse a void the "
         "ruling did not name -- the ruling names no recommendation",
+    # 2026-10-05 (operator ruling A.2): the same shape again.
+    "tools/void_two_contract_recommendations.py:selected_by_the_rule":
+        "the tool that voids the recommendations priced across two contracts "
+        "reads every recommendation, withdrawn or not, so a second run still "
+        "sees the ones this ruling voided and the ones voided before it, and "
+        "proves the selection holds the 54 the ruling names",
+    "gridiron/market/recommend.py:pricing_claim_ids":
+        "the pricing-claim lookup (2026-10-05) reads the recommendations it "
+        "is handed, by number, withdrawn or not -- the guard and the recounts "
+        "ask it of rows they already chose; it decides nothing about which "
+        "stand",
 }
 
 #: THE READERS THAT KEEP THE RECORD RATHER THAN MEASURE IT (operator
@@ -8333,6 +8344,12 @@ RECORD_READERS = {
     "gridiron/market/recommend.py:not_counted_once":
         "the other side of the measurement door: it lists one forecaster's "
         "repeats the door leaves out, so the page names them",
+    # 2026-10-05 (operator ruling A.2): the same shape as `not_counted_once`.
+    "gridiron/market/recommend.py:priced_across_two_contracts":
+        "the other side of the measurement door's rule of 2026-10-05: it "
+        "lists one forecaster's standing recommendations priced from a claim "
+        "across two contracts, which the door leaves out, so the closing "
+        "line names them",
     "gridiron/market/recommend.py:standing_recommendations":
         "the write rule (GRIDIRON_REPAIR item 5): a game and market holding "
         "any standing recommendation, a pair's later row included, gets no "
@@ -8528,7 +8545,7 @@ def _closing_line_rows(conn, sport: str) -> list:
     # 2026-09-28): a door that counted a pair's LATER row keeps every count
     # and moves the mean, so the recount works out each line's buckets, mean
     # and share too, not its counts alone.
-    return conn.execute(
+    rows = [dict(r) for r in conn.execute(
         "SELECT r.id, r.market, r.side, r.created_utc,"
         "       r.closed_utc IS NOT NULL AS closed,"
         "       c.recommendation_id IS NOT NULL AND c.restated = 0"
@@ -8541,7 +8558,20 @@ def _closing_line_rows(conn, sport: str) -> list:
         "  FROM recommendations r"
         "  LEFT JOIN predictions p ON p.id = r.prediction_id"
         "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
-        " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()
+        " WHERE r.sport = ? ORDER BY r.id", (sport,)).fetchall()]
+    # AND WHETHER EACH WAS PRICED FROM A CLAIM ACROSS TWO CONTRACTS (operator
+    # ruling A.2, 2026-10-05), worked out in Python -- its pricing claim by
+    # the close's own rule, read through the one place -- never through the
+    # measurement door's SQL (`recommend.priced_on_one_contract`), so a door
+    # that forgot the rule disagrees with this.
+    from .market import at_the_line, recommend
+
+    priced_from = recommend.pricing_claim_ids(conn, [r["id"] for r in rows])
+    across = set(at_the_line.across_two_contracts_among(
+        conn, priced_from.values()))
+    for row in rows:
+        row["across"] = priced_from.get(row["id"]) in across
+    return rows
 
 
 def _forecaster_block(report: dict, predictor: str) -> dict:
@@ -8599,14 +8629,20 @@ def withdrawn_counted_faults(conn, report: dict) -> list[str]:
             "withdrawn": len(gone),
         }
         aside = block.get("set_aside") or {}
+        # AND WHAT THE RULE OF 2026-10-05 LEAVES OUT (operator ruling A.2):
+        # standing rows priced from a claim across two contracts, tallied by
+        # the builder as the repeats are, and added back the same way.
+        across = block.get("across_two_contracts") or {}
         got = {
             "n": (block.get("n", 0) + (block.get("before_window") or 0)
-                  + (aside.get("measured") or 0)),
+                  + (aside.get("measured") or 0) + (across.get("measured") or 0)),
             "closed": sum((block.get(k) or 0) for k in
                           ("n", "unmeasured", "restated", "unaccounted",
-                           "before_window")) + (aside.get("closed") or 0),
+                           "before_window")) + (aside.get("closed") or 0)
+                      + (across.get("closed") or 0),
             "awaiting_close": (block.get("awaiting_close", 0)
-                               + (aside.get("awaiting_close") or 0)),
+                               + (aside.get("awaiting_close") or 0)
+                               + (across.get("awaiting_close") or 0)),
             "withdrawn": block.get("withdrawn", 0),
         }
         culprits = {
@@ -8704,10 +8740,15 @@ def _counted_once_roles(rows: list) -> dict[int, str]:
     from . import bet
 
     groups: dict[tuple, list] = {}
-    for row in sorted((r for r in rows if not r["withdrawn"]),
+    # A ROW PRICED FROM A CLAIM ACROSS TWO CONTRACTS IS IN NO GROUP (operator
+    # ruling A.2, 2026-10-05): it is "across", never counted, never the
+    # earlier row a later one repeats (`_closing_line_rows` works it out).
+    for row in sorted((r for r in rows
+                       if not r["withdrawn"] and not r.get("across")),
                       key=lambda r: (r["created_utc"], r["id"])):
         groups.setdefault((bet.of(row), row["side"]), []).append(row)
-    roles: dict[int, str] = {}
+    roles: dict[int, str] = {r["id"]: "across" for r in rows
+                             if not r["withdrawn"] and r.get("across")}
     for group in groups.values():
         roles[group[0]["id"]] = "counted"
         roles.update({row["id"]: "repeat" for row in group[1:]})
@@ -8767,7 +8808,10 @@ def _likely(rows: list, predictor: str, key: str, got: int,
     difference = abs(got - expected)
     mine = [r for r in scoped if r["predictor"] == predictor]
     if too_many:
-        first = [r["id"] for r in mine if r["role"] == "repeat"]
+        # A REPEAT, OR -- from 2026-10-05 (operator ruling A.2) -- a row
+        # priced from a claim across two contracts: each is a row the rule
+        # leaves out.
+        first = [r["id"] for r in mine if r["role"] in ("repeat", "across")]
         second = [r["id"] for r in scoped if r["predictor"] != predictor
                   and r["role"] == "counted"]
     else:
@@ -8864,10 +8908,45 @@ def pair_counted_faults(conn, report: dict) -> list[str]:
         mine = [r for r in rows if r["predictor"] == predictor]
         counted = [r for r in mine if r["role"] == "counted"]
         aside = [r for r in mine if r["role"] == "repeat"]
+        # LEFT OUT BY THE RULE OF 2026-10-05 (operator ruling A.2): priced
+        # from a claim across two contracts, named beside the line.
+        left_out = [r for r in mine if r["role"] == "across"]
         block = _forecaster_block(report, predictor)
         if not block:
             faults.append(f"{sport}: the closing line has no line for {whose}.")
         held = block.get("set_aside") or {}
+        named = block.get("across_two_contracts") or {}
+        expected_across = {
+            "n": len(left_out),
+            "measured": sum(1 for r in left_out if r["closed"] and r["measured"]),
+            "closed": sum(1 for r in left_out if r["closed"]),
+            "awaiting_close": sum(1 for r in left_out if not r["closed"]),
+        }
+        for key, want in expected_across.items():
+            have = named.get(key)
+            if have != want:
+                ids = ", ".join(str(r["id"]) for r in left_out[:12]) or "none"
+                faults.append(
+                    f"{sport}: the {whose} closing line names {have!r} "
+                    f"recommendation(s) priced across two contracts "
+                    f"({key}) where the rule of 2026-10-05, worked out from "
+                    f"each one's pricing claim, leaves out {want}: {ids}.")
+        line = block.get("across_line")
+        if left_out and not (line and line.get("n") == len(left_out)
+                             and line.get("label") == language.closing_line_label(
+                                 language.ACROSS_TWO_CONTRACTS_LABEL, predictor)
+                             and line.get("words") == language.
+                             across_two_contracts_recommendations_line(len(left_out))):
+            faults.append(
+                f"{sport}: the {whose} closing line does not name the "
+                f"{len(left_out)} recommendation(s) the rule of 2026-10-05 "
+                f"leaves out in its own words ({line!r}); a row left out of "
+                f"every figure is named beside it, never vanished.")
+        if line and not left_out:
+            faults.append(
+                f"{sport}: the {whose} closing line names {line.get('n')!r} "
+                f"recommendation(s) priced across two contracts where the "
+                f"rule leaves out none.")
         window_line = block.get("window_line") or {}
         sorted_ = _buckets([r for r in counted if r["closed"]], window_from)
         expected = {
@@ -9480,6 +9559,201 @@ def check_the_at_the_line_record_is_never_pooled(conn) -> None:
             "question 17, ruled 2026-09-27): every count at the venue's line "
             "is one forecaster's (one card's, for UFC), one claim per "
             "distinct bet:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# NO PRICE COMPARISON HOLDS A CLAIM PRICED ACROSS TWO CONTRACTS (operator
+# ruling A.2 of 2026-10-05, docs/briefs/2026-10-05-rulings.md)
+# ---------------------------------------------------------------------------
+#
+# "The 269 claims stay in the blind record (model against outcome at its own
+# line) and are excluded by a dated rule from every price comparison:
+# at-the-line record, closing line, edge figures, combos." The rule is read
+# in the doors (`at_the_line.on_one_contract` in the at-the-line record's,
+# `recommend.priced_on_one_contract` in the measurement door), each builder
+# that sets the model against a price asks the guard of the stored claims
+# its rows name (`calibration.refuse_a_comparison_across_two_contracts`,
+# `refuse_recommendations_across_two_contracts`), and this check, in gate
+# step 2 on the record's copy, builds each of them for every sport and reads
+# each slate's combos against the record. And it holds the record to the
+# fact the rule rests on: every claim priced across two contracts was written
+# before Q36.1 was released (`at_the_line.ONE_CONTRACT_FROM`) -- one written
+# since is the writer's fault, and named, never left out in silence.
+
+
+def _claim_a_leg_is_priced_from(conn, prediction_id: int) -> int | None:
+    """The claim `recommend.for_predictions` prices a question from: the
+    latest written before its game's start, as instants, the id breaking a
+    tie -- worked out here in Python, not by the engine's SQL."""
+    from . import db
+
+    rows = conn.execute(
+        "SELECT c.id, c.created_utc, g.kickoff_utc FROM at_the_line_claims c"
+        "  JOIN games g ON g.id = c.game_id WHERE c.prediction_id = ?",
+        (prediction_id,)).fetchall()
+    best = None
+    for row in rows:
+        stamp = db.instant(row["created_utc"])
+        start = db.instant(row["kickoff_utc"]) if row["kickoff_utc"] else None
+        if start is not None and not stamp < start:
+            continue
+        if best is None or (stamp, row["id"]) > best[0]:
+            best = ((stamp, row["id"]), row["id"])
+    return None if best is None else best[1]
+
+
+# EVERY SENTENCE OF THE RULE SAYS WHEN, AND THE DATE IS THE RECORD'S (the
+# prover of ruling A.2, 2026-10-05). The rule's sentences -- the coverage
+# line's clause and its hole, a withdrawal's reason, the closing line's row
+# and the builders' refusal -- said the claims were priced across two
+# contracts "before 30 September", and run 8464 wrote six of them at
+# 18:00-18:05Z ON 30 September, two of them recommended (114 and 115): once
+# the 54 are voided, the closing line's own row names exactly those two. A
+# date in words is read against the latest such claim on the record: "before
+# <day>" is false of a claim written that day or later, and "before the fix
+# of <day>" of one written at or after Q36.1's release
+# (`at_the_line.ONE_CONTRACT_FROM`), which must fall on that day.
+
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December")
+_BEFORE_A_DAY = re.compile(r"\bbefore (the fix of )?(\d{1,2}) ("
+                           + "|".join(_MONTH_NAMES) + r")\b")
+
+
+def two_contract_sentences() -> list[tuple[str, str]]:
+    """Every sentence the rule of 2026-10-05 draws, each as the page or the
+    refusal says it, with what it is."""
+    from . import calibration, language
+    from .market import at_the_line, recommend
+
+    return [
+        ("the coverage line's hole", at_the_line.ACROSS_TWO_CONTRACTS_HOLE),
+        ("the coverage line", language.at_the_line_coverage_line(
+            "spread", 1, 3, predictor="statistical", across=2)),
+        ("a withdrawal's reason", language.recommendation_void_reason_words(
+            recommend.TWO_CONTRACTS_VOID_REASON)),
+        ("the closing line's row",
+         language.across_two_contracts_recommendations_line(2)),
+        ("the builders' refusal", calibration.ACROSS_TWO_CONTRACTS_LAW),
+    ]
+
+
+def two_contract_words_faults(conn, across=None) -> list[str]:
+    """Every sentence of the rule of 2026-10-05 that names no date, or a date
+    the record makes false: the latest claim priced across two contracts
+    written on or after the day a sentence says they were all written
+    before. `across`, the ids of such claims, when the caller has them."""
+    from datetime import datetime, timezone
+
+    from . import db
+    from .market import at_the_line
+
+    if across is None:
+        across = set(at_the_line.across_two_contracts_among(
+            conn, [r[0] for r in conn.execute("SELECT id FROM at_the_line_claims")]))
+    stamps = [db.instant(r["created_utc"]) for r in conn.execute(
+        "SELECT id, created_utc FROM at_the_line_claims") if r["id"] in across]
+    latest = max(stamps) if stamps else None
+    fix = db.instant(at_the_line.ONE_CONTRACT_FROM)
+    faults: list[str] = []
+    for what, words in two_contract_sentences():
+        dates = _BEFORE_A_DAY.findall(words)
+        if not dates:
+            faults.append(f"{what} does not say when the claims were priced "
+                          f"across two contracts: {words!r}")
+        for the_fix, day, month in dates:
+            if the_fix and (int(day), month) != (fix.day, _MONTH_NAMES[fix.month - 1]):
+                faults.append(f"{what} names the fix of {day} {month}, and Q36.1 "
+                              f"was released on {at_the_line.ONE_CONTRACT_FROM}: "
+                              f"{words!r}")
+                continue
+            bound = (fix if the_fix else datetime(
+                fix.year, _MONTH_NAMES.index(month) + 1, int(day),
+                tzinfo=timezone.utc))
+            if latest is not None and latest >= bound:
+                faults.append(
+                    f"{what} says the claims were priced across two contracts "
+                    f"before {the_fix}{day} {month}, and the record holds one "
+                    f"written at {latest:%Y-%m-%dT%H:%M:%SZ}: {words!r}")
+    return faults
+
+
+def two_contract_comparison_faults(conn, slates=()) -> list[str]:
+    """Every price comparison on the record that holds a claim priced across
+    two contracts, or a recommendation priced from one -- and every such claim
+    written at or after Q36.1's release.
+
+    Builds, for every sport, the at-the-line record (its curves, edge,
+    ledgers and coverage), the closing line and the drift panels (the
+    venue's pair among them), each through its builder and its guard, and
+    reads each slate payload's combos -- the proposals' legs and the graded
+    packages' -- against the record: the claim each leg's question is priced
+    from, worked out without the engine (`_claim_a_leg_is_priced_from`).
+    AND EVERY SENTENCE OF THE RULE'S DATE AGAINST THE RECORD (the prover,
+    2026-10-05; `two_contract_words_faults`)."""
+    from . import calibration, db, views
+    from .market import at_the_line
+
+    faults: list[str] = []
+    claim_ids = [r[0] for r in conn.execute("SELECT id FROM at_the_line_claims")]
+    across = set(at_the_line.across_two_contracts_among(conn, claim_ids))
+    faults += two_contract_words_faults(conn, across)
+    since = db.instant(at_the_line.ONE_CONTRACT_FROM)
+    late = [r["id"] for r in conn.execute(
+        "SELECT id, created_utc FROM at_the_line_claims ORDER BY id")
+        if r["id"] in across and db.instant(r["created_utc"]) >= since]
+    if late:
+        faults.append(
+            f"claim(s) {late[:20]} are priced across two contracts and were "
+            f"written at or after Q36.1's release ({at_the_line.ONE_CONTRACT_FROM}): "
+            f"the claim writer reads every contract at the line it sells from "
+            f"then, so each is the writer's fault, which the rule must not "
+            f"cover in silence.")
+    for sport in config.SPORTS:
+        for what, build in (
+                ("the at-the-line record",
+                 lambda s=sport: calibration.at_the_line_scorecard(conn, sport=s)),
+                ("the closing line",
+                 lambda s=sport: calibration.clv_report(conn, sport=s)),
+                ("where the line went, the venue's pair among it",
+                 lambda s=sport: views.drift_report(conn, s))):
+            try:
+                build()
+            except calibration.ComparedAcrossTwoContracts as exc:
+                faults.append(f"{sport}, {what}: {exc}")
+    for payload in slates:
+        combos = ((payload or {}).get("today") or {}).get("combos") or {}
+        legs = [leg for card in combos.get("cards") or []
+                for leg in card.get("legs") or []]
+        legs += [leg for card in combos.get("graded") or []
+                 for leg in card.get("legs") or [] if isinstance(leg, dict)]
+        for leg in legs:
+            pid = leg.get("prediction_id")
+            if pid is None:
+                continue
+            claim = _claim_a_leg_is_priced_from(conn, pid)
+            if claim in across:
+                faults.append(
+                    f"{payload.get('sport')}: a combo leg on question {pid} is "
+                    f"priced from claim {claim}, priced across two contracts.")
+    return faults
+
+
+def check_no_price_comparison_holds_a_claim_across_two_contracts(conn,
+                                                                 slates=()) -> None:
+    """Refuse, by name, a price comparison that holds a claim priced across
+    two contracts, a recommendation priced from one, a combo leg on one, or
+    such a claim written since Q36.1's release (operator ruling A.2,
+    2026-10-05). Gate step 2, on the record's copy, every sport and each
+    sport's current slate."""
+    faults = two_contract_comparison_faults(conn, slates)
+    if faults:
+        raise LawViolation(
+            "A PRICE COMPARISON HOLDS A CLAIM PRICED ACROSS TWO CONTRACTS "
+            "(operator ruling A.2, 2026-10-05): such a claim stays in the "
+            "blind record and is excluded by a dated rule from every price "
+            "comparison -- the at-the-line record, the closing line, edge "
+            "figures and combos:" + _NL2 + _NL2.join(faults))
 
 
 # ---------------------------------------------------------------------------

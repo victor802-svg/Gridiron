@@ -754,6 +754,16 @@ def test_every_new_guard_is_in_the_planted_harness():
         # and its prover's (2026-09-30): the question's own figure, verdict
         # and sentences beside words moved to the claim's contract
         "plant_the_questions_own_numbers_under_the_contracts_words",
+        # OPERATOR RULING A.2 (2026-10-05): a claim priced across two
+        # contracts is in no price comparison, and the void tool writes only
+        # the set the ruling names.
+        "plant_a_two_contract_claim_in_the_at_the_line_record",
+        "plant_a_two_contract_claim_in_the_closing_line",
+        "plant_a_two_contract_claim_in_a_combo",
+        "plant_a_void_tool_writing_outside_its_ruled_set",
+        # and its prover's (2026-10-05): every sentence of the rule says when,
+        # and the record bears the date out
+        "plant_a_two_contract_sentence_dated_before_its_claims",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

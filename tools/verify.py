@@ -1012,6 +1012,17 @@ def step_2_guards() -> bool:
         ("the at-the-line record counts one claim per distinct bet",
          lambda: audit.check_the_at_the_line_record_is_never_pooled(
              _record_conn())),
+        # OPERATOR RULING A.2 (2026-10-05): a claim priced across two
+        # contracts -- an away contract read at -s before Q36.1 -- stays in
+        # the blind record and is excluded by a dated rule from every price
+        # comparison: the at-the-line record, the closing line, edge figures
+        # and combos. Each is built for every sport on the record's copy
+        # through its builder's guard, each sport's current slate's combo
+        # legs are read against the record, and no such claim may have been
+        # written since Q36.1's release.
+        ("no price comparison holds a claim priced across two contracts (A.2)",
+         lambda: audit.check_no_price_comparison_holds_a_claim_across_two_contracts(
+             _record_conn(), [_slate_payload(sport) for sport in _config().SPORTS])),
         # OPERATOR QUESTION 27 (ruled 2026-09-28; built 2026-09-29): the
         # standing pass is chosen by pass, not by write time -- a final pass
         # written before the start stands, otherwise the latest early pass.

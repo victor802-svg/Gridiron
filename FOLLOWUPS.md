@@ -13095,3 +13095,494 @@ which is no checkout.)
   passes whose early passes stand in the curve's 39, so its void rate
   (0.1333) counts six questions that were not lost. A reading for the
   operator if "void rate" should mean questions.
+
+## A claim priced across two contracts is in no price comparison; the 54 voided by rule -- built 2026-10-05 *(operator ruling A.2 of 2026-10-05, docs/briefs/2026-10-05-rulings.md, on question 36 (ii); the order of 5 October, "A (Q36, step A, spread edge re-run, Q37) -> ..."; built on c829daa -- released 3508c7f and the briefs; uncommitted for its prover)*
+
+The ruling: "Void the 54 recommendations by append-only rows (reason:
+'priced across two contracts, Q36'). The 269 claims stay in the blind
+record (model against outcome at its own line) and are excluded by a dated
+rule from every price comparison: at-the-line record, closing line, edge
+figures, combos. List every released number that moves." The brief's
+reading (docs/briefs/2026-10-05-rulings.md, "How this brief is read"): the
+tool writes the 54 named and lists recs 114 and 115, written only on the
+operator's word; the exclusion is a dated READ rule; nothing stored changes.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-10-05T15:25:58Z to 15:26:56Z: integrity ok, 64 tables, none mismatched; read only through `db.read_only`; scratchpad `a2/q36ii/measure1.py` -> `measure1.json`)*
+
+- **The claims, by the rule** (`at_the_line.priced_across_two_contracts`,
+  the one place -- the claim's stored line is not the line its contract
+  sells): **275** of the record's 2,823 claims -- MLB 139, NFL 96, NCAAF
+  40, every one a spread off a contract naming the visiting side, every one
+  the statistical model's and settled, the first written
+  2026-09-07T19:41:47Z and the last 2026-09-30T18:05:00Z: the 269 of
+  question 36 and the six `predict:nfl` wrote at 18:05Z on 30 September
+  (run 8464: claims 1749 PIT at CLE, 1752 IND at WAS, 1755 ARI at NYG, 1761
+  GB at TB, 1780 KC at LV, 1786 DET at CAR -- every game now final). All 275
+  were written before Q36.1's release (18:44Z); none of the 1,034 claims
+  written since is across. The SQL spelling (the stored line against the
+  contract's stored line) selects the same 275, claim for claim. (1,317
+  claims sit on a contract naming the visiting side; the 1,042 not across
+  are moneylines, which have no line on either side, and spreads written
+  since Q36.1.)
+- **The recommendations priced from one** (each one's pricing claim by the
+  close's own rule -- the latest claim on its forecast written by its
+  stamp and before the start): **56** of the 127 -- exactly the 54 question
+  36 names and recs 114 and 115. Every one of the 127 traces to its
+  pricing claim (its price is that claim's); no recommendation has a claim
+  across two contracts other than its pricing claim; none is taken; 62, 63
+  and 66 were withdrawn under ruling 1 of 2026-09-24 (a recommendation void
+  and a forecast void each).
+- **What the at-the-line record stood on, on c829daa**: 65 standing claims
+  across two contracts (NFL spread 6, MLB spread 39, NCAAF spread 20, the
+  statistical model's). With the rule, 64 of those 65 bets have no claim
+  left and one -- MLB forecast 1326 -- stands on its earlier claim 178,
+  priced off the home contract at the line it sells (READINGS TAKEN, 1).
+
+### BUILT
+
+- **The rule, one place, two spellings.** `at_the_line.
+  priced_across_two_contracts` (Python, unchanged) and
+  `at_the_line.on_one_contract(claim)` (SQL: no contract whose stored line
+  differs from the claim's, within 1e-9, a line and none differing too);
+  `at_the_line.across_two_contracts_among(conn, ids)` asks the one place of
+  the stored claims named by id. Dated (`ON_ONE_CONTRACT_RULED`,
+  2026-10-05) and naming Q36.1's release (`ONE_CONTRACT_FROM`,
+  2026-09-30T18:44:00Z), and NOT bounded by it.
+- **The at-the-line record.** `standing_claims` -- its one door, read by
+  the curve, its gate line and outlook, `at_the_line_items` and so the edge
+  figure, the hypothetical ledger, the coverage line, the venue's drift
+  pair and the settled count beside a card -- never takes such a claim as a
+  candidate. `coverage` names the questions read only across two contracts
+  as their own hole (`ACROSS_TWO_CONTRACTS_HOLE`, first: a baseball run
+  line carries no distribution and would otherwise be put down to a
+  missing one), counted again by the recount (`across_recounted`) and said
+  in the line's words (`language.at_the_line_coverage_line(..., across=)`).
+  `gridiron.recount` reads each claim's contract and leaves such a claim
+  out through the one place in Python (`recount._across`,
+  `_a_candidate`), and returns `left_out`.
+- **The measurement door.** `recommend.pricing_claim` is now the one place
+  for a recommendation's pricing claim (moved out of `close_of`, which reads
+  it, unchanged); `recommend.priced_on_one_contract` spells the rule for a
+  recommendation in SQL (its pricing claim, as instants, priced off one
+  contract) and is part of `counted_once` -- the closing line and all it
+  feeds, the kill criterion, the re-grade line and the empty-bar count --
+  and of the pair rule for the other row, so such a recommendation is never
+  the earlier row of a pair; `not_counted_once` never lists one as a
+  repeat. `recommend.priced_across_two_contracts` lists them (one
+  forecaster's standing ones), and the closing line's block names them in
+  its own row (`across_line`: "Priced across two contracts, statistical",
+  `language.across_two_contracts_recommendations_line`) with tallies
+  (`across_two_contracts`) as the repeats have; app.js draws the row beside
+  the withdrawn one. `recommend.pricing_claim_ids` works the pricing claims
+  out in Python for the guard, the recounts and the tool.
+- **The closing line's recounts.** `audit._closing_line_rows` marks each
+  recommendation `across` in Python (its pricing claim through the one
+  place, never the door's SQL); `_counted_once_roles` gives such a row the
+  role `across`, in no group; `withdrawn_counted_faults` adds the block's
+  across tallies back as it adds the repeats; `pair_counted_faults` holds
+  the block's tallies and its row's label and words to the recount, and
+  `_likely` names an across row among the rows that would make a count too
+  high.
+- **Combos.** `combos.propose` takes no entry priced across two contracts,
+  whatever side it carries (`recommend.for_predictions` hands one on with
+  a side; the page's `_as_the_page_draws` took it away and the engine did
+  not ask).
+- **The writer.** `recommend.record_for` writes no recommendation from an
+  entry priced across two contracts and counts it by that name
+  (`across_two_contracts`). No game holding such a claim is still to start,
+  so it refuses nothing today.
+- **The empty-bar tool.** A day counts only on a claim priced off one
+  contract (`tools/empty_bar.py`).
+- **The guards, inside each builder, reading the stored claims the rows
+  name.** `calibration.refuse_a_comparison_across_two_contracts` (the
+  curve, `at_the_line_items`, the ledger, the coverage line, the venue's
+  drift pair, the card's count, and `views._combo_block` on every proposed
+  or graded leg's claim) and `calibration.
+  refuse_recommendations_across_two_contracts` (the closing line, closed
+  and awaiting), each raising `calibration.ComparedAcrossTwoContracts` (a
+  `MergedCurve`: `/api/scorecard` and `/api/learning` answer 500 with the
+  reason, and `/api/week` now catches it too); `assert_no_pooled_claims`
+  holds the coverage line's across count to the recount's.
+- **The gate.** `audit.check_no_price_comparison_holds_a_claim_across_two_contracts`
+  (`two_contract_comparison_faults`), step 2 on the record's copy: every
+  sport's at-the-line record, closing line and drift panels built through
+  their guards, every sport's current slate's combo legs read against the
+  record (`_claim_a_leg_is_priced_from`, the engine's rule worked out in
+  Python), and any claim across two contracts written at or after Q36.1's
+  release named as the writer's fault.
+- **The tool.** `tools/void_two_contract_recommendations.py`: dry through
+  the read-only door; selects by rule every recommendation, withdrawn or
+  not, priced from such a claim; writes for THE RULED SET -- `RULED` (the
+  54) and `ON_THE_OPERATORS_WORD` (empty) -- one `recommendation_voids` row
+  each with `recommend.TWO_CONTRACTS_VOID_REASON` ("priced across two
+  contracts, Q36"), in one transaction, idempotently; leaves one already
+  withdrawn as it is and lists it; lists every other selected one as
+  waiting and does not write it; refuses a ruled one the rule does not
+  select, any write outside the ruled set (`write_voids` asks again:
+  `OutsideTheRuledSet`), the live record without `--live`, `--live` on any
+  other file and a backtest. Exempt from the door scan by name
+  (`audit.RECOMMENDATION_DOOR_EXEMPT`), with `pricing_claim_ids`;
+  `priced_across_two_contracts` is a record reader
+  (`audit.RECORD_READERS`).
+- **The page's words.** The ruled reason carries a question's number from
+  the repair's papers, so a withdrawal for it is said in plain words
+  (`language.recommendation_void_reason_words`,
+  `ACROSS_TWO_CONTRACTS_REASON_WORDS`; fit 71's precedent): "priced across
+  two contracts before the fix of 30 September, because the venue's
+  contract naming the visiting side was read at the wrong sign, so the
+  model's number was about one contract and the price about another" (as
+  first built "before 30 September: the venue's contract ...", which its
+  prover found false of recs 114 and 115: THE PROVER, below).
+
+### READINGS TAKEN *(the conservative default, each from a precedent)*
+
+1. **The claims are left out, not the bets.** A claim left out is never a
+   candidate in the at-the-line door; a bet holding another claim priced
+   off one contract stands on it -- ruling 1's treatment of a voided
+   forecast's claim ("a withdrawal takes one forecast back, not the bet").
+   The ruling names the claims; a home-contract claim on the same question
+   is not one of them. One bet on the record (MLB forecast 1326, claim 178).
+2. **The rule is not bounded by the date.** Every claim priced across two
+   contracts is left out whenever written -- the same 275 on the record,
+   and the stricter reading; one written since Q36.1 is the writer's fault,
+   and the gate names it rather than the rule covering it in silence.
+3. **The closing line leaves out the recommendations priced from them,
+   all 56, withdrawn or not.** A claim reaches the closing line only
+   through a recommendation priced from it, and the ruling names the
+   closing line; so the read rule leaves out all 56 from the release, and
+   the voids then move 51 from the "Priced across two contracts" row to
+   "Withdrawn" without moving a count. Recs 114 and 115 stay in the first
+   row until the operator rules.
+4. **Every measurement of recommendations**, through `counted_once`: the
+   closing line, the kill criterion, the re-grade line (none of the four
+   re-graded is across: nothing moves) and the empty-bar count; and such a
+   recommendation is never one of a pair, as a withdrawn one is not.
+5. **"Anything else that sets the model against a price"**: the writer
+   (no recommendation from such a claim) and the empty-bar tool's days.
+   The blind record's own edge figure and its market baseline read the
+   media lines (`market_snapshots`), as does the priced forecaster: not a
+   claim, untouched.
+6. **The graded venue packages' legs are guarded too** (moneyline entries
+   only, which have no line and are never across).
+7. **The page says the ruled void reason in plain words**, as fit 71's.
+
+### EVERY RELEASED NUMBER THAT MOVES *(c829daa, `git archive`, against a frozen copy of this tree, each in a process of its own on the one copy, the clock held at 15:25:58Z: every sport's Record page (`views.scorecard` whole), learning, record line, meta, factors, tier tables, calendar, versions, digest, the current slate both forecasters, the live slate, history, every slate of every sport both forecasters in the standing and early views, every at-the-line builder on its own for every market, card and forecaster, the venue's drift pairs, the engine's entries for every forecast with a claim, the closing line now and on the first clean read, the kill criterion on it, every recommendation door and the empty-bar count; scratchpad `a2/q36ii/measure.py`, q35's `flatten_diff.py`, `summarise.py` -> `moves.json`, `summary.txt`, `atl_moves.txt`, `other_moves.txt`. 3,612,074 figures compared, 3,005 moved: 2,055 changed, 410 new fields, 540 gone (drift pairs and repeat rows no longer listed). One is not this change's: `meta.law_note`, read from CLAUDE.md, which the frozen copy lacked -- this tree's note equals c829daa's)*
+
+**At the venue's line, point spread, the statistical model** (nothing else
+at the venue's line moves; the reasoning pass holds no such claim):
+
+| | MLB | NFL | NCAAF |
+|---|---|---|---|
+| settled comparisons (the curve, its gate line, the edge's n) | 102, "past the 100 this record needs" -> **64 of 100** | 29 -> 23 | 91 -> 71 |
+| the venue's price's Brier / the model's, on them | 0.2611 / 0.2085 -> 0.2301 / 0.2232 | 0.2490 / 0.2346 -> 0.2477 / 0.2547 | 0.2508 / 0.2443 -> 0.2505 / 0.2669 |
+| the outlook | "102 of 100 · ~111 expected" -> "64 of 100 · ~70 expected · ... THIS GATE CANNOT CLEAR THIS SEASON" | "29 of 100 · ~179" -> "23 of 100 · ~143" | "91 of 100 · ~704" -> "71 of 100 · ~551" |
+| the hypothetical ledger's qualifying comparisons | 67 -> 28 | 25 -> 19 | 70 -> 52 |
+| the edge figure's disagreements (NFL's and NCAAF's headline) | -- | 16 -> 15 | 28 -> 27 |
+| the coverage line | "102 of 202 (50%)" -> "64 of 202 (32%); 38 more were read only across two contracts before the fix of 30 September, and no comparison with a price counts them" (its prover's words; THE PROVER) | "30 of 58 (52%)" -> "24 of 58 (41%); 6 more ..." | "92 of 240 (38%)" -> "72 of 240 (30%); 20 more ..." |
+| the venue's drift pairs | 36 -> 21 of 50 | 22 -> 17 of 50 | **59, "the price moved toward the model 47% of the time over 59 questions" -> 48 of 50, the direction withdrawn** |
+
+A few calibration buckets move with them (NCAAF 0.5-0.6 17 -> 16 and 0.6-0.7
+10 -> 9; NFL 0.8-1.0 2 -> 1). The MLB spread figure was the one at-the-line
+count claimed past its gate; it is not now, and the season is over.
+
+**The settled count beside every priced spread card** (the at-the-line
+sentence's "N settled so far" and its gate line, the statistical model's):
+the same moves -- 186 card payloads on MLB's past slates and 4 on its
+current one, 47 and 16 on NFL's, 183 and 1 on NCAAF's.
+
+**The closing line, the statistical model** (the reasoning pass's lines do
+not move):
+
+| | MLB | NFL | NCAAF |
+|---|---|---|---|
+| since the repair (the window line and the point spread line) | 15 -> 3 | 15 -> 6 | 14 -> 11 |
+| beside it: unmeasured / restated / repeats | 23 / 17 / 14 -> 12 / 8 / 5 | unchanged | unchanged |
+| "Priced across two contracts, statistical" (new row) | 41 | 9 | 3 |
+| on the first clean read, the mean and the share that beat the close (no figure is shown below fifty) | -0.27c, 47% -> +3.33c, 67% | +1.27c, 53% -> 0.0c, 50% | +0.39c, 29% -> +0.41c, 27% |
+
+The kill criterion on the first clean read stops nothing on either tree.
+The repeats that go (MLB 14, 25, 34, 44, 48, 79, 93, 94 and 95) are each
+among the 54. The counted-once ids lose the recommendations priced across
+two contracts.
+
+**The empty-bar count** (`tools/empty_bar.py`, statistical): NFL from 9
+September, 7 of 10 days cleared nothing -> 6 of 9 (29 September was tested
+only across two contracts); MLB before 9 September, 0 -> 1 (8 September
+cleared only across two contracts).
+
+**Nothing else moves**: the blind record (curves, scores, outlooks, void
+counts, the version table, tier tables), the priced record, the
+corrections, drift of the media line, the ranker, the digest, history, the
+calendar, every slate's picks, prices, sizes, lines and combos (the page
+already drew no number of a claim priced across two contracts, step A), and
+the engine's entries.
+
+**When the voids are written** (the tool rehearsed on a scratch copy of the
+copy, below; the frozen tree on it against the same tree on the copy:
+3,611,813 compared, 356 moved): only each statistical closing-line block's
+two rows and lists -- MLB "Withdrawn" 0 -> 41 and "Priced across two
+contracts" 41 -> none; NFL 4 -> 11 and 9 -> 2 (114, 115); NCAAF 0 -> 3 and
+3 -> none -- and `recommend.withdrawn`'s lists. No count, mean, curve,
+ledger, drift figure or slate moves.
+
+### THE TOOL, REHEARSED *(on a scratch copy of the copy through `db.back_up`, never on the record; `rehearse.py` -> `rehearse.txt`)*
+
+Dry on the verified copy: 56 selected, each listed with its pricing
+claim's line and the line its contract sells; "the ruled set (54 named by
+question 36), every one selected by the rule"; "already withdrawn for
+another reason, and left as they are: [62, 63, 66]"; "selected by the rule
+and waiting for the operator's word, NOT written: [114, 115]"; "--write
+would void 51". `--write --live` on the copy: exit 2, "--live names the
+operator's record, and <the copy> is not the same file as it". `--write`
+on the scratch copy: "wrote 51 void(s) at 2026-10-05T16:12:39Z"; again,
+"wrote 0 void(s) ...; 51 already voided by this ruling"; dry after,
+"--write would void 0". The scratch copy then held 55 rows (51 of this
+ruling, 4 of ruling 1); the verified copy, 4, untouched.
+
+**TO APPLY AFTER THE RELEASE (the orchestrator):** `python
+tools/void_two_contract_recommendations.py --database var/gridiron.db`
+(dry; it must list 56, select the 54, leave 62, 63 and 66, list 114 and
+115 as waiting and say "--write would void 51"), then the same with
+`--write --live`. Nothing else: no schema changes, no task moves. Recs 114
+and 115 are written only when the operator rules (add them to
+`ON_THE_OPERATORS_WORD`).
+
+### THE RENDER *(two scratch copies of the copy -- before the voids, and the rehearsal's after them -- served by the test server on a free local port with this tree's app and a dummy, non-secret token, never the live app on 8848; Chromium at 1100px and 390px; `render_record.py` -> `render/*.png`, `record-before.json`, `record-after.json`)*
+
+The Record page's closing-line panel and the at-the-line panel, NFL and
+MLB, at both widths: the new row "Priced across two contracts,
+statistical" drawn as the "Withdrawn" row is ("9 recommendations were
+priced across two contracts before 30 September: the venue's contract
+naming the visiting side was read at the wrong sign, so the model's number
+was about one contract and the price about another, and they are never
+counted"; MLB 41); after the voids, NFL "11 recommendations withdrawn and
+never counted: published from an unvalidated fit before the hold; fit
+subsequently failed holdout; and priced across two contracts before 30
+September: ..." beside "2 recommendations were priced across two
+contracts ...", and MLB's 41 withdrawn with no across row; the coverage
+footnotes carry their across clause. No horizontal scroll and no page
+error at either width. The rows hold no tap target. (The sport tabs'
+counts running into the next tab's label at 390 is the known one,
+"Sport tabs at 390".) The words quoted here are as first built; its
+prover's render (THE PROVER, below) draws them as they ship.
+
+### THE CHECKS
+
+- **Four plantings** (`tools/guards/plant.py`, in `main()` and in
+  `tests/test_guards.py`'s harness list), each run alone by the new
+  plant.py against a `git archive` of c829daa (`a2/q36ii/headp`) and
+  against this tree (`run_plantings.py`): ESCAPED on c829daa --
+  `plant_a_two_contract_claim_in_the_at_the_line_record` ("the shipped
+  spread curve, ledger and venue pairs (statistical) count (3, 3, 3),
+  claims 1 and 3 ... among them; no rule leaves them out and no guard
+  asks"), `plant_a_two_contract_claim_in_the_closing_line` ("counts 3
+  measured closes, recs 1 and 3 -- priced across two contracts -- among
+  them, and nothing names them"), `plant_a_two_contract_claim_in_a_combo`
+  ("the shipped engine, handed the entries [1, 2, 3] with sides, proposes
+  the legs [1, 2], rec 114's shape (1) among them"),
+  `plant_a_void_tool_writing_outside_its_ruled_set` ("there is no tool")
+  -- and CAUGHT here. `plant.py` whole: 413/413 caught (16:17:36Z to
+  16:29:43Z).
+- **19 tests** (`tests/test_two_contract_claims.py`), each failing on
+  c829daa; and `test_every_number_names_its_line.py::
+  test_the_taken_rail_names_its_recommendations_contract`, which wrote rec
+  114's shape through the writer: the writer refuses it now and counts it,
+  so the test writes it by hand from the same entry, as the released writer
+  wrote it. Two of the 19 passed alone and failed in the suite as first
+  written -- they patched the market modules this file imported, which a
+  blind window earlier in the session drops from `sys.modules` (the trap
+  `test_voids.py` and `test_near_start_reads.py` name); they patch the
+  module as it is now.
+- **Gate step 2's rows**, dry-run on this tree with every record row on the
+  one copy read-only (`step2_dry.py`, pick-number step A's harness; not
+  `tools/verify.py` whole): 112 of 114 passed, the two schema rows not run
+  (no schema change); the new row among them.
+- **The suite** (a dummy non-secret `GRIDIRON_ACCESS_TOKEN`, TMP and TEMP
+  at their defaults): 2,391 passed, 4 skipped, none failed
+  (2026-10-05T17:00:33Z to 17:28:30Z), after the first run's two stale-
+  module failures above were mended (2 failed, 2,389 passed).
+- **The copies**: the one verified copy and its two scratch copies (the
+  render's and the rehearsal's) deleted at 2026-10-05T16:32:55Z, each with
+  its -wal and -shm. Nothing written to the live record; no network; the
+  main checkout, the held branches, the live app, every scheduled task and
+  `.env` untouched; nothing committed or pushed.
+
+### FOUND, NOT BUILT *(none joins the queue: this step mends the two released figures that were false -- MLB spread's at-the-line count claimed past its gate, and NCAAF's venue drift direction read over pairs priced across two contracts -- and nothing else found breaks LAW 1 or LAW 3, makes a gate count false, or shows a wrong number on a pick)*
+
+- **B.5 reads this.** "A market's gate for a pick at the venue's price is
+  its at-the-line record's 100 settled comparisons ... after A.2's
+  exclusion": MLB spread stands at 64 (the season over), NFL spread 23,
+  NCAAF spread 71 -- none past it.
+- **The engine still hands on a side.** `recommend.for_predictions` gives
+  an entry priced across two contracts its side, edge and size; the page
+  (`_as_the_page_draws`), the combo engine and the writer each refuse it,
+  and no game holding one is still to start. Left as it is: the entry is
+  what the page's door reads to say why it draws no number.
+- **The coverage line's holes are a list read by position.** The new hole
+  is first, so each older reason moved one place in the payload; nothing
+  draws the holes (the page draws the line's words), and every hole
+  carries its reason.
+- **The stale-module trap, a third time.** A test that patches a market
+  module it imported at the top passes alone and fails after any blind
+  window in the session. Two precedents said so in their comments; a
+  mechanism (a fixture handing tests the current module, or a scan) would
+  stop a fourth.
+- **One file's line endings.** `gridiron/audit.py` was edited once by a
+  script rather than the Edit tool (two lazy `from . import db` lines),
+  which wrote its working copy with LF line endings (whatever the checkout
+  had); git stores LF either way (`i/lf`), so the commit is the same
+  bytes.
+
+### THE PROVER *(2026-10-05, alone in the worktree on the uncommitted change; ONE verified copy of the record through `rebuild.verified_backup`, 17:40:25Z to 17:41:31Z, integrity ok, 64 tables, none mismatched, read only through `db.read_only`; its scratch copies through `db.back_up`, never of the record; scratchpad `a2/q36ii-prove/`)*
+
+ONE DEFECT FOUND AND FIXED, IN THE WORDS: EVERY SENTENCE OF THE RULE SAYS
+WHEN, AND THE RECORD BEARS IT OUT. As built, the coverage line's clause
+("38 more were read only across two contracts before 30 September") and
+its hole, a withdrawal's reason ("priced across two contracts before 30
+September: the venue's contract ...") and the closing line's own row ("2
+recommendations were priced across two contracts before 30 September ...")
+said the claims were all priced before 30 September. Run 8464 wrote six of
+them at 18:00-18:05Z ON 30 September, and recs 114 and 115 were priced from
+two of them (written 18:05:02Z) -- and once the 54 are voided, the
+closing line's NFL row names exactly those two, so the one row the record
+keeps for them stated a date the record contradicts (rendered on the
+rehearsal's copy). They now say "before the fix of 30 September" -- one
+phrase, `language.ACROSS_TWO_CONTRACTS_WHEN` (Q36.1 was released at 18:44Z
+that day, `at_the_line.ONE_CONTRACT_FROM`) -- and so does the builders'
+refusal (`calibration.ACROSS_TWO_CONTRACTS_LAW`); the withdrawal's reason
+no longer carries a colon of its own, which read "never counted: priced
+... 30 September: the venue's ..." in the withdrawn line ("..., because the
+venue's contract ... was read at the wrong sign, so ..."). THE GUARD:
+`audit.two_contract_words_faults`, inside `two_contract_comparison_faults`
+and so in gate step 2's A.2 row, reads every sentence of the rule
+(`audit.two_contract_sentences`: the hole, the coverage clause, the
+withdrawal's reason, the closing line's row, the refusal) and names one
+that says no date, one naming the fix on another day than Q36.1's, and one
+whose "before <day>" or "before the fix of <day>" the latest claim priced
+across two contracts on the record makes false. THE PLANTING:
+`plant_a_two_contract_sentence_dated_before_its_claims` (in `main()` and
+`tests/test_guards.py`'s harness list) -- the four drawn sentences as first
+built, on the record's shape with a claim across two contracts written at
+18:05Z on 30 September: ESCAPED on c829daa ("no check holds a sentence of
+the rule to the record's dates: there is no rule and no sentence of it")
+and on the change as first built (`as_first_built.py`: the working tree
+with the prover's edits taken back out; "the shipped sentences say 'before
+30 September' of claims written at 18:05Z that day"), CAUGHT here ("the
+four sentences as first built are named, each by the claim written at
+18:05Z on 30 September; the gate's check refuses them"), the gate's step 2
+making the call. THE TEST:
+`test_two_contract_claims.py::test_every_sentence_of_the_rule_is_true_of_recs_114_and_115`
+(and the two tests quoting the words, updated), failing on c829daa and on
+the change as first built (3 failed there), passing here.
+
+WHAT ELSE WAS ASKED OF THE CHANGE, AND HELD (each looked for, none found):
+- **A price comparison still holding such a claim.** Every reader of
+  `at_the_line_claims` and of `recommendations` in the package and the
+  tools was traced (by syntax tree, every view the API serves): the at-the-
+  line record's one door and every builder over it, the closing line and
+  all it feeds (the kill criterion through `priced.coverage.stopped`, the
+  re-grade count, the empty bar), drift's venue pairs, the card's count and
+  sentence, the live figure, the taken rail, the combos (a graded venue
+  package's legs are moneylines, never across), the writer. The blind
+  record's edge figure, the priced record, the ranker, the taken comparison
+  and the corrections read media lines or forecasts, not claims. Every NFL
+  and NCAAF slate and every MLB slate with a recommendation (29 slates,
+  both forecasters, 58 payloads) and every sport's Record page built on the
+  rehearsal's voided copy: none refused, the gate's check over the 29
+  slates' combos 0 faults, 40 shortlisted questions drawn unpriced as
+  across (`slates.py`).
+- **The void tool writing outside its ruled set, or twice.** Rehearsed on
+  the copy (`rehearse.py`): dry, read-only, 56 selected, "the ruled set (54
+  named by question 36), every one selected by the rule", "already
+  withdrawn for another reason, and left as they are: [62, 63, 66]" (each
+  withdrawn 2026-09-24T09:59:16Z under ruling 1, by a recommendation void
+  and a forecast void), "selected by the rule and waiting for the
+  operator's word, NOT written: [114, 115]", "--write would void 51";
+  `--write --live` on the copy and `--live` dry on the scratch copy each
+  refused with nothing written; `--write` on the scratch copy wrote 51 rows
+  (exactly the 54 less 62, 63 and 66), reason "priced across two
+  contracts, Q36", one stamp; a second `--write` wrote 0 ("51 already
+  voided by this ruling"), the rows unchanged; the dry run after "--write
+  would void 0"; the verified copy untouched. The refusals the copy cannot
+  show (the record without `--live`, a backtest, a ruled one the rule does
+  not select, a write outside the set) are the tests' and the planting's.
+- **A recommendation still headlining the side it does not buy.** Question
+  37's own step, next in the order, and not this one. Of its 16, six (NFL
+  68, 69, 73, 77, 78; NCAAF 91) are among the 54: step A already draws
+  each unpriced, with no side, size or outline, and the void leaves them
+  so; the other ten are question 37's.
+- **Every number that moves** -- spot-checked on this copy: MLB spread at
+  the venue's line, statistical, 64 (the model's Brier 0.2232), NFL 23,
+  NCAAF 71; the closing line's window lines MLB 3, NFL 6, NCAAF 11; the
+  coverage lines 64/202 and 38, 24/58 and 6, 72/240 and 20; the NFL across
+  row 9 before the voids and 2 after, MLB 41 and none, NCAAF 3 and none --
+  as the builder measured.
+
+THE RENDER (`render_record.py`; two scratch copies -- `render.db` before
+the voids, the rehearsal's `voided.db` after -- served by the test server on
+a free local port with this tree's app and a dummy, non-secret token, never
+the live app on 8848; Chromium at 1100px and 390px; arrivals waited for by
+opacity and every animation finished, no fixed wait): the closing-line and
+at-the-line panels, NFL, MLB and NCAAF. Before the voids: "Priced across
+two contracts, statistical" -- NFL 9, MLB 41, NCAAF 3 -- "... before the fix
+of 30 September, because the venue's contract naming the visiting side was
+read at the wrong sign, so ..., and they are never counted"; after, NFL "11
+recommendations withdrawn and never counted: published from an unvalidated
+fit before the hold; fit subsequently failed holdout; and priced across two
+contracts before the fix of 30 September, because ..." beside the NFL row's
+2, MLB's 41 and NCAAF's 3 withdrawn with no row; each coverage footnote
+carries its clause. No horizontal scroll and no page error at either
+width; the rows hold no tap target.
+
+THE CHECKS: the five plantings run alone (`run_plantings.py`): all five
+ESCAPED on a `git archive` of c829daa with the new plant.py, all five CAUGHT
+here; `plant.py` whole 414/414 caught (17:58:34Z to 18:08:26Z); gate step 2's rows on the copy, read-only,
+GRIDIRON_VERIFYING set (`step2_dry.py`): 112 of 114 passed, the two schema
+rows not run (no schema change), and the eight rows this change touches
+again on the voided copy, 8 of 8; `audit.prose_reaching_the_raw_side()` is
+[]; every sentence of the rule passes `audit.plain_words_violations`; the
+suite (a dummy non-secret `GRIDIRON_ACCESS_TOKEN`, TMP and TEMP at their
+defaults): the first run 2,391 passed, 4 skipped, 1 failed --
+`test_guards.py::test_the_planted_violation_harness_catches_everything`,
+plant.py killed by the test's own 600-second limit (`TimeoutExpired`), not
+a planting escaping; the one as-is rerun **2,392 passed, 4 skipped, none
+failed** (18:56:27Z to 19:23:55Z), the harness test 527.89s of its 600
+(FOUND, below). THE COPIES: the one verified copy (`record.db`) and its two
+scratch copies (`render.db`, the render's; `voided.db`, the rehearsal's,
+which the render's sign-in rows also wrote) deleted at 2026-10-05T19:24:33Z,
+each with its -wal and -shm. The live record was read only through the
+backup door (and by plant.py's own read-only door), never written; no
+network; the main checkout, the held branches, the live app, every
+scheduled task and `.env` untouched; nothing pushed.
+
+FOUND, NOT BUILT *(none joins the queue: a date in words is not a number on
+a pick, breaks neither LAW 1 nor LAW 3 and makes no gate count false)*:
+- **Step A's sentence says "before 30 September" too.** The released
+  `language.ACROSS_TWO_CONTRACTS_WORDS` ("Priced across two contracts
+  before 30 September; no single contract carries these numbers."), its
+  tooltip (`across_two_contracts_tip`, "Before 30 September the venue's
+  contracts ...") and the empty slate's clause in `nothing_priced_line` are
+  drawn on the rows of run 8464's six claims -- recs 114 and 115's games
+  among them -- for which the date is false. One phrase would mend them:
+  `language.ACROSS_TWO_CONTRACTS_WHEN`.
+- **An MLB run line is labelled "point spread" on the Record page.** The
+  closing line's market rows (`language.closing_line_label` through
+  `market_words`) and the at-the-line coverage line (`humanise`) say
+  "point spread, statistical" for MLB, where `SPORT_MARKET_WORDS` says
+  "run line" everywhere else. As released; the render shows it.
+- **`views._as_the_page_draws`'s docstring** still says question 36 (ii)
+  and (iii) are not ruled.
+- **plant.py whole runs at the edge of the suite's 600-second limit -- A
+  HAZARD FOR THE RELEASE GATE'S STEP 1.**
+  `test_guards.py::test_the_planted_violation_harness_catches_everything`
+  runs plant.py with `timeout=600` (from 2026-08-28). Measured here: plant.py
+  alone 592s (17:58:34Z to 18:08:26Z) and 534s timed planting by planting
+  (`time_all.py`); inside the first full suite run, past 600s, so the test
+  failed by timeout; inside the rerun, 527.89s. Half of it is two plantings
+  of the orphan scan (`plant_a_decorated_function_mistaken_for_an_orphan`
+  158.6s, `plant_an_orphan_guard` 106.8s); the scan alone takes 151.7s on
+  c829daa and 156.9s on this tree (the code this step adds), and this
+  step's five plantings take 1.8s together. Widening the limit is a
+  tolerance, the operator's call; a faster orphan scan would be the
+  mechanism. A gate whose step 1 fails here fails on a clock, not a law:
+  the rerun rule (one as-is rerun) covers it.

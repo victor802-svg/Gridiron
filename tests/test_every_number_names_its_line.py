@@ -374,7 +374,22 @@ def test_the_taken_rail_names_its_recommendations_contract(tmp_path):
     assert words.startswith("North Texas covers +1.5 · +")
     assert _faults(conn, payload) == []
     across, pid2, sport2, week2 = _world(tmp_path / "rec114.db", "rec114")
-    assert recommend.record_for(across, [pid2])["recommended"] == 1
+    # THE WRITER WRITES NONE FROM A CLAIM PRICED ACROSS TWO CONTRACTS (operator
+    # ruling A.2, 2026-10-05: such a claim is excluded from every price
+    # comparison, and a recommendation is one), and counts it by that name --
+    # so rec 114 is written here as the released writer wrote it on 30
+    # September, from the same entry, which is what the rail reads.
+    got = recommend.record_for(across, [pid2])
+    assert got["recommended"] == 0 and got["across_two_contracts"] == 1
+    entry = recommend.for_predictions(across, [pid2])[0]
+    across.execute(
+        "INSERT INTO recommendations (prediction_id, sport, game_id, market, side,"
+        " fair_value, price, edge_cents, size_kind, size_units, gate_n, created_utc)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (pid2, entry["sport"], entry["game_id"], entry["market"], entry["side"],
+         entry["raw_fair_value"], entry["price"], entry["edge_cents"],
+         entry["size"]["kind"], entry["size"]["units"], entry["gate_n"],
+         db.utcnow()))
     across.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
                    (pid2, db.utcnow()))
     across.commit()

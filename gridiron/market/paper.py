@@ -114,8 +114,12 @@ def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
     `gridiron.recount` for the qualifying claims at this threshold without
     the door, and the payload carries it as `recounted` for
     `calibration.assert_no_pooled_claims` to hold `n` to.
+
+    AND NONE PRICED ACROSS TWO CONTRACTS (operator ruling A.2, 2026-10-05):
+    the door leaves such a claim out, and the guard asks the stored claims
+    its rows name, by name, before a unit is counted on one.
     """
-    from .. import bet, db, recount
+    from .. import bet, calibration, db, recount
     from . import at_the_line
 
     config.require_sport(sport, "paper.ledger")
@@ -123,6 +127,9 @@ def ledger(conn: sqlite3.Connection, *, sport: str, market: str,
         claims = at_the_line.settled(at_the_line.standing_claims(
             conn, sport=sport, market=market, predictor=predictor,
             event_tier=event_tier))
+        calibration.refuse_a_comparison_across_two_contracts(
+            conn, [c["id"] for c in claims],
+            what=f"the hypothetical ledger for {sport} {market}, {predictor}")
         again = recount.at_the_line(conn, sport=sport, market=market,
                                     predictor=predictor, event_tier=event_tier,
                                     threshold=threshold)

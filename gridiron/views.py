@@ -1279,9 +1279,17 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
             return 0     # a bout on a card of no declared tier is in no count
         key = (market, predictor, tier)
         if key not in counts:
-            counts[key] = len(venue.settled(venue.standing_claims(
+            standing = venue.standing_claims(
                 conn, sport=sport, market=market, predictor=predictor,
-                event_tier=tier)))
+                event_tier=tier)
+            # THE SAME COUNT AS THE CURVE, SO NONE PRICED ACROSS TWO
+            # CONTRACTS (operator ruling A.2, 2026-10-05), asked of the
+            # stored claims the door's rows name.
+            calibration.refuse_a_comparison_across_two_contracts(
+                conn, [c["id"] for c in standing],
+                what=f"the settled count beside a {sport} {market} card, "
+                     f"{predictor}")
+            counts[key] = len(venue.settled(standing))
         return counts[key]
 
     out: dict[int, dict] = {}
@@ -2561,11 +2569,22 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
                              what="a combo leg's worth", entry=entry,
                              card=by_id.get(entry["prediction_id"]) or {})
     entries = {e["prediction_id"]: e for e in priced}
+    offered = _combos.propose(priced, sport=sport) if sport else []
+    # NO LEG PRICED ACROSS TWO CONTRACTS, PROPOSED OR GRADED (operator ruling
+    # A.2, 2026-10-05: "combos"): asked of the stored claims each leg's entry
+    # was priced from, through the one place, so an engine that forgot its
+    # rule is refused here by name and the slate answers 500.
+    calibration.refuse_a_comparison_across_two_contracts(
+        conn,
+        [entries[pid].get("claim_id") for p in offered for pid in p["leg_ids"]
+         if pid in entries]
+        + [e.get("claim_id") for e in by_game.values()],
+        what=f"the combos proposed or graded on this {sport or 'slate'} slate")
     proposals = [
         _proposal_card(p, unit_dollars=unit_dollars, names=names,
                        colours=colours, by_id=by_id, entries=entries)
-        for p in _combos.propose(priced, sport=sport)
-    ] if sport else []
+        for p in offered
+    ]
     return {
         "n": len(proposals),
         "offered": len(latest),

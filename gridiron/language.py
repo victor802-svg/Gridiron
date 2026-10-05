@@ -3471,7 +3471,8 @@ def _whose(predictor: str | None, tier: str | None) -> str:
 
 def at_the_line_coverage_line(market: str, with_claim: int, n: int, *,
                               predictor: str | None = None,
-                              event_tier: str | None = None) -> str:
+                              event_tier: str | None = None,
+                              across: int = 0) -> str:
     """How much of one forecaster's market could be read at the venue's line.
 
     WHOSE FORECASTS (item 6, 2026-09-26): one line per forecaster, and it
@@ -3486,13 +3487,28 @@ def at_the_line_coverage_line(market: str, with_claim: int, n: int, *,
     forecaster's question, the rung included -- "Two rungs on one game are
     two questions" -- and the curve beside the line counts them so, so the
     line says questions: "games" would be false for a game asked twice.
+
+    AND THE QUESTIONS READ ONLY ACROSS TWO CONTRACTS (operator ruling A.2,
+    2026-10-05): the venue was read for them, but every claim on them was
+    priced across two contracts before the fix of 30 September, and the rule
+    leaves those out of every comparison with a price -- said, so the share
+    does not read as the venue having quoted nothing: "...; 38 more were
+    read only across two contracts before the fix of 30 September, and no
+    comparison with a price counts them". WHEN is one phrase,
+    `ACROSS_TWO_CONTRACTS_WHEN` (the prover, 2026-10-05: "before 30
+    September" was false of the six claims written at 18:00-18:05Z that day).
     """
     what = f"{humanise(market)}{_whose(predictor, event_tier)}"
     if not n:
         return f"{what}: nothing written yet"
     share = round(with_claim / n * 100)
-    return (f"{what}: the venue's line could be read for {with_claim} of "
+    line = (f"{what}: the venue's line could be read for {with_claim} of "
             f"{counted(n, 'question')} it answered ({share}%)")
+    if across:
+        line += (f"; {across} more {'was' if across == 1 else 'were'} read only "
+                 f"across two contracts {ACROSS_TWO_CONTRACTS_WHEN}, and no "
+                 f"comparison with a price counts {'it' if across == 1 else 'them'}")
+    return line
 
 
 # ---------------------------------------------------------------------------
@@ -3851,12 +3867,60 @@ def withdrawn_recommendations_line(n: int, reasons: list[str | None]) -> str:
     """
     said = []
     for reason in reasons:
-        text = plain_reason(reason) if reason else ""
+        text = recommendation_void_reason_words(reason) if reason else ""
         if text and text not in said:
             said.append(text)
     head = ("1 recommendation withdrawn and never counted" if n == 1 else
             f"{n} recommendations withdrawn and never counted")
     return head + (": " + "; and ".join(said) if said else "")
+
+
+#: WHEN THE CLAIMS PRICED ACROSS TWO CONTRACTS WERE WRITTEN, in every sentence
+#: of the rule of 2026-10-05 (operator ruling A.2): until Q36.1 was released,
+#: at 18:44Z on 30 September (`at_the_line.ONE_CONTRACT_FROM`). These
+#: sentences first said "before 30 September" (the prover, 2026-10-05), which
+#: is false of the six claims run 8464 wrote at 18:00-18:05Z that day and of
+#: recs 114 and 115, priced from two of them -- the very two the closing
+#: line's own row names once the 54 are voided. `audit.two_contract_words_faults`
+#: holds each sentence's date to the record.
+ACROSS_TWO_CONTRACTS_WHEN = "before the fix of 30 September"
+
+#: WHY A RECOMMENDATION PRICED ACROSS TWO CONTRACTS IS LEFT OUT, in words a
+#: first-time reader can follow (operator ruling A.2, 2026-10-05). The ruled
+#: void reason, "priced across two contracts, Q36", carries a question's
+#: number from the repair's own papers, so the page says it this way -- the
+#: precedent of fit 71's withdrawal (`RULED_WITHDRAWAL_WORDS`). No colon
+#: inside it (the prover, 2026-10-05): the withdrawn line puts it after one
+#: of its own ("41 recommendations withdrawn and never counted: ...").
+ACROSS_TWO_CONTRACTS_REASON_WORDS = (
+    f"priced across two contracts {ACROSS_TWO_CONTRACTS_WHEN}, because the "
+    "venue's contract naming the visiting side was read at the wrong sign, so "
+    "the model's number was about one contract and the price about another")
+
+#: The row's own label beside the closing line, with whose it is after it.
+ACROSS_TWO_CONTRACTS_LABEL = "Priced across two contracts"
+
+
+def recommendation_void_reason_words(reason: str | None) -> str:
+    """A recommendation's withdrawal reason as the page says it: the one
+    ruled on 2026-10-05 (`recommend.TWO_CONTRACTS_VOID_REASON`) in plain
+    words, any other through `plain_reason`, as before."""
+    from .market import recommend as _recommend
+
+    if reason == _recommend.TWO_CONTRACTS_VOID_REASON:
+        return ACROSS_TWO_CONTRACTS_REASON_WORDS
+    return plain_reason(reason) if reason else ""
+
+
+def across_two_contracts_recommendations_line(n: int) -> str:
+    """The recommendations the closing line leaves out because each was
+    priced from a claim across two contracts, and why (operator ruling A.2,
+    2026-10-05: the claims are excluded "from every price comparison").
+    Beside the line and never inside it, as a withdrawal is -- these are
+    left out by a rule, not withdrawn: the operator voids by his own word."""
+    head = ("1 recommendation was" if n == 1 else f"{n} recommendations were")
+    return (f"{head} {ACROSS_TWO_CONTRACTS_REASON_WORDS}, and "
+            f"{'it is' if n == 1 else 'they are'} never counted")
 
 
 # "BOTH SIDES, NO POSITION" IS GONE (operator question 22, ruled 2026-09-28:
