@@ -2,6 +2,21 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (5 Oct, docs/briefs/2026-10-05-rulings.md; wins over
+  every order below):** A -- the rest of Q36 (A.2: void the 54
+  recommendations, "priced across two contracts, Q36"; recs 114 and 115
+  listed for the operator's word; the stored two-contract claims left out
+  of every price comparison by a dated rule; every moved number listed),
+  then Q37 (headline the contract bought, the model's side beside it),
+  then A.5 (the 26 Sep edge comparison re-run for spreads, read-only) ->
+  C (the Props board) -> B (picks ranked by edge; a pick only at +3 points
+  after fees; payout multiplier on every row; no filling; Kalshi game
+  markets no badge or combo until their gate) -> the entry check steps 1-4
+  (D's amendments) -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10. DONE before this
+  order: A.1 (4b1facb), A.3 and A.4 (48c4ddd), item 1 (e159be2), Q35
+  (3508c7f). The queue rule: LAW 1, LAW 3, a false gate count, or a wrong
+  number on a pick.
+
 - **THE ORDER NOW (30 Sep, second, ~15:30Z; wins over every order below):**
   Q36.1 (the claim writer reads an away-side spread contract at +s, the
   sign the venue sells, from the release; a planting) -> step A (every
