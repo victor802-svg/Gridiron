@@ -71,7 +71,16 @@
   settings unchanged): Gridiron-Final-UFC now a time trigger from 00:20 local
   every 30 minutes (as NearStart), writing only inside the 180 minutes
   before its card's first start still ahead (`tasks.final_pass_window`).
-  **Next: the entry check, step 1.**
+  **WEEKLY LIMIT, 2026-10-01 ~07:10Z:** the entry check's step-1 build
+  (workflow wf_24b751de-849) stopped 37 seconds in on the weekly usage limit
+  (reset 2026-10-05 15:00Z); it had changed nothing (the tree clean at
+  65e0a32). Resumed at 2026-10-05 15:17Z from that run (no finished step
+  existed to restart). Meanwhile the scheduled tasks ran on the released
+  3508c7f; the weekly recalibration of 2026-10-05 13:00:01Z (run 13607)
+  fitted 26 categories, 18 past 50 settled questions on the key, and wrote
+  corrections 90-115, NONE in force and no activation row (Q32 as built;
+  `correction_activations` still holds only fit 71's withdrawal).
+  **Next: the entry check, step 1 (resumed).**
   **Q35 BUILT AND PROVEN (2026-10-01, on a9c5193; committed locally on
   `repair` by its prover, not pushed; next: its gate and release; FOLLOWUPS
   "A pass written at or after the start is not blind; a start is an
