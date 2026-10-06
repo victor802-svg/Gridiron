@@ -494,12 +494,39 @@ def test_the_gate_makes_the_call_and_its_scanner_can_see():
 # and the check demanded the sentence of a live tile drawing the question's own
 # figure with no Today card (196 on the record's finished slates read as live).
 
-def test_a_finished_cards_figure_and_verdict_are_its_contracts(tmp_path):
+def test_a_finished_cards_figure_and_verdict_are_its_contracts(tmp_path, monkeypatch):
     """Rec 111's shape, finished TLSA 20 UNT 23: North Texas +1.5 happened
     (the claim, Tulsa -1.5, settled no) and North Texas -6.5 did not. The
-    card names North Texas +1.5 at 76%, so its verdict is that contract's;
-    the board's finished row is the question's own, as it was."""
+    board's finished row is the question's own, as it was.
+
+    FROM 2026-10-07 THE FINISHED GAME HAS NO PRICED CARD (operator question
+    38, ruling 2: "recommend.for_predictions refuses any game that is not
+    still upcoming"): nothing of it is in a priced group, and the board's row
+    keeps the question's own verdict. AS RELEASED BEFORE THAT RULING its card
+    was still priced and named North Texas +1.5 at 76%, so its verdict was
+    that contract's -- with the released door put back, that shape is still
+    what the check holds, and the question's verdict under the contract's
+    words is still named."""
     conn, pid, sport, week = _world(tmp_path / "final.db", "rec111", final=(20, 23))
+    ruled = views.week(conn, sport, 2026, week)
+    assert not [c for g in ("clears", "below_floor", "watching")
+                for c in ruled["today"][g] if c["prediction_id"] == pid]
+    for block in _blocks(ruled, pid):
+        assert block["line_words"] == "North Texas -6.5"
+        assert block["settled_words"] == "the model had this at 63% and it did not"
+    assert _faults(conn, ruled) == []
+
+    def released(status, kickoff_utc, under_way_utc, now):
+        return (recommend.BEING_PLAYED_WHY
+                if (status or "").lower() in recommend.IN_PLAY_STATUSES else None)
+
+    # on the market module as it is now: a blind window earlier in the
+    # session drops the package and the page imports it afresh
+    # (test_two_contract_claims.py's `_now`)
+    import importlib
+
+    monkeypatch.setattr(importlib.import_module("gridiron.market.recommend"),
+                        "not_still_upcoming", released)
     payload = views.week(conn, sport, 2026, week)
     card = _card(payload, pid, groups=("clears", "below_floor", "watching"))
     assert card["state"] == "final"

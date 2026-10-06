@@ -336,7 +336,10 @@ def test_the_measurement_door_and_its_guard(world, monkeypatch):
         calibration.refuse_recommendations_across_two_contracts(
             conn, [made["across2"]["rec"]], what="a test")
     # THE RULE PUT BACK: the builder's guard refuses the line by name...
-    monkeypatch.setattr(_now(recommend), "_priced_on_one_contract", lambda alias: "")
+    # (the rule takes the connection too from 2026-10-07, operator question
+    # 38: the start it reads asks whether the record keeps the table)
+    monkeypatch.setattr(_now(recommend), "_priced_on_one_contract",
+                        lambda *_args: "")
     with pytest.raises(calibration.ComparedAcrossTwoContracts):
         calibration.clv_report(conn, sport="nfl")
     # ...and with the guard silenced, the recount names the rows

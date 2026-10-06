@@ -2350,6 +2350,81 @@ CREATE TABLE IF NOT EXISTS live_polls (
 CREATE INDEX IF NOT EXISTS live_polls_when ON live_polls (polled_utc DESC);
 
 -- ---------------------------------------------------------------------------
+-- THE FIRST POLL THAT SAW A GAME TRULY UNDER WAY (operator question 38 (A),
+-- ruled 2026-10-06, second set, docs/briefs/2026-10-06-rulings-second.md;
+-- built 2026-10-07): "A game's start is the earlier of its listed start and
+-- the first poll that sees it truly under way (a score or period recorded;
+-- MLB's warm-up "Live" before the listed start does not count). No read at
+-- or after that instant is a close or a claim."
+--
+-- THE RECORD KEPT NO SUCH INSTANT. The live poll writes a game's status,
+-- score, period and clock as the LAST poll saw them (games.live_*), and
+-- live_polls counts requests only, so nothing said when a game was first
+-- seen under way. This table is that instant: the live poll (gridiron.live)
+-- writes ONE row per game, the first time the feed's own fields record a
+-- score or a period for it -- an inning's runs (statsapi), a period numbered
+-- one or more or a period's score (ESPN) -- under a status the feed calls
+-- under way or over; never a warm-up 'Live' before the listed start, and
+-- never a pregame payload's placeholders (measured 2026-10-07 on the
+-- record's cached feeds: statsapi's Pre-Game linescore carries "Top 1st" and
+-- 0-0 with no inning's runs recorded; ESPN's scheduled event carries scores
+-- of "0" and period 0). under_way_utc is the poll's own instant, stamped as
+-- it writes, as games.live_updated_utc is; the evidence says, in words, what
+-- the feed reported. A game with no row starts at its listed start.
+-- NOTHING IS BACKFILLED (LAW 3): the record never saw an instant before this
+-- table existed, and none is invented. gridiron.live.start_of is the one
+-- door that reads it (the earlier of the two, as instants), and
+-- gridiron.live.before_the_start its one SQL spelling.
+--
+-- PERMANENT, LIKE ITS PRECEDENTS: one row per game, never updated, deleted
+-- or replaced -- the instant decides which reads were closes and claims, and
+-- a row moved or removed would move them after the fact. WITHOUT ROWID, so
+-- there is no row number for a replacing insert to name, and every rule
+-- reads the game the row lands on (correction_gate_labels' precedent).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS live_first_under_way (
+    game_id        TEXT PRIMARY KEY REFERENCES games (id),
+    -- an instant, to the second, as the poll stamps it: readable as one
+    -- (julianday) and the stored form's length, never compared as text
+    -- (operator question 35's rule, which this column is held to:
+    -- audit.START_COLUMNS)
+    under_way_utc  TEXT NOT NULL CHECK (julianday(under_way_utc) IS NOT NULL
+                                        AND length(under_way_utc) = 20),
+    sport          TEXT NOT NULL,
+    -- the feed's own status words as it sent them ("In Progress",
+    -- "STATUS_IN_PROGRESS"), never this record's 'in'
+    feed_status    TEXT NOT NULL CHECK (length(trim(feed_status)) > 0),
+    evidence       TEXT NOT NULL CHECK (length(trim(evidence)) >= 10)
+) WITHOUT ROWID;
+
+CREATE TRIGGER IF NOT EXISTS live_first_under_way_never_replaced
+BEFORE INSERT ON live_first_under_way
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM live_first_under_way u
+              WHERE u.game_id = NEW.game_id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a game is first seen under way once, and the first '
+        || 'poll''s row stands; it is never replaced');
+END;
+
+CREATE TRIGGER IF NOT EXISTS live_first_under_way_no_update
+BEFORE UPDATE ON live_first_under_way
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: the instant a game was first seen under way is '
+        || 'never rewritten: it decides which reads were closes and claims');
+END;
+
+CREATE TRIGGER IF NOT EXISTS live_first_under_way_no_delete
+BEFORE DELETE ON live_first_under_way
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: the instant a game was first seen under way is '
+        || 'never deleted: it decides which reads were closes and claims');
+END;
+
+-- ---------------------------------------------------------------------------
 -- THE OPERATOR'S OWN CALLS -- WITHDRAWN 2026-09-02 (GRIDIRON_16 R1)
 -- ---------------------------------------------------------------------------
 --

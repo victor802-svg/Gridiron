@@ -3,6 +3,11 @@
 WHAT THIS IS ALLOWED TO TOUCH. `games` — the score, the period, the clock and
 the status. That is data about the world, not a claim about it, and updating
 it is permitted (LAW 3 governs `predictions`, which nothing here writes).
+And from 2026-10-07 (operator question 38 (A), ruled 2026-10-06) one row of
+`live_first_under_way` per game: the instant the poll first saw it truly
+under way, written once and never rewritten, because it decides which
+reads were closes and claims (`start_of`, below, is the one door that reads
+it).
 
 WHAT IT MUST NOT DO, and the reason each is structural rather than a promise:
 
@@ -350,6 +355,30 @@ def scoreboard(conn: sqlite3.Connection, sport: str, day: str) -> list[dict]:
 #: What MLB calls a game that is under way, finished, or not yet started.
 MLB_STATES = {"Live": "in", "Final": "final", "Preview": "scheduled"}
 
+#: statsapi's words for a game in its warm-up (2026-10-07, operator question
+#: 38 (A)): the league calls it 'Live' (abstract state) while its coded state
+#: is still the pre-game 'P' and its detailed state 'Warmup'. The poll maps
+#: 'Live' to 'in' (above); the ruling says that warm-up, before the listed
+#: start, is not a game "truly under way". No warm-up payload is cached on the
+#: record (measured 2026-10-07), so these are the feed's documented words.
+MLB_WARM_UP_DETAILED = "Warmup"
+MLB_PRE_GAME_CODED = "P"
+
+
+def _innings_recorded(line: dict) -> int:
+    """How many innings of a statsapi linescore carry a run count for either
+    side -- the feed's own record of play (2026-10-07, operator question 38).
+    MEASURED on the record's cached schedules that day: a Pre-Game payload
+    up to three hours before its listed start already carries a linescore
+    reading "Top 1st", 0-0 and one inning, with NO run count in that inning;
+    every game in progress carries one in each inning played. So the team
+    totals and the current inning are placeholders before play, and an
+    inning's runs are the score or period the ruling asks to be recorded."""
+    return sum(
+        1 for inning in (line.get("innings") or [])
+        if isinstance(inning, dict)
+        and any("runs" in (inning.get(side) or {}) for side in ("home", "away")))
+
 
 def _read_mlb(payload: dict) -> list[dict]:
     """statsapi's schedule, hydrated with the linescore, in this shape."""
@@ -358,8 +387,8 @@ def _read_mlb(payload: dict) -> list[dict]:
         for game in date.get("games") or []:
             line = game.get("linescore") or {}
             teams = line.get("teams") or {}
-            state = MLB_STATES.get(
-                (game.get("status") or {}).get("abstractGameState"))
+            status = game.get("status") or {}
+            state = MLB_STATES.get(status.get("abstractGameState"))
             if state is None:
                 continue
             # "Top 6th" is what a person following baseball says, and it is
@@ -371,7 +400,7 @@ def _read_mlb(payload: dict) -> list[dict]:
                 "game_id": f"mlb_{game.get('gamePk')}",
                 "event_id": game.get("gamePk"),
                 "status": state,
-                "status_raw": (game.get("status") or {}).get("detailedState"),
+                "status_raw": status.get("detailedState"),
                 "home_score": (teams.get("home") or {}).get("runs"),
                 "away_score": (teams.get("away") or {}).get("runs"),
                 # BASEBALL HAS NO CLOCK. Absent rather than an empty string:
@@ -379,6 +408,14 @@ def _read_mlb(payload: dict) -> list[dict]:
                 # the sport has to say about how far along it is.
                 "period": period,
                 "clock": None,
+                # WHAT THE FEED RECORDED, for the first-under-way record
+                # (2026-10-07, operator question 38 (A)): the innings that
+                # carry runs, and whether this is the warm-up 'Live'.
+                "innings_recorded": _innings_recorded(line),
+                "warm_up": (status.get("detailedState") == MLB_WARM_UP_DETAILED
+                            or (status.get("abstractGameState") == "Live"
+                                and status.get("codedGameState")
+                                == MLB_PRE_GAME_CODED)),
             })
     return out
 
@@ -412,6 +449,10 @@ def read_event(payload: dict) -> dict | None:
             away, scores["away"] = side.get("id"), value
     period = (competition.get("status") or {}).get("period")
     clock = (competition.get("status") or {}).get("displayClock")
+    try:
+        number = int(period) if period is not None else None
+    except (TypeError, ValueError):
+        number = None
     return {
         "event_id": payload.get("id"),
         "status_raw": status,
@@ -422,6 +463,17 @@ def read_event(payload: dict) -> dict | None:
         "clock": clock,
         "home_id": home,
         "away_id": away,
+        # WHAT THE FEED RECORDED, for the first-under-way record (2026-10-07,
+        # operator question 38 (A)). MEASURED on the record's cached
+        # scoreboards that day: a scheduled event carries scores of "0" and
+        # period 0 and no period's score; a finished one its period number
+        # and one score per period for each side. So a period numbered one
+        # or more, or a period's score, is a period or score recorded, and
+        # the pregame "0" is a placeholder.
+        "period_number": number,
+        "periods_scored": max(
+            (len(side.get("linescores") or []) for side in competitors
+             if isinstance(side, dict)), default=0),
     }
 
 
@@ -477,6 +529,202 @@ def apply_event(conn: sqlite3.Connection, game_id: str, seen: dict) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# A GAME'S START: THE EARLIER OF ITS LISTED START AND THE FIRST POLL THAT SAW
+# IT TRULY UNDER WAY (operator question 38 (A), ruled 2026-10-06, second set,
+# docs/briefs/2026-10-06-rulings-second.md; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# "A game's start is the earlier of its listed start and the first poll that
+# sees it truly under way (a score or period recorded; MLB's warm-up "Live"
+# before the listed start does not count). No read at or after that instant
+# is a close or a claim."
+#
+# Item 1 (ruled 2026-09-30) keeps a game and claims its reads until its
+# LISTED start whatever its status says, which is what stopped baseball's
+# warm-up 'Live' cutting its closes to 35 minutes out. It also meant that a
+# game truly begun before its listed start -- a stale listing -- had its
+# in-play reads claimed, closed on and priced until the listed time (item
+# 1's prover, 2026-10-01: question 38). The record kept no instant at which
+# a game was first seen under way; `live_first_under_way` is that instant,
+# and these are the ONE DOOR every reader of a close or a claim reads it by:
+# `start_of` in Python, `before_the_start` its one SQL spelling beside it,
+# `julianday()` on both sides as operator question 35 compares every start.
+
+#: The record of the first poll that saw each game truly under way.
+UNDER_WAY_TABLE = "live_first_under_way"
+
+
+def start_of(listed: str | None, under_way: str | None) -> datetime | None:
+    """THE ONE DOOR FOR A GAME'S START (operator question 38 (A), 2026-10-07):
+    the earlier of its listed start and the instant the first poll saw it
+    truly under way, each read as an instant (`db.instant`). None when the
+    record knows neither. A listed start nobody can read raises ValueError,
+    as `db.instant` does, so every reader keeps item 1's rule for it (the
+    game is not read, named, and never guessed); a game first seen under way
+    with no listed start starts at that instant."""
+    listed_at = db.instant(listed)
+    seen_at = db.instant(under_way) if under_way else None
+    if listed_at is None:
+        return seen_at
+    if seen_at is None:
+        return listed_at
+    return min(listed_at, seen_at)
+
+
+def _named(part: str) -> str:
+    """A table alias or an aliased column, never anything else: the SQL
+    spellings below are put into statements as text."""
+    if not all(piece.isidentifier() for piece in part.split(".")):
+        raise ValueError(f"{part!r} is not a column or a table alias")
+    return part
+
+
+def keeps_first_under_way(conn: sqlite3.Connection) -> bool:
+    """Does this database hold the first-under-way record at all? A record
+    no release carrying it has opened yet does not (2026-10-07): read
+    through a read-only door -- the gate's tests read the operator's record
+    so -- it cannot be migrated, and a reader must not write to the database
+    it is reading (the opening read's precedent, `drift._venue_claims`).
+    Such a record never saw a game under way, so every game on it starts at
+    its listed start, which is what the spellings below say there."""
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (UNDER_WAY_TABLE,)).fetchone() is not None
+
+
+def under_way_sql(game: str, conn: sqlite3.Connection) -> str:
+    """The instant `game` (a `games` alias) was first seen truly under way,
+    as a scalar subquery for a SELECT list -- NULL where it never was, or on
+    a record without the table -- so a reader that already reads the listed
+    start hands both to `start_of`."""
+    game = _named(game)
+    if not keeps_first_under_way(conn):
+        return "NULL"
+    return (f"(SELECT u.under_way_utc FROM {UNDER_WAY_TABLE} u"
+            f" WHERE u.game_id = {game}.id)")
+
+
+def before_the_start(stamp: str, game: str, conn: sqlite3.Connection) -> str:
+    """THE ONE SQL SPELLING of "strictly before the game's start" (operator
+    question 38 (A), 2026-10-07): `stamp` before the listed start of `game`
+    (a `games` alias), or no listed start, AND before the instant it was
+    first seen truly under way, if it was -- `julianday()` on both sides of
+    each, as operator question 35 compares every start. `start_of` in SQL.
+    On a record without the table, the listed start alone (every game on it
+    starts there)."""
+    stamp, game = _named(stamp), _named(game)
+    listed = (f"({game}.kickoff_utc IS NULL"
+              f" OR julianday({stamp}) < julianday({game}.kickoff_utc))")
+    if not keeps_first_under_way(conn):
+        return f"({listed})"
+    return (f"({listed}"
+            f" AND NOT EXISTS (SELECT 1 FROM {UNDER_WAY_TABLE} u"
+            f"  WHERE u.game_id = {game}.id"
+            f"    AND julianday({stamp}) >= julianday(u.under_way_utc)))")
+
+
+def under_way_evidence(state: dict, listed: str | None,
+                       at: datetime) -> str | None:
+    """What the feed recorded that says the game is truly under way, in
+    words -- or None, and then the poll writes no row.
+
+    BY THE FEED'S OWN FIELDS, AS MEASURED on the record's cached payloads
+    (2026-10-07): an inning's runs (statsapi, `innings_recorded`), or a
+    period numbered one or more or a period's own score (ESPN,
+    `period_number`, `periods_scored`) -- never the placeholders a pregame
+    payload carries (statsapi's "Top 1st" and 0-0 with no inning's runs;
+    ESPN's scores of "0" at period 0) -- and only under a status the feed
+    calls under way or over. MLB'S WARM-UP 'LIVE' BEFORE THE LISTED START
+    DOES NOT COUNT, whatever it carries (the ruling's own words)."""
+    if state.get("status") not in ("in", "final"):
+        return None
+    try:
+        listed_at = db.instant(listed)
+    except ValueError:
+        listed_at = None
+    if state.get("warm_up") and (listed_at is None or at < listed_at):
+        return None
+    innings = int(state.get("innings_recorded") or 0)
+    period = state.get("period_number")
+    scored = int(state.get("periods_scored") or 0)
+    recorded = []
+    if innings > 0:
+        recorded.append(f"runs recorded in {innings} inning"
+                        + ("" if innings == 1 else "s"))
+    if period is not None and period >= 1:
+        recorded.append(f"period {period} recorded")
+    if scored > 0:
+        recorded.append(f"a score recorded for {scored} period"
+                        + ("" if scored == 1 else "s"))
+    if not recorded:
+        return None
+    score = ("" if state.get("home_score") is None or state.get("away_score") is None
+             else f", the score {state.get('home_score')}-{state.get('away_score')}"
+                  f" (home first)")
+    return (f"The feed reported {state.get('status_raw') or state.get('status')} "
+            f"with {' and '.join(recorded)}{score}, at the first poll that saw "
+            f"it; its listed start was {listed or 'not recorded'}.")
+
+
+def record_first_under_way(conn: sqlite3.Connection, game_id: str,
+                           state: dict, *,
+                           only_before_its_listed_start: bool = False,
+                           sport: str | None = None) -> bool:
+    """Write the instant this poll first saw `game_id` truly under way, once
+    (operator question 38 (A), 2026-10-07). True when a row was written.
+
+    ONCE PER GAME: a game already in the record is left as it is, and the
+    schema refuses a second row whatever the statement says. Stamped with
+    the poll's own instant as it writes, as `games.live_updated_utc` is, and
+    committed at once, so a reader of the start sees it as soon as it is
+    stamped. A plain insert, never an upsert (the frozen register). A
+    database without the table (one no release carrying it has opened) is
+    left as it is: `db.init` brings the table, never this.
+
+    `only_before_its_listed_start` (Q38's prover, 2026-10-07): for a game
+    outside the poll's window (`poll`, below), a row is written only while
+    its listed start is still ahead of the stamp, or not recorded -- the
+    only case in which the instant moves its start. A listed start nobody
+    can read writes none: every reader keeps item 1's rule for it. `sport`,
+    when given, is the sport whose scoreboard the state came from, and a
+    game the record files under another sport writes none."""
+    if not keeps_first_under_way(conn):
+        return False
+    if conn.execute(f"SELECT 1 FROM {UNDER_WAY_TABLE} WHERE game_id = ?",
+                    (game_id,)).fetchone():
+        return False
+    game = conn.execute("SELECT sport, kickoff_utc FROM games WHERE id = ?",
+                        (game_id,)).fetchone()
+    if game is None or (sport is not None and game["sport"] != sport):
+        return False
+    stamp = utcnow()
+    if only_before_its_listed_start:
+        try:
+            listed_at = db.instant(game["kickoff_utc"])
+        except ValueError:
+            return False
+        if listed_at is not None and not db.instant(stamp) < listed_at:
+            return False
+    evidence = under_way_evidence(state, game["kickoff_utc"], db.instant(stamp))
+    if evidence is None:
+        return False
+    try:
+        conn.execute(
+            f"INSERT INTO {UNDER_WAY_TABLE} (game_id, under_way_utc, sport,"
+            " feed_status, evidence) VALUES (?, ?, ?, ?, ?)",
+            (game_id, stamp, game["sport"],
+             str(state.get("status_raw") or state.get("status")), evidence))
+    except sqlite3.IntegrityError as exc:
+        # ANOTHER POLL GOT THERE FIRST, between the look and the insert: its
+        # row stands, as the rule says.
+        if "first seen under way once" in str(exc):
+            return False
+        raise
+    conn.commit()
+    return True
+
+
 def record_poll(conn: sqlite3.Connection, sport: str, requests: int,
                 seen: int, changed: int) -> None:
     """RATE HONESTY. What this poll asked for, written down every time.
@@ -504,7 +752,8 @@ def poll(conn: sqlite3.Connection, now: datetime | None = None,
     fetcher = fetcher or scoreboard
     windows = open_windows(conn, now)
     report = {"windows": len(windows), "requests": 0, "seen": 0,
-              "changed": 0, "finals": 0, "sports": [], "resolved": None}
+              "changed": 0, "finals": 0, "sports": [], "resolved": None,
+              "first_under_way": []}
     if not windows:
         # THE QUIET-DAY PATH, and it returns before touching the network. Not
         # "fetches and discards", not "fetches with a long cache": makes no
@@ -529,10 +778,34 @@ def poll(conn: sqlite3.Connection, now: datetime | None = None,
         for state in payload:
             game_id = state.get("game_id")
             if game_id not in wanted:
+                # THE PAYLOAD'S OTHER GAMES ARE SEEN TOO (Q38's prover,
+                # 2026-10-07). The window holds the games listed within ten
+                # minutes of now (`open_windows`), but the request is the
+                # whole day's scoreboard, so this poll also holds what the
+                # feed says of a game listed later -- and a game truly under
+                # way before its listed start, a stale listing, is the case
+                # operator question 38 (A) was ruled for. As first built the
+                # poll looked past such a game until its window opened, so
+                # its in-play reads were claimed, closed on and priced (its
+                # status still 'scheduled') until ten minutes before its
+                # listed start. Its first-under-way instant is written here,
+                # by the same evidence, while its listed start is still
+                # ahead and only for a game the record files under this
+                # scoreboard's sport; nothing else about it is written (its
+                # status, score and clock wait for its window, as before),
+                # and no request is added.
+                if record_first_under_way(conn, game_id, state,
+                                          only_before_its_listed_start=True,
+                                          sport=window.sport):
+                    report["first_under_way"].append(game_id)
                 continue
             seen += 1
             if apply_event(conn, game_id, state):
                 changed += 1
+            # THE FIRST POLL THAT SEES IT TRULY UNDER WAY (operator question
+            # 38 (A), 2026-10-07), once per game, by the feed's own fields.
+            if record_first_under_way(conn, game_id, state):
+                report["first_under_way"].append(game_id)
             if state.get("status") == "final":
                 finished.append(game_id)
         conn.commit()

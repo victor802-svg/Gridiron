@@ -156,12 +156,17 @@ def _club(sport: str, tricode: str | None, names: dict) -> dict:
 
 def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
                     forecaster: str, n_settled: int, hours: float,
-                    unit_dollars: float | None) -> dict:
+                    unit_dollars: float | None,
+                    past_its_start: bool = False) -> dict:
     """One question as the board shows it: on the row's face or as a tile.
 
     THE NUMBERS ARE THE TODAY CARD'S where one exists -- the same price, the
     same payout, the same edge the groups showed -- and the model's own where
     the question was never priced.
+
+    `past_its_start` (Q38's prover, 2026-10-07): the question's game is not
+    still upcoming (`recommend.not_still_upcoming`), so it has no price, and
+    a row still drawn as to come says why in its price slot.
     """
     label = config.FORECASTER_LABELS.get(forecaster, forecaster)
     shown = card.get("shown_prob")
@@ -393,6 +398,22 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         out["pays_words"] = (language.payout_chip_words(pays, market=market)
                              if price is not None else "")
         out["tips"]["price"] = language.price_tip(price, market, hours)
+        # A GAME PAST ITS START IS NOT "NOT LISTED YET" (Q38's prover,
+        # 2026-10-07). From operator question 38, ruling 2, nothing on a game
+        # that is not still upcoming is priced, and a row whose game is still
+        # listed 'scheduled' is drawn as to come -- every NFL, NBA and UFC
+        # game being played (no live poll follows them; a loader writes the
+        # result), a postponed one, and one seen under way before its
+        # listed start. As first built its slot said "venue has not listed
+        # this yet" and its tooltip "the first read is taken about 2 hours
+        # before the start", false of a game the venue listed and that was
+        # priced before it began; it says why there is no price now -- in a
+        # market the venue is read for (a prop was never priced, and keeps
+        # its own words).
+        if price is None and past_its_start and (
+                market is None or market in language.MARKETS_READ_AT_THE_VENUE):
+            out["price_words"] = language.past_its_start_price_words()
+            out["tips"]["price"] = language.past_its_start_price_tip()
         # AN OPENING READ AT ANOTHER LINE NAMES ITS CONTRACT (pick-number
         # step A, 2026-09-30; finding 5): the tooltip said "what a dollar
         # returns if this happens" under the question's words, of a rung the
@@ -1021,6 +1042,14 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
     game_ids = list(by_game)
     others = _other_forecaster_rows(conn, sport=sport, season=season, wk=wk,
                                     chosen=chosen, game_ids=game_ids, names=names)
+    # WHICH QUESTIONS' GAMES ARE NOT STILL UPCOMING (Q38's prover,
+    # 2026-10-07): through the engine's one door, so a row still drawn as to
+    # come says why it has no price (`_question_block`).
+    from .market import recommend as _recommend
+
+    past_its_start = {r["prediction_id"] for r in _recommend.not_still_upcoming_among(
+        conn, [c["prediction_id"] for c in cards]
+        + [c["prediction_id"] for rows in others.values() for c in rows])}
 
     def block_for(card: dict, forecaster: str) -> dict:
         entry = index.get(card["prediction_id"])
@@ -1031,7 +1060,8 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         block = _question_block(
             card, entry, state=state, taken=card["prediction_id"] in already,
             forecaster=forecaster, n_settled=n, hours=hours,
-            unit_dollars=unit_dollars)
+            unit_dollars=unit_dollars,
+            past_its_start=card["prediction_id"] in past_its_start)
         block["_place"] = card.get("shortlist_place")
         block["_edge"] = (entry or {}).get("edge_cents")
         return block

@@ -4638,14 +4638,64 @@ def day_strip_words(*, day_words: str | None, slate_words: str | None,
     return {"where": where, "counts": " · ".join(parts)}
 
 
-def first_price_words(hours: float) -> str:
+def first_price_words(hours: float, *, some_started: bool = False) -> str:
     """When a venue price is expected, on a slate that has none yet.
 
     A reader who is told "no price yet" five times learns that the app is
     stuck. A reader told when the price arrives learns how the app works.
+
+    AND ONLY OF THE GAMES STILL TO COME (operator question 38, ruling 2,
+    2026-10-07): nothing on a game that has started is priced any more, so
+    on a slate where some games have started the sentence is about the rest
+    -- "no venue price on this slate yet" was false of games that were
+    priced before they started.
     """
+    if some_started:
+        return (f"No venue price yet for the games on this slate still to "
+                f"come. The first is taken about {hours:g} hours before each "
+                f"game starts.")
     return (f"No venue price on this slate yet. The first is taken about "
             f"{hours:g} hours before each game starts.")
+
+
+def slate_started_words() -> str:
+    """The day strip's note on a slate none of whose games is still to come
+    (operator question 38, ruling 2, 2026-10-07): nothing on a game that is
+    not still to come is priced, so the strip says why it shows no price,
+    never "no venue price yet" -- which would be false of games that were
+    priced before they began.
+
+    NOT "EVERY GAME HAS STARTED" (Q38's prover, 2026-10-07), which it said
+    as first built: a game still listed as to come past its listed start --
+    postponed, cancelled or a stale listing, which the record cannot tell
+    apart; four UFC bouts on the record that day -- is not still to come and
+    may never have started, and the board draws it as listed, to come at a
+    time already gone. So the words name the ruling's three ways a game is
+    not still to come, each true of such a slate."""
+    return ("Every game on this slate is under way, over, or past its listed "
+            "start, so nothing on it is priced any more.")
+
+
+def past_its_start_price_words() -> str:
+    """The board's price slot on a row drawn as still to come -- its game
+    still listed 'scheduled' -- whose game is past its start (Q38's prover,
+    2026-10-07; operator question 38, ruling 2: nothing on a game that is not
+    still upcoming is priced, and anything that reports what was refused
+    names it). The slot said "venue has not listed this yet" there, which is
+    false of a game the venue listed and that was priced before its start:
+    every NFL, NBA and UFC game being played, which no live poll follows and
+    whose status stays 'scheduled' until a loader writes the result. Not "no
+    longer priced": four UFC bouts still listed past their starts on the
+    record that day were never priced at all."""
+    return "past its start, so not priced"
+
+
+def past_its_start_price_tip() -> str:
+    """The tooltip beside `past_its_start_price_words`."""
+    return ("This game is past its start: under way, over, or past its "
+            "listed start. Nothing on a game that is not still to come is "
+            "priced, and no venue read taken at or after its start is a "
+            "price for it.")
 
 
 #: The markets the venue is actually asked about. Everything else in

@@ -602,6 +602,15 @@ def _slate_payload(sport: str, forecaster: str | None = None):
     return views.week(_record_conn(), sport, forecaster=forecaster)
 
 
+def _slate_payload_asked(sport: str, forecaster: str | None = None):
+    """One sport's current slate and the moment it was asked for -- read
+    BEFORE the build, so a game that starts while the slate is built is
+    never taken for one the engine priced after its start (operator question
+    38, ruling 2; 2026-10-07)."""
+    asked = db.utcnow()
+    return _slate_payload(sport, forecaster), asked
+
+
 def _at_the_line_payload():
     """Every sport's at-the-line words, in one payload for the advice scan.
 
@@ -903,6 +912,18 @@ def step_2_guards() -> bool:
                       _slate_payload(sport, forecaster))
                   for sport in _config().SPORTS
                   for forecaster in ("statistical", "llm")] and None),
+        # OPERATOR QUESTION 38, RULING 2 (2026-10-06, second set; built
+        # 2026-10-07): "recommend.for_predictions refuses any game that is
+        # not still upcoming: in progress, final, postponed, or past its
+        # start as defined in 1." No Today card the engine priced, no
+        # recommendation line and no combo leg on a game that was not still
+        # upcoming when the slate was asked for. Every sport's slate, both
+        # forecasters, on the record's copy.
+        ("nothing is priced on a game that is not still upcoming (question 38)",
+         lambda: [audit.check_no_entry_for_a_game_not_still_upcoming(
+                      _record_conn(), *_slate_payload_asked(sport, forecaster))
+                  for sport in _config().SPORTS
+                  for forecaster in ("statistical", "llm")] and None),
         # OPERATOR RULING C (2026-10-05: "Never present a venue ladder rung as
         # a pick'em pick ... only legs clearing B.2 get a pick badge ... until
         # typed, the page asks for it and shows no break-even"; built
@@ -959,6 +980,17 @@ def step_2_guards() -> bool:
         # promise about the code.
         ("a claim is priced at the line, never at the open",
          lambda: audit.check_claims_price_at_the_line(_record_conn())),
+        # OPERATOR QUESTION 38 (A) (ruled 2026-10-06, second set; built
+        # 2026-10-07): "A game's start is the earlier of its listed start and
+        # the first poll that sees it truly under way ... No read at or after
+        # that instant is a close or a claim." Every measured close and every
+        # stored claim on the record's copy was read before its game's start
+        # so defined, worked out from the two stored instants (the claim
+        # writer's first live run's seventeen, written after their starts and
+        # taken by no window, held by name).
+        ("no read at or after a game's start is a close or a claim (question 38)",
+         lambda: audit.check_no_close_or_claim_read_at_or_after_the_start(
+             _record_conn())),
         # OPERATOR QUESTION 36 (i) (ruled 2026-09-30): "<away> wins by over
         # s" is the home side's +s, read in one place by the claim writer
         # (and the near-start reader, which writes through it alone), the

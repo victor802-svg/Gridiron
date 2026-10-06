@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from .. import bet, config, correction
+from .. import bet, config, correction, live
 from ..db import instant, just_after, transaction, utcnow
 from ..priced import coverage
 from . import paper
@@ -316,6 +316,90 @@ def refuse_in_game(game_status: str | None) -> None:
             "never sized.")
 
 
+#: WHY A GAME IS NOT STILL UPCOMING, in words (operator question 38, ruling 2,
+#: 2026-10-06; built 2026-10-07): what `not_still_upcoming` says of a game
+#: `for_predictions` gives no entry for, and what `record_for` names.
+BEING_PLAYED_WHY = "its game is being played"
+OVER_WHY = "its game is over"
+PAST_ITS_START_WHY = "its game is past its start and still listed as to come"
+FIRST_SEEN_UNDER_WAY_WHY = ("its game was seen under way before its listed "
+                            "start, and that is its start")
+START_UNREADABLE_WHY = ("its game's listed start cannot be read, so whether "
+                        "it is still to come cannot be told")
+NOT_LISTED_AS_TO_COME_WHY = "its game is not listed as still to come"
+
+
+def not_still_upcoming(status: str | None, kickoff_utc: str | None,
+                       under_way_utc: str | None, now: str) -> str | None:
+    """Why a game is NOT still upcoming at `now`, in words -- or None when
+    it is: its status says 'scheduled' AND `now` is strictly before its
+    start as operator question 38 (A) defines it (the one door,
+    `live.start_of`: the earlier of its listed start and the first poll
+    that saw it truly under way).
+
+    THE OPERATOR'S RULING 2 OF 2026-10-06 (second set): "recommend.
+    for_predictions refuses any game that is not still upcoming: in
+    progress, final, postponed, or past its start as defined in 1." Read
+    conservatively (docs/REPAIR_STATE.md, question 38's readings): 'in' is
+    refused whatever its cause, as it always was -- so baseball's warm-up
+    'Live', which the poll stores as 'in', stays refused here even though it
+    moves no start; 'final' is refused; and a game still marked 'scheduled'
+    past its start -- postponed, cancelled or a stale listing, which the
+    record cannot tell apart -- is refused. A start nobody can read is not
+    one the game is still before (item 1's rule: never guessed). A game
+    whose start the record does not know yet, still 'scheduled', is to come.
+    """
+    if (status or "").lower() in IN_PLAY_STATUSES:
+        return BEING_PLAYED_WHY
+    if status == "final":
+        return OVER_WHY
+    if status != "scheduled":
+        return NOT_LISTED_AS_TO_COME_WHY
+    try:
+        start = live.start_of(kickoff_utc, under_way_utc)
+    except ValueError:
+        return START_UNREADABLE_WHY
+    if start is None or instant(now) < start:
+        return None
+    try:
+        listed = instant(kickoff_utc)
+    except ValueError:
+        listed = None
+    if under_way_utc and (listed is None or start < listed):
+        return FIRST_SEEN_UNDER_WAY_WHY
+    return PAST_ITS_START_WHY
+
+
+def not_still_upcoming_among(conn: sqlite3.Connection, prediction_ids,
+                             *, now: str | None = None) -> list[dict]:
+    """Every forecast among `prediction_ids` whose game is not still
+    upcoming at `now` (the clock by default), each with its game, its
+    status, its listed start and why in words (`not_still_upcoming`) -- what
+    `for_predictions` gives no entry for, named for anything that reports
+    it (`record_for`)."""
+    at = now or utcnow()
+    ids = sorted({int(i) for i in prediction_ids if i is not None})
+    out: list[dict] = []
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        for row in conn.execute(
+                "SELECT p.id, p.game_id, g.status, g.kickoff_utc,"
+                f"       {live.under_way_sql('g', conn)} AS under_way_utc"
+                "  FROM predictions p JOIN games g ON g.id = p.game_id"
+                f" WHERE p.id IN ({','.join('?' for _ in chunk)})"
+                " ORDER BY p.id", chunk):
+            why = not_still_upcoming(row["status"], row["kickoff_utc"],
+                                     row["under_way_utc"], at)
+            if why is not None:
+                out.append({"prediction_id": row["id"],
+                            "game_id": row["game_id"],
+                            "status": row["status"],
+                            "listed_start": row["kickoff_utc"],
+                            "first_seen_under_way": row["under_way_utc"],
+                            "why": why})
+    return out
+
+
 def correction_instant(claim_utc: str | None, status: str | None,
                        kickoff_utc: str | None) -> str | None:
     """Which correction a number read from this claim is corrected by: None,
@@ -350,6 +434,16 @@ def correction_instant(claim_utc: str | None, status: str | None,
     corrected by whatever was in force NOW. A start that cannot be read is
     taken as begun -- the claim's own instant, so nothing is re-derived by a
     correction that came after it (LAW 3) -- never guessed into a time.
+
+    FROM 2026-10-07 `for_predictions` NO LONGER ASKS THIS (operator question
+    38, ruling 2): it prices only a game still to come, whose number is
+    corrected by what is in force at the clock it is asked at. The page's
+    at-the-line sentence still asks it. LEFT ON THE LISTED START, AND WHY: a
+    game the live poll saw truly under way is marked 'in' by the same poll,
+    which this already reads as begun; a loader's refresh setting it back to
+    'scheduled' before its listed start would read the correction in force
+    now for that sentence -- a correction, not a close or a claim
+    (FOLLOWUPS, "A game's start ...").
     """
     try:
         start = instant(kickoff_utc)
@@ -361,8 +455,10 @@ def correction_instant(claim_utc: str | None, status: str | None,
     return claim_utc if started else None
 
 
-def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list[dict]:
-    """One recommendation per shortlisted question that has a recorded price.
+def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int], *,
+                    now: str | None = None) -> list[dict]:
+    """One recommendation per shortlisted question that has a recorded price
+    AND whose game is still upcoming at `now` (the clock by default).
 
     Reads the frozen prediction, the price already stored beside it and the
     market's settled count. Computes nothing about a game in progress and
@@ -375,6 +471,20 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     START, and the claim's own instant once the game has started
     (`correction_instant`, the prover of 2026-09-26), so a finished game's
     pick is never re-derived by a correction that activated after it.
+
+    NO ENTRY FOR A GAME THAT IS NOT STILL UPCOMING (operator question 38,
+    ruling 2, 2026-10-06, second set; built 2026-10-07): "recommend.
+    for_predictions refuses any game that is not still upcoming: in
+    progress, final, postponed, or past its start as defined in 1." Until
+    this date it skipped a game only while its status said 'in', so a
+    FINISHED game's question was still priced -- its side, price, edge and
+    size drawn from claims written before it -- and so was one still
+    'scheduled' long past its start (measured on one verified copy of the
+    record, 2026-10-07: 1,411 entries on finished games, 28 on UFC bouts
+    still 'scheduled' past their listed start). Refused means NO ENTRY --
+    no price, side, edge or size -- never a raise; `not_still_upcoming` is
+    the one door, and `not_still_upcoming_among` names what it refused for
+    anything that reports it (`record_for`).
     """
     from .. import shortlist as ranker
     from ..priced import shape as _shapes
@@ -393,10 +503,12 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
     # charging an exchange's fee and measuring coverage from the exchange's
     # ladders is three venues in one sentence, and the middle one is not
     # tradeable: a book's implied probability carries its own margin.
+    at = now or utcnow()
     rows = conn.execute(
         "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type, p.subject,"
         " p.line_asked, p.model_prob, p.model_side, p.predictor, p.created_utc,"
         " g.status, g.kickoff_utc, g.home, g.away,"
+        f" {live.under_way_sql('g', conn)} AS under_way_utc,"
         " c.model_prob AS claim_prob, c.venue_implied AS implied_prob,"
         " c.line AS venue_line, c.venue AS venue, c.created_utc AS claim_utc,"
         # THE CONTRACT THE PRICE CAME FROM (pick-number step A, 2026-09-30):
@@ -410,11 +522,13 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # 2026-09-30, built 2026-10-01): the latest claim written before the
         # start, `julianday()` on both sides -- as text, a claim written
         # thirty seconds into a bout stored to the minute was "before" it.
+        # AND BEFORE THE START AS QUESTION 38 (A) DEFINES IT (2026-10-07),
+        # through its one SQL spelling: no read at or after that instant is
+        # a claim.
         " LEFT JOIN at_the_line_claims c ON c.id = ("
         "     SELECT c2.id FROM at_the_line_claims c2"
         "      WHERE c2.prediction_id = p.id"
-        "        AND (g.kickoff_utc IS NULL"
-        "             OR julianday(c2.created_utc) < julianday(g.kickoff_utc))"
+        f"        AND {live.before_the_start('c2.created_utc', 'g', conn)}"
         "      ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
         " LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         f" WHERE p.id IN ({placeholders})"
@@ -431,13 +545,14 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         rank = ranks.get(row["id"])
         if rank is None or not rank["on_shortlist"]:
             continue
-        try:
-            # ONE DOOR FOR THE IN-GAME RULE. The check could be inlined here in
-            # a line, and then there would be two places that decide what
-            # "under way" means. `refuse_in_game` raises; this is the only
-            # caller that turns the refusal into a skip.
-            refuse_in_game(row["status"])
-        except NotSizedInGame:
+        # ONE DOOR FOR "STILL UPCOMING" (operator question 38, ruling 2,
+        # 2026-10-06; built 2026-10-07): 'scheduled' and before its start as
+        # ruling 1 defines it, or no entry at all. It replaced the in-game
+        # rule's skip here (`refuse_in_game`, which refused 'in' alone and so
+        # priced a finished game's question); 'in' is still refused, first,
+        # whatever its cause.
+        if not_still_upcoming(row["status"], row["kickoff_utc"],
+                              row["under_way_utc"], at) is not None:
             continue
         price = row["implied_prob"]
         # THE MODEL'S NUMBER FOR THE VENUE'S QUESTION, which is not the same as
@@ -459,17 +574,19 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int]) -> list
         # beside it, and is what `fair_value` stores.
         #
         # NOW ONLY BEFORE THE START (the prover, 2026-09-26). A finished game
-        # is priced here too, and "now" let a correction activated after the
-        # game turn its pick; once the game has started the number is the
-        # claim's as it stood when written (`correction_instant`), the rule
-        # the at-the-line sentence beside it already read.
+        # was priced here too, and "now" let a correction activated after the
+        # game turn its pick; once the game had started the number was the
+        # claim's as it stood when written (`correction_instant`). FROM
+        # 2026-10-07 (operator question 38, ruling 2) no game past its start
+        # is priced here at all, so every entry is a game still to come and
+        # its number is corrected by what is in force at the clock it is
+        # asked at -- now, unless a caller names the clock.
         raw_claim = row["claim_prob"]
         model_prob, correction_version = (
             (None, None) if raw_claim is None else correction.shown_proposition(
                 conn, sport=row["sport"], market_type=row["market_type"],
                 forecaster=row["predictor"], proposition=raw_claim,
-                at_utc=correction_instant(row["claim_utc"], row["status"],
-                                          row["kickoff_utc"])))
+                at_utc=None if now is None else at))
         settled = rank["edge_gate_n"] or 0
         # COVERAGE FIRST (THE_PRICED P2/P5, 2026-09-07). A market the engine is
         # not allowed to price gets a forecast and no opinion, and the reason
@@ -797,8 +914,13 @@ def _refusal(entry: dict, why: str) -> dict:
             "market": entry["market"], "side": entry["side"], "why": why}
 
 
-def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
+def record_for(conn: sqlite3.Connection, prediction_ids: list[int], *,
+               now: str | None = None) -> dict:
     """Write down what was recommended, at the price it was recommended at.
+
+    `now` is the clock the pass asks at -- the clock itself unless a caller
+    names one (a test world, a planting), so "still upcoming" (operator
+    question 38, ruling 2) is asked of the moment the pass recommends.
 
     ONLY WHERE THERE IS A SIDE. A question the engine had no opinion on is not
     a recommendation, and storing it would make every count of "how often were
@@ -838,15 +960,25 @@ def record_for(conn: sqlite3.Connection, prediction_ids: list[int]) -> dict:
     """
     counts = {"recommended": 0, "no_side": 0, "already": 0, "in_game": 0,
               "second_on_game_market": 0, "both_sides": 0,
-              "across_two_contracts": 0}
+              "across_two_contracts": 0, "not_still_upcoming": 0}
     refused: list[dict] = []
+    # NONE ON A GAME THAT IS NOT STILL UPCOMING (operator question 38, ruling
+    # 2, 2026-10-06; built 2026-10-07): `for_predictions` gives no entry for
+    # one, and what a pass handed in and was refused is named here, each
+    # with its game and why in words -- never a raise and never silence.
+    # (`in_game` stays in the counts at zero, as `game_under_way` does in
+    # the claim writer's, so an older run's keys and a newer one's agree.)
+    now = now or utcnow()
+    not_upcoming = not_still_upcoming_among(conn, prediction_ids, now=now)
+    counts["not_still_upcoming"] = len(not_upcoming)
+    counts["not_still_upcoming_named"] = not_upcoming
     # NONE FROM A CLAIM PRICED ACROSS TWO CONTRACTS (operator ruling A.2,
     # 2026-10-05: such a claim is excluded "from every price comparison", and
     # a recommendation is one -- its side, edge and size are the model's
     # number set against a price). Every claim written from Q36.1's release
     # on is priced off one contract, so this refuses nothing the record holds
     # still to start; it is counted by its own name, never as no side.
-    entries = for_predictions(conn, prediction_ids)
+    entries = for_predictions(conn, prediction_ids, now=now)
     across = [e for e in entries if e.get("priced_across_two_contracts")]
     counts["across_two_contracts"] = len(across)
     entries = [e for e in entries if not e.get("priced_across_two_contracts")]
@@ -1016,12 +1148,14 @@ def priced_on_one_contract(conn: sqlite3.Connection, alias: str = "r") -> str:
     the closer, the write rule and the tools keep the record as written and
     see these rows; every measurement leaves them out. The claim's rule is
     the at-the-line door's own (`at_the_line.on_one_contract`)."""
-    return _priced_on_one_contract(_alias(alias))
+    return _priced_on_one_contract(conn, _alias(alias))
 
 
-def _priced_on_one_contract(alias: str) -> str:
+def _priced_on_one_contract(conn: sqlite3.Connection, alias: str) -> str:
     """`priced_on_one_contract`'s SQL, for an alias already checked -- the
-    pair rule's own `_OTHER` among them, which `_alias` keeps from callers."""
+    pair rule's own `_OTHER` among them, which `_alias` keeps from callers.
+    The connection says whether the record keeps the first-under-way
+    instants the start reads (operator question 38 (A), 2026-10-07)."""
     from . import at_the_line
 
     if not alias.isidentifier():
@@ -1035,16 +1169,16 @@ def _priced_on_one_contract(alias: str) -> str:
         f"      WHERE {_PRICED_BY_LOOK}.prediction_id = {alias}.prediction_id"
         f"        AND julianday({_PRICED_BY_LOOK}.created_utc)"
         f"            <= julianday({alias}.created_utc)"
-        f"        AND ({_PRICED_BY_GAME}.kickoff_utc IS NULL"
-        f"             OR julianday({_PRICED_BY_LOOK}.created_utc)"
-        f"                < julianday({_PRICED_BY_GAME}.kickoff_utc))"
+        # BEFORE THE START AS OPERATOR QUESTION 38 (A) DEFINES IT
+        # (2026-10-07), in its one SQL spelling, as `pricing_claim` reads it.
+        f"        AND {live.before_the_start(_PRICED_BY_LOOK + '.created_utc', _PRICED_BY_GAME, conn)}"
         f"      ORDER BY julianday({_PRICED_BY_LOOK}.created_utc) DESC,"
         f"               {_PRICED_BY_LOOK}.id DESC LIMIT 1)"
         f"   AND NOT (1{at_the_line.on_one_contract(_PRICED_BY)}))")
 
 
 def pricing_claim(conn: sqlite3.Connection, prediction_id: int,
-                  created_utc: str, kickoff: str | None):
+                  created_utc: str, start):
     """A recommendation's PRICING CLAIM: the latest claim on its forecast
     written by its own stamp and before the start -- instants, then the id,
     as the text order broke a tie -- or None.
@@ -1052,8 +1186,12 @@ def pricing_claim(conn: sqlite3.Connection, prediction_id: int,
     ONE PLACE FOR THE CLOSE AND THE RULE OF 2026-10-05 (operator ruling
     A.2): `close_of` reads the contract the close is a later read of from
     it, and `pricing_claim_ids` the claim a recommendation was priced from.
-    Moved out of `close_of`, unchanged (2026-10-05)."""
-    start = instant(kickoff)
+    Moved out of `close_of`, unchanged (2026-10-05).
+
+    `start` IS THE GAME'S START AS OPERATOR QUESTION 38 (A) DEFINES IT
+    (2026-10-07): an instant from the one door (`live.start_of`), or None
+    where the record knows none. It was the listed start's text until then.
+    """
     written = instant(created_utc)
     return max(
         (c for c in conn.execute(
@@ -1078,11 +1216,15 @@ def pricing_claim_ids(conn: sqlite3.Connection,
         chunk = ids[start:start + 500]
         marks = ",".join("?" for _ in chunk)
         for rec in conn.execute(
-                f"SELECT r.id, r.prediction_id, r.created_utc, g.kickoff_utc"
+                f"SELECT r.id, r.prediction_id, r.created_utc, g.kickoff_utc,"
+                f"       {live.under_way_sql('g', conn)} AS under_way_utc"
                 f"  FROM recommendations r JOIN games g ON g.id = r.game_id"
                 f" WHERE r.id IN ({marks})", chunk).fetchall():
+            # THE GAME'S START THROUGH THE ONE DOOR (operator question 38
+            # (A), 2026-10-07).
             claim = pricing_claim(conn, rec["prediction_id"], rec["created_utc"],
-                                  rec["kickoff_utc"])
+                                  live.start_of(rec["kickoff_utc"],
+                                                rec["under_way_utc"]))
             out[rec["id"]] = None if claim is None else claim["id"]
     return out
 
@@ -1298,7 +1440,7 @@ def _an_earlier_row_of_the_same_bet(conn: sqlite3.Connection,
             f"            ON {_OWN_FORECAST}.id = {alias}.prediction_id"
             f"         WHERE {pairs_with(alias)}"
             + not_withdrawn(conn, _OTHER)
-            + _priced_on_one_contract(_OTHER) + ")")
+            + _priced_on_one_contract(conn, _OTHER) + ")")
 
 
 def counted_once(conn: sqlite3.Connection, alias: str = "r", *,
@@ -1325,7 +1467,7 @@ def counted_once(conn: sqlite3.Connection, alias: str = "r", *,
     # recommendation priced from a claim across two contracts is in no
     # measurement, withdrawn or not (`priced_on_one_contract`).
     return (not_withdrawn(conn, alias)
-            + _priced_on_one_contract(alias)
+            + _priced_on_one_contract(conn, alias)
             + f" AND EXISTS (SELECT 1 FROM predictions {_WHOSE}"
               f"              WHERE {_WHOSE}.id = {alias}.prediction_id"
               f"                AND {_WHOSE}.predictor = '{predictor}')"
@@ -1352,7 +1494,7 @@ def not_counted_once(conn: sqlite3.Connection, *, sport: str,
         "  FROM recommendations r"
         f" JOIN predictions {_WHOSE} ON {_WHOSE}.id = r.prediction_id"
         f" WHERE r.sport = ? AND {_WHOSE}.predictor = ?" + not_withdrawn(conn)
-        + _priced_on_one_contract("r")
+        + _priced_on_one_contract(conn, "r")
         + " AND " + _an_earlier_row_of_the_same_bet(conn, "r")
         + " ORDER BY r.created_utc, r.id", (sport, predictor)).fetchall()
     return [{"id": r["id"], "game_id": r["game_id"], "market": r["market"],
@@ -1561,8 +1703,7 @@ RESTATED_WHY = ("the close recorded at the time was the recommendation's own "
                 "record held before the start")
 
 
-def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
-             kickoff: str | None) -> dict:
+def close_of(conn: sqlite3.Connection, rec: sqlite3.Row, start) -> dict:
     """The close of one recommendation, by the one rule, or why it has none.
 
     THE RULE (GRIDIRON_REPAIR item 1, 2026-09-23): the close is the LAST
@@ -1590,18 +1731,27 @@ def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
     agrees with it. The rule itself is unchanged: measured on one verified
     copy of the record (30 September), it gives every one of the 106 closes
     on the record again, read for read.
+
+    AND THE START IS THE ONE OPERATOR QUESTION 38 (A) DEFINES (ruled
+    2026-10-06, second set; built 2026-10-07): "the earlier of its listed
+    start and the first poll that sees it truly under way ... No read at or
+    after that instant is a close or a claim." `start` is that instant, from
+    the one door (`live.start_of`), or None where the record knows none; it
+    was the listed start's text until then, so a game begun before its
+    listed time closed on a read taken while it was being played -- the
+    planting "an in-play read used as a close". `minutes_before_start` is
+    counted to the same instant.
     """
     from . import at_the_line
 
     out = {"pricing_quote_id": None, "close_quote_id": None,
            "close_price": None, "clv_cents": None,
            "minutes_before_start": None}
-    start = instant(kickoff)
     # THE PRICING CLAIM: the latest written by the recommendation's own
     # stamp and before the start -- instants, then the id, as the text order
     # broke a tie. One place from 2026-10-05 (`pricing_claim`), which the
     # rule of that day reads too (operator ruling A.2).
-    claim = pricing_claim(conn, rec["prediction_id"], rec["created_utc"], kickoff)
+    claim = pricing_claim(conn, rec["prediction_id"], rec["created_utc"], start)
     if claim is None or round(claim["venue_implied"], 4) != round(rec["price"], 4):
         return {**out, "why": UNTRACEABLE_WHY}
     pricing = conn.execute("SELECT * FROM venue_quotes WHERE id = ?",
@@ -1636,7 +1786,7 @@ def close_of(conn: sqlite3.Connection, rec: sqlite3.Row,
         return {**out, "close_quote_id": quote["id"], "close_price": close,
                 "clv_cents": clv_cents(rec["side"], rec["price"], close),
                 "minutes_before_start": _minutes_between(quote["fetched_utc"],
-                                                         kickoff),
+                                                         start),
                 "why": "the last near-start read of its own contract before "
                        "the start"}
     return {**out, "why": UNMEASURED_WHY}
@@ -1654,13 +1804,14 @@ def _same(a, b) -> bool:
     return abs(float(a) - float(b)) < 1e-9
 
 
-def _minutes_between(earlier: str, later: str) -> float:
+def _minutes_between(earlier: str, start) -> float:
     # AS INSTANTS (2026-09-30, item 1's close window). Both were parsed to the
     # second, so a start stored to the minute (UFC's, "...T02:00Z") raised
     # here: the first UFC recommendation with a measured close would have
     # stopped the closer -- and with it every near-start firing, since the
-    # closer runs first in the pass.
-    delta = instant(later) - instant(earlier)
+    # closer runs first in the pass. AND TO THE START AS OPERATOR QUESTION 38
+    # (A) DEFINES IT (2026-10-07): `start` is the one door's instant.
+    delta = start - instant(earlier)
     return round(delta.total_seconds() / 60.0, 1)
 
 
@@ -1697,11 +1848,16 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
     # It stays open, withdrawn, and said so.
     rows = conn.execute(
         "SELECT r.id, r.prediction_id, r.side, r.price, r.created_utc,"
-        "       g.kickoff_utc"
+        f"       g.kickoff_utc, {live.under_way_sql('g', conn)} AS under_way_utc"
         "  FROM recommendations r JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NULL" + not_withdrawn(conn)).fetchall()
     now = utcnow()
     for row in rows:
+        # THE START IS THE ONE OPERATOR QUESTION 38 (A) DEFINES (2026-10-07):
+        # the earlier of the listed start and the first poll that saw the
+        # game truly under way (`live.start_of`), so a game begun before its
+        # listed time is closed once the poll has seen it, on the last read
+        # before that instant -- never on one taken while it was played.
         # A START NOBODY KNOWS YET IS STILL AHEAD. Closing it now would write,
         # once and for good, that no read came before a start that has not
         # been scheduled. AND A START IS AN INSTANT (2026-09-30, item 1's
@@ -1716,14 +1872,14 @@ def record_closing_prices(conn: sqlite3.Connection) -> dict:
         # the starts still ahead, and the near-start pass names it on every
         # firing (`tasks._near_start_selection`'s `unreadable_start`).
         try:
-            start = instant(row["kickoff_utc"])
+            start = live.start_of(row["kickoff_utc"], row["under_way_utc"])
         except ValueError:
             counts["still_open"] += 1
             continue
         if start is None or start > instant(now):
             counts["still_open"] += 1
             continue
-        got = close_of(conn, row, row["kickoff_utc"])
+        got = close_of(conn, row, start)
         if got["close_price"] is None:
             cur = conn.execute("UPDATE recommendations SET closed_utc = ?"
                                " WHERE id = ? AND closed_utc IS NULL",
@@ -1771,7 +1927,8 @@ def restate_old_closes(conn: sqlite3.Connection, *, write: bool) -> dict:
     # never counted, so there is nothing to restate for one.
     rows = conn.execute(
         "SELECT r.id, r.prediction_id, r.sport, r.market, r.side, r.price,"
-        "       r.created_utc, r.close_price, g.kickoff_utc"
+        "       r.created_utc, r.close_price, g.kickoff_utc,"
+        f"       {live.under_way_sql('g', conn)} AS under_way_utc"
         "  FROM recommendations r JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NOT NULL" + unaccounted + not_withdrawn(conn) +
         " ORDER BY r.id").fetchall()
@@ -1787,7 +1944,10 @@ def restate_old_closes(conn: sqlite3.Connection, *, write: bool) -> dict:
                 f"recommendation {row['id']} closed at {row['close_price']} "
                 f"against a price of {row['price']}: the old closer never did "
                 f"that, so this row is not what this restatement is for")
-        got = close_of(conn, row, row["kickoff_utc"])
+        # THE START THROUGH THE ONE DOOR (operator question 38 (A),
+        # 2026-10-07), as the closer reads it.
+        got = close_of(conn, row, live.start_of(row["kickoff_utc"],
+                                                row["under_way_utc"]))
         bucket = report["by"].setdefault(
             (row["sport"], row["market"]),
             {"measured": 0, "unmeasured": 0, "clv": []})

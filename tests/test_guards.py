@@ -775,6 +775,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_90_percent_leg_at_91_cents_shown_as_a_pick",
         "plant_a_slate_with_nothing_clearing_drawn_with_picks",
         "plant_a_breakeven_from_an_untyped_multiplier",
+        # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second
+        # set; built 2026-10-07): "Planting: a finished game's pick priced;
+        # an in-play read used as a close."
+        "plant_a_finished_games_pick_priced",
+        "plant_an_in_play_read_used_as_a_close",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

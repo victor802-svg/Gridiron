@@ -52,6 +52,28 @@ def _pick(conn, *, subject="CHC", prob=0.62):
     return pid
 
 
+#: THE CLOCK THE PAGE ASKS AT in this world (Q38's prover, 2026-10-07): from
+#: operator question 38, ruling 2, nothing on a game that is not still
+#: upcoming is priced, so a card is on Upcoming only while the clock is
+#: before its game (listed 2026-09-09T00:00Z). These tests read the page at
+#: the real clock, a month after it, and passed in the whole suite only on a
+#: clock another test left on the market modules (2026-09-05T18:59:59Z;
+#: `tests/conftest.py::_market_clocks_put_back`); alone they failed.
+ASKED = "2026-09-08T12:00:00Z"
+
+
+def _asked_before_the_game(monkeypatch):
+    """Hold the page's clock at ASKED, on the market module the page imports
+    as it is now (a blind window earlier in a session may have built it
+    afresh) and on this file's."""
+    import importlib
+
+    from gridiron.market import recommend
+
+    for module in {recommend, importlib.import_module("gridiron.market.recommend")}:
+        monkeypatch.setattr(module, "utcnow", lambda: ASKED)
+
+
 def _go_live(conn, *, period="Top 6th", home=3, away=2):
     conn.execute(
         "UPDATE games SET status = 'in', home_score = ?, away_score = ?,"
@@ -62,12 +84,13 @@ def _go_live(conn, *, period="Top 6th", home=3, away=2):
 
 # --- the movement, which is the whole idea -----------------------------------
 
-def test_a_card_moves_to_live_on_its_own_and_then_to_settled(tmp_path):
+def test_a_card_moves_to_live_on_its_own_and_then_to_settled(tmp_path, monkeypatch):
     """THE POLLER MOVES IT, NOT A CLICK. `games.status` is what the live poll
     writes; the tab a card sits on is read off that, so a card cannot be in a
     state its game is not in."""
     conn = _world(tmp_path)
     _pick(conn)
+    _asked_before_the_game(monkeypatch)
 
     before = views.week(conn, "mlb", 2026, 1)["today"]
     assert before["live_n"] == 0
@@ -176,9 +199,10 @@ def test_the_taken_pick_leads_the_live_tab_and_says_only_that(tmp_path):
 
 # --- the richer card ---------------------------------------------------------
 
-def test_the_card_shows_what_the_record_already_knew(tmp_path):
+def test_the_card_shows_what_the_record_already_knew(tmp_path, monkeypatch):
     """NOTHING NEW IS FETCHED. Every line is a read of a table some factor
     already filled."""
+    _asked_before_the_game(monkeypatch)
     conn = _world(tmp_path)
     conn.execute("INSERT INTO mlb_probables (game_id, side, pitcher_id,"
                  " pitcher_name, recorded_utc) VALUES ('g0', 'home', 1,"

@@ -16,6 +16,16 @@ DIST = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
         "declared": "2026-08-31T00:00:00Z", "written_blind": True}
 WHOLE = json.dumps({"coverage": 1.0, "margin_distribution": DIST})
 
+#: THE CLOCK A PASS ASKS AT in this world (operator question 38, ruling 2,
+#: 2026-10-06; 2026-10-07): `recommend.for_predictions` gives no entry for a
+#: game that is not still upcoming, so a pass over this world's games
+#: (listed for 2026-09-09) asks at a moment before them, after their claims.
+#: Until that ruling these tests priced the games at the real clock, a month
+#: past their start -- which is the finished game's pick the ruling refuses.
+ASKED = "2026-09-08T00:00:00Z"
+#: ...and over `_closed`'s game, listed for 02:00 on the 7th, before it.
+ASKED_BEFORE_THE_CLOSE = "2026-09-07T01:45:00Z"
+
 
 def _world(tmp_path, *, status="scheduled", kickoff="2026-09-09T00:00:00Z"):
     conn = db.open_db(tmp_path / "rec.db")
@@ -195,12 +205,13 @@ def test_nothing_is_sized_once_a_game_is_under_way(tmp_path):
     conn = _world(tmp_path, status="in")
     pid = _pick(conn)
     assert recommend.for_predictions(conn, [pid]) == []
+    assert recommend.for_predictions(conn, [pid], now=ASKED) == []
 
 
 def test_a_recommendation_is_recorded_with_the_price_it_was_made_at(tmp_path):
     conn = _world(tmp_path)
     pid = _pick(conn)
-    counts = recommend.record_for(conn, [pid])
+    counts = recommend.record_for(conn, [pid], now=ASKED)
     assert counts["recommended"] == 1
     row = conn.execute("SELECT * FROM recommendations").fetchone()
     assert row["side"] == "yes" and row["price"] == pytest.approx(0.46)
@@ -218,7 +229,7 @@ def test_a_recommendation_is_recorded_with_the_price_it_was_made_at(tmp_path):
 def test_a_question_with_no_side_is_not_recorded(tmp_path):
     conn = _world(tmp_path)
     pid = _pick(conn, prob=0.51, implied=0.50)
-    counts = recommend.record_for(conn, [pid])
+    counts = recommend.record_for(conn, [pid], now=ASKED)
     assert counts["recommended"] == 0 and counts["no_side"] == 1
     assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 0
 
@@ -292,12 +303,12 @@ def _correct(conn, *, active_from="2026-09-01T00:00:00Z", **model):
 def test_an_active_correction_that_would_flip_the_side_flips_the_pick(tmp_path):
     conn = _world(tmp_path)
     pid = _away_pick(conn)
-    raw = recommend.for_predictions(conn, [pid])[0]
+    raw = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert (raw["side"], raw["edge_cents"]) == ("no", pytest.approx(3.5))
     assert raw["correction_version"] is None
     assert raw["fair_value"] == raw["raw_fair_value"] == pytest.approx(0.43)
     version = _correct(conn)
-    got = recommend.for_predictions(conn, [pid])[0]
+    got = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert got["side"] == "yes" and got["edge_side"] == "yes"
     assert got["edge_cents"] == pytest.approx(3.08, abs=0.01)
     assert got["fair_value"] == pytest.approx(0.5358, abs=1e-4)
@@ -311,7 +322,7 @@ def test_a_fitted_correction_that_was_never_activated_decides_nothing(tmp_path):
     from gridiron import correction
 
     _correct(conn, active_from=None)
-    got = recommend.for_predictions(conn, [pid])[0]
+    got = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert got["side"] == "no" and got["correction_version"] is None
     # AND AN ACTIVATION STAMPED AHEAD IS NO ACTIVATION (question 32,
     # 2026-09-29): a row is stamped when it is written, so one dated 2099 --
@@ -319,20 +330,20 @@ def test_a_fitted_correction_that_was_never_activated_decides_nothing(tmp_path):
     # and the fit stays out of force
     with pytest.raises(correction.ActivationRefused, match="stamped when it is written"):
         _correct(conn, active_from="2099-01-01T00:00:00Z")
-    assert recommend.for_predictions(conn, [pid])[0]["side"] == "no"
+    assert recommend.for_predictions(conn, [pid], now=ASKED)[0]["side"] == "no"
 
 
 def test_the_row_carries_the_correction_that_was_current_and_keeps_it(tmp_path):
     conn = _world(tmp_path)
     before = _away_pick(conn, game="g0")
-    recommend.record_for(conn, [before])
+    recommend.record_for(conn, [before], now=ASKED)
     version = _correct(conn)
     conn.execute(
         "INSERT INTO games (id, sport, season, week, game_type, home, away,"
         " kickoff_utc, status, league_date) VALUES ('g9', 'mlb', 2026, 1, 'R',"
         " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
     after = _away_pick(conn, game="g9")
-    recommend.record_for(conn, [after])
+    recommend.record_for(conn, [after], now=ASKED)
     rows = {r["prediction_id"]: r for r in conn.execute(
         "SELECT * FROM recommendations ORDER BY id")}
     # WRITTEN BEFORE THE ACTIVATION: the raw no side and no correction, and
@@ -437,30 +448,38 @@ def test_a_finished_games_pick_is_never_re_derived_by_a_later_correction(tmp_pat
     correction that activated on the 20th turned a pick on a game played on
     the 9th to the yes side, while the at-the-line sentence on the same card
     kept the claim's 43%. Once a game has started, its pick is corrected by
-    what was in force when its claim was written, as the sentence is."""
+    what was in force when its claim was written, as the sentence is.
+
+    AND FROM 2026-10-07 A FINISHED GAME HAS NO PICK AT ALL (operator question
+    38, ruling 2: "recommend.for_predictions refuses any game that is not
+    still upcoming"): no price, side, edge or size at any clock after its
+    start, so nothing about it can be re-derived; the recommendation written
+    while it was to come stands as written, and the sentence beside the card
+    keeps the claim's own instant."""
     from gridiron import views
 
-    conn = _world(tmp_path, status="final", kickoff="2026-09-09T00:00:00Z")
+    conn = _world(tmp_path, kickoff="2026-09-09T00:00:00Z")
     pid = _away_pick(conn)                    # its claim: 2026-09-07T01:30Z
-    recommend.record_for(conn, [pid])
+    recommend.record_for(conn, [pid], now=ASKED)
+    conn.execute("UPDATE games SET status = 'final', home_score = 2,"
+                 " away_score = 1 WHERE id = 'g0'")
+    conn.commit()
     _correct(conn, active_from="2026-09-20T00:00:00Z")
-    got = recommend.for_predictions(conn, [pid])[0]
-    assert (got["side"], got["correction_version"]) == ("no", None)
-    assert got["fair_value"] == pytest.approx(0.43)
+    assert recommend.for_predictions(conn, [pid]) == []
+    assert recommend.for_predictions(conn, [pid], now=ASKED) == []
     beside = views._at_the_line(conn, "mlb", [pid], {})[pid]
-    assert beside["model_prob"] == pytest.approx(got["fair_value"])
+    assert beside["model_prob"] == pytest.approx(0.43)
     row = conn.execute("SELECT side, correction_version FROM recommendations").fetchone()
     assert (row["side"], row["correction_version"]) == ("no", None)
     # A CORRECTION IN FORCE WHEN THE CLAIM WAS WRITTEN is the one that was
-    # current for it, and the finished card keeps it -- pick and sentence.
+    # current for it, and the finished card's sentence keeps it.
     earlier = _world(tmp_path / "earlier", status="final",
                      kickoff="2026-09-09T00:00:00Z")
     epid = _away_pick(earlier)
-    version = _correct(earlier, active_from="2026-09-01T00:00:00Z")
-    kept = recommend.for_predictions(earlier, [epid])[0]
-    assert (kept["side"], kept["correction_version"]) == ("yes", version)
+    _correct(earlier, active_from="2026-09-01T00:00:00Z")
+    assert recommend.for_predictions(earlier, [epid]) == []
     beside = views._at_the_line(earlier, "mlb", [epid], {})[epid]
-    assert beside["model_prob"] == pytest.approx(kept["fair_value"], abs=1e-4)
+    assert beside["model_prob"] == pytest.approx(0.5358, abs=1e-4)
 
 
 def test_the_size_is_computed_from_the_corrected_claim(tmp_path, monkeypatch):
@@ -477,7 +496,7 @@ def test_the_size_is_computed_from_the_corrected_claim(tmp_path, monkeypatch):
     conn = _world(tmp_path)
     pid = _away_pick(conn)
     _correct(conn)
-    got = recommend.for_predictions(conn, [pid])[0]
+    got = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert got["side"] == "yes" and got["size"]["kind"] == "fraction"
     corrected = recommend.size_for(model_prob=got["fair_value"], price=0.485,
                                    settled=got["gate_n"], measured_edge=True)
@@ -501,7 +520,7 @@ def test_a_correction_reaches_only_its_own_forecasters_picks(tmp_path):
     theirs = _away_pick(conn, game="g9", predictor="llm")
     version = _correct(conn)
     got = {e["prediction_id"]: e
-           for e in recommend.for_predictions(conn, [ours, theirs])}
+           for e in recommend.for_predictions(conn, [ours, theirs], now=ASKED)}
     assert (got[ours]["side"], got[ours]["correction_version"]) == ("yes", version)
     assert (got[theirs]["side"], got[theirs]["correction_version"]) == ("no", None)
     assert got[theirs]["fair_value"] == pytest.approx(0.43)
@@ -584,7 +603,8 @@ def test_rec_3s_numbers_are_not_recommended_and_the_mirror_is(tmp_path):
         " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
     dear = _away_pick(conn, confidence=0.6659, price=0.375)
     mirror = _away_pick(conn, game="g1", confidence=0.54, price=0.505)
-    got = {e["prediction_id"]: e for e in recommend.for_predictions(conn, [dear, mirror])}
+    got = {e["prediction_id"]: e
+           for e in recommend.for_predictions(conn, [dear, mirror], now=ASKED)}
     a, b = got[dear], got[mirror]
     assert (a["edge_side"], a["edge_cents"]) == ("no", pytest.approx(2.09))
     assert a["side"] is None
@@ -592,7 +612,7 @@ def test_rec_3s_numbers_are_not_recommended_and_the_mirror_is(tmp_path):
     assert "62.5¢" in a["side_why"]
     assert (b["side"], b["edge_cents"]) == ("no", pytest.approx(2.5))
     assert b["return_on_stake"] == pytest.approx(0.0505)
-    counts = recommend.record_for(conn, [dear, mirror])
+    counts = recommend.record_for(conn, [dear, mirror], now=ASKED)
     assert counts["recommended"] == 1 and counts["no_side"] == 1
     row = conn.execute("SELECT prediction_id, side FROM recommendations").fetchone()
     assert (row["prediction_id"], row["side"]) == (mirror, "no")
@@ -604,7 +624,7 @@ def test_a_pick_with_no_side_carries_no_return(tmp_path):
     price (absent is not zero)."""
     conn = _world(tmp_path)
     pid = _pick(conn, prob=0.51, implied=0.50)
-    entry = recommend.for_predictions(conn, [pid])[0]
+    entry = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert entry["side"] is None and entry["edge_side"] is None
     assert entry["return_on_stake"] is None
 
@@ -974,10 +994,12 @@ def _read(conn, pid, *, at, bid, ask, ticker=None, kind="near_start",
 
 def _closed(tmp_path, reads, *, price_claim_shift=None):
     """A recommendation priced at 46c on a game that has started, with the
-    given later reads. Returns (conn, rec row after closing, counts)."""
+    given later reads. Returns (conn, rec row after closing, counts). The
+    pass recommends before the game (operator question 38, ruling 2); the
+    closer runs at the clock, after it."""
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
-    recommend.record_for(conn, [pid])
+    recommend.record_for(conn, [pid], now=ASKED_BEFORE_THE_CLOSE)
     for read in reads:
         _read(conn, pid, **read)
     counts = recommend.record_closing_prices(conn)
@@ -1086,7 +1108,7 @@ def test_a_price_that_does_not_trace_to_its_quote_is_unmeasured(tmp_path):
     trail -- and the answer is unmeasured, never a guessed contract."""
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
-    recommend.record_for(conn, [pid])
+    recommend.record_for(conn, [pid], now=ASKED_BEFORE_THE_CLOSE)
     qid = _read(conn, pid, at="2026-09-07T01:40:00Z", bid=0.51, ask=0.53)
     conn.execute(
         "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
@@ -1107,7 +1129,7 @@ def test_an_old_close_with_no_account_is_unmeasured_until_restated(tmp_path):
     closing line and never counted inside it."""
     conn = _world(tmp_path, kickoff="2026-09-07T02:00:00Z")
     pid = _pick(conn)
-    recommend.record_for(conn, [pid])
+    recommend.record_for(conn, [pid], now=ASKED_BEFORE_THE_CLOSE)
     conn.execute("UPDATE recommendations SET close_price = price, clv_cents = 0,"
                  " closed_utc = '2026-09-07T02:10:00Z'")
     _read(conn, pid, at="2026-09-07T01:40:00Z", bid=0.51, ask=0.53)
@@ -1247,10 +1269,10 @@ def test_one_pass_taking_both_sides_of_a_game_and_market_recommends_neither(tmp_
     conn = _world(tmp_path)
     over, under = _both_sides(conn)
     got = {e["prediction_id"]: e
-           for e in recommend.for_predictions(conn, [over, under])}
+           for e in recommend.for_predictions(conn, [over, under], now=ASKED)}
     assert (got[over]["side"], got[over]["edge_cents"]) == ("yes", pytest.approx(4.45))
     assert (got[under]["side"], got[under]["edge_cents"]) == ("no", pytest.approx(3.5))
-    counts = recommend.record_for(conn, [over, under])
+    counts = recommend.record_for(conn, [over, under], now=ASKED)
     assert _rows(conn) == []
     assert counts["recommended"] == 0 and counts["both_sides"] == 2
     words = {r["prediction_id"]: r["why"] for r in counts["refused"]}
@@ -1271,11 +1293,11 @@ def test_a_game_and_market_with_a_standing_recommendation_gets_no_second(tmp_pat
     conn = _world(tmp_path)
     morning = _away_pick(conn, confidence=0.450524, pass_kind="early",
                          created="2026-09-06T00:00:00Z")
-    assert recommend.record_for(conn, [morning])["recommended"] == 1
+    assert recommend.record_for(conn, [morning], now=ASKED)["recommended"] == 1
     first = conn.execute("SELECT id FROM recommendations").fetchone()[0]
     over, under = _both_sides(conn)
     for ids in ([over], [under], [over, under]):
-        counts = recommend.record_for(conn, ids)
+        counts = recommend.record_for(conn, ids, now=ASKED)
         assert counts["recommended"] == 0 and counts["both_sides"] == 0
         assert counts["second_on_game_market"] == len(ids)
         why = counts["refused"][0]["why"]
@@ -1283,7 +1305,7 @@ def test_a_game_and_market_with_a_standing_recommendation_gets_no_second(tmp_pat
         assert "the yes side at 48.5¢" in why
         assert audit.plain_words_violations(why) == []
     # its own forecast, asked again, is the recommendation already there
-    again = recommend.record_for(conn, [morning])
+    again = recommend.record_for(conn, [morning], now=ASKED)
     assert again["already"] == 1 and again["refused"] == []
     assert _rows(conn) == [(morning, "g0", "moneyline", "yes")]
 
@@ -1294,7 +1316,7 @@ def test_one_sides_picks_in_one_pass_are_recommended_once_from_the_first(tmp_pat
     conn = _world(tmp_path)
     earlier = _away_pick(conn, created="2026-09-07T00:00:00Z")
     later = _away_pick(conn, predictor="llm", created="2026-09-07T00:00:07Z")
-    counts = recommend.record_for(conn, [later, earlier])
+    counts = recommend.record_for(conn, [later, earlier], now=ASKED)
     assert counts["recommended"] == 1 and counts["second_on_game_market"] == 1
     assert _rows(conn) == [(earlier, "g0", "moneyline", "no")]
     assert counts["refused"][0]["prediction_id"] == later
@@ -1311,7 +1333,7 @@ def test_another_game_or_another_market_is_its_own(tmp_path):
     here = _away_pick(conn)
     there = _away_pick(conn, game="g1", predictor="llm")
     other_market = _pick(conn, prob=0.62, implied=0.46, market="spread")
-    counts = recommend.record_for(conn, [here, there, other_market])
+    counts = recommend.record_for(conn, [here, there, other_market], now=ASKED)
     assert counts["recommended"] == 3 and counts["refused"] == []
     assert sorted((g, m) for _, g, m, _ in _rows(conn)) == [
         ("g0", "moneyline"), ("g0", "spread"), ("g1", "moneyline")]
@@ -1374,10 +1396,10 @@ def test_the_rule_reads_no_row_already_written(tmp_path):
     # where the stamp ties -- and each forecast finds its own there
     assert [s["prediction_id"] for s in recommend.standing_recommendations(
         conn, "g0", "moneyline")] == [over, under]
-    counts = recommend.record_for(conn, [over, under])
+    counts = recommend.record_for(conn, [over, under], now=ASKED)
     assert counts["recommended"] == 0 and counts["already"] == 2
-    assert recommend.for_predictions(conn, [third])[0]["side"] == "yes"
-    assert recommend.record_for(conn, [third])["second_on_game_market"] == 1
+    assert recommend.for_predictions(conn, [third], now=ASKED)[0]["side"] == "yes"
+    assert recommend.record_for(conn, [third], now=ASKED)["second_on_game_market"] == 1
     with pytest.raises(sqlite3.IntegrityError,
                        match=recommend.ONE_PER_GAME_AND_MARKET):
         _insert(conn, third, "yes", "2026-09-08T02:00:00Z")
@@ -1391,10 +1413,10 @@ def test_a_refusal_by_the_record_is_counted_by_its_own_name(tmp_path, monkeypatc
     been filed under."""
     conn = _world(tmp_path)
     over, under = _both_sides(conn)
-    recommend.record_for(conn, [over])
+    recommend.record_for(conn, [over], now=ASKED)
     monkeypatch.setattr(recommend, "standing_recommendations",
                         lambda conn, game_id, market: [])
-    counts = recommend.record_for(conn, [under])
+    counts = recommend.record_for(conn, [under], now=ASKED)
     assert counts["recommended"] == 0 and counts["already"] == 0
     assert counts["second_on_game_market"] == 1
     assert "the record refused it" in counts["refused"][0]["why"]
@@ -1412,7 +1434,7 @@ def test_the_run_keeps_what_it_refused_and_why(tmp_path):
     assert source.count('"recommended": result.get("recommended")') == 2
     conn = _world(tmp_path)
     over, under = _both_sides(conn)
-    counts = recommend.record_for(conn, [over, under])
+    counts = recommend.record_for(conn, [over, under], now=ASKED)
     json.dumps(counts)          # it is stored as JSON with the run
     assert [r["side"] for r in counts["refused"]] == ["yes", "no"]
 
@@ -1607,7 +1629,7 @@ def test_the_lawful_writes_are_untouched(tmp_path):
     writes the close of an open recommendation -- the update rule runs on
     every update and refuses only one that takes another's place."""
     conn, ids = _replace_world(tmp_path)
-    assert recommend.record_for(conn, [ids["p5"]])["recommended"] == 1
+    assert recommend.record_for(conn, [ids["p5"]], now=ASKED)["recommended"] == 1
     _insert(conn, ids["p4"], "no", _Q13_LATER, game="q4")
     conn.commit()
     got = recommend.record_closing_prices(conn)
@@ -1626,14 +1648,14 @@ def test_a_forecast_written_twice_is_still_counted_as_already(tmp_path):
     counted `already` either way -- never raised, never written."""
     conn = _world(tmp_path)
     pid = _away_pick(conn)
-    assert recommend.record_for(conn, [pid])["recommended"] == 1
+    assert recommend.record_for(conn, [pid], now=ASKED)["recommended"] == 1
     rid = conn.execute("SELECT id FROM recommendations").fetchone()[0]
     conn.execute("INSERT INTO recommendation_voids (recommendation_id,"
                  " voided_utc, reason) VALUES (?, '2026-09-07T03:00:00Z',"
                  " 'withdrawn in this test world')", (rid,))
     conn.commit()
     before = _stored(conn)
-    counts = recommend.record_for(conn, [pid])
+    counts = recommend.record_for(conn, [pid], now=ASKED)
     assert counts["recommended"] == 0 and counts["already"] == 1
     assert counts["refused"] == []
     assert _stored(conn) == before
@@ -1835,7 +1857,7 @@ def test_a_recommendation_given_a_number_below_one_does_not_stop_the_next(
     and an insert naming -1 is still refused once it lands."""
     conn = _world(tmp_path)
     first = _away_pick(conn)
-    assert recommend.record_for(conn, [first])["recommended"] == 1
+    assert recommend.record_for(conn, [first], now=ASKED)["recommended"] == 1
     rid = conn.execute("SELECT id FROM recommendations").fetchone()[0]
     conn.execute("UPDATE recommendations SET id = -1 WHERE id = ?", (rid,))
     conn.commit()
@@ -1844,7 +1866,7 @@ def test_a_recommendation_given_a_number_below_one_does_not_stop_the_next(
         " kickoff_utc, status, league_date) VALUES ('g1', 'mlb', 2026, 1, 'R',"
         " 'AAA', 'BBB', '2026-09-09T00:00:00Z', 'scheduled', '2026-09-08')")
     second = _away_pick(conn, game="g1")
-    got = recommend.record_for(conn, [second])
+    got = recommend.record_for(conn, [second], now=ASKED)
     assert got["recommended"] == 1 and got["already"] == 0
     assert conn.execute("SELECT COUNT(*) FROM recommendations").fetchone()[0] == 2
     before = _stored(conn)
@@ -2177,7 +2199,7 @@ def test_the_kill_criterion_is_asked_for_each_picks_own_forecaster(tmp_path,
 
     monkeypatch.setattr(coverage, "priceable", recorded)
     entries = {e["prediction_id"]: e for e in recommend.for_predictions(
-        conn, [mine, theirs])}
+        conn, [mine, theirs], now=ASKED)}
     assert sorted(asked) == [("moneyline", "llm"), ("moneyline", "statistical")]
     assert entries[mine]["side"] is None
     assert entries[theirs]["side"] is not None

@@ -106,6 +106,12 @@ FORBIDDEN_IDENTIFIERS = (
     "live_period",
     "live_clock",
     "live_updated_utc",
+    # THE FIRST POLL THAT SAW A GAME TRULY UNDER WAY (operator question 38
+    # (A), 2026-10-07): the live poll's own record, holding what the feed
+    # reported at that instant, score and all. The start it gives is read
+    # by the close and claim readers through `live.start_of`, outside the
+    # prediction path; nothing on the path may name the table.
+    "live_first_under_way",
 )
 
 
@@ -7760,6 +7766,236 @@ def check_claims_price_at_the_line(conn=None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# NO READ AT OR AFTER A GAME'S START IS A CLOSE OR A CLAIM, AND NOTHING IS
+# PRICED ON A GAME THAT IS NOT STILL UPCOMING (operator question 38 (A) and
+# its two rulings, 2026-10-06, second set, docs/briefs/2026-10-06-rulings-
+# second.md; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# "1. A game's start is the earlier of its listed start and the first poll
+# that sees it truly under way (a score or period recorded; MLB's warm-up
+# "Live" before the listed start does not count). No read at or after that
+# instant is a close or a claim. 2. recommend.for_predictions refuses any
+# game that is not still upcoming: in progress, final, postponed, or past its
+# start as defined in 1. Planting: a finished game's pick priced; an in-play
+# read used as a close."
+#
+# TWO CHECKS, the gate's step 2 making the call on each. ON THE RECORD: every
+# close measured, and every claim stored, was read strictly before its
+# game's start as ruling 1 defines it -- worked out here from the listed
+# start and the first-under-way instant read straight off their tables
+# (`_game_start_restated`), never through the door, so a reader that forgot
+# the second is seen. ON EVERY SLATE: no Today card the engine priced, no
+# recommendation line and no combo leg stands on a game that is not still
+# upcoming at the clock the slate was asked at.
+
+#: THE CLAIMS OF THE CLAIM WRITER'S FIRST LIVE RUN, HELD (2026-10-07). Claims 1
+#: to 17, written 2026-09-07T19:41:46-47Z from reads taken at 19:37:14-16Z on
+#: seven baseball games whose listed starts were 17:05 to 19:10 that day --
+#: in-play reads, claimed before the writer refused one ("on the first live
+#: run it produced a home side the model made 59.6% against a venue price of
+#: 3.5%, which was the fourth inning": `at_the_line.evaluate`'s
+#: `quote_after_first_pitch`, added after that run). They stay on the record
+#: as written (LAW 3). Each was WRITTEN after its game's start, so no window
+#: takes it -- the at-the-line record, a recommendation's pricing claim and
+#: the close read claims written before the start, and no recommendation sits
+#: on any of their seven games' forecasts -- and from 2026-10-07 the page's
+#: at-the-line sentence and live figure read claims written before the start
+#: too (they read the latest written at all until then). Measured on one
+#: verified copy of the record that day: these seventeen, and no other claim
+#: on the record read at or after its listed start, and no close. Frozen: the
+#: register only shrinks. Each is held by its number, its game and when it
+#: was written, so a scratch world's claim numbered 1 to 17 is not held.
+IN_PLAY_CLAIMS_HELD_2026_09_07 = frozenset({
+    (1, "mlb_823415", "2026-09-07T19:41:46Z"),
+    (2, "mlb_823415", "2026-09-07T19:41:46Z"),
+    (3, "mlb_823820", "2026-09-07T19:41:46Z"),
+    (4, "mlb_823820", "2026-09-07T19:41:46Z"),
+    (5, "mlb_824715", "2026-09-07T19:41:47Z"),
+    (6, "mlb_824715", "2026-09-07T19:41:47Z"),
+    (7, "mlb_823742", "2026-09-07T19:41:47Z"),
+    (8, "mlb_823742", "2026-09-07T19:41:47Z"),
+    (9, "mlb_823742", "2026-09-07T19:41:47Z"),
+    (10, "mlb_824062", "2026-09-07T19:41:47Z"),
+    (11, "mlb_824062", "2026-09-07T19:41:47Z"),
+    (12, "mlb_824062", "2026-09-07T19:41:47Z"),
+    (13, "mlb_824229", "2026-09-07T19:41:47Z"),
+    (14, "mlb_824229", "2026-09-07T19:41:47Z"),
+    (15, "mlb_824229", "2026-09-07T19:41:47Z"),
+    (16, "mlb_824229", "2026-09-07T19:41:47Z"),
+    (17, "mlb_824229", "2026-09-07T19:41:47Z"),
+})
+
+
+def reads_at_or_after_the_start_faults(conn) -> list[str]:
+    """Every measured close and every stored claim read at or after its
+    game's start as operator question 38 (A) defines it -- the earlier of
+    its listed start and the first poll that saw it truly under way, each an
+    instant, restated here from the two stored instants -- naming the row,
+    its read and the start; a stored claim held by
+    `IN_PLAY_CLAIMS_HELD_2026_09_07` is not named. A start nobody can read
+    is named: whether the read came before it cannot be told."""
+    from . import db
+
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    faults: list[str] = []
+    seen = _under_way_of_g(conn)
+
+    def start_of(row):
+        try:
+            return _game_start_restated(row["kickoff_utc"], row["under_way_utc"]), None
+        except ValueError as exc:
+            return None, str(exc)
+
+    if "recommendation_closes" in tables and "venue_quotes" in tables:
+        # EVERY CLOSE ON THE RECORD, its game read off the read it was
+        # closed on (a near-start read of the recommendation's own contract,
+        # on its own game: the close's rules hold that), so a withdrawn
+        # recommendation's close is held too -- it is still a close.
+        for row in conn.execute(
+                "SELECT k.recommendation_id, q.game_id, q.fetched_utc,"
+                f"       g.kickoff_utc, {seen} AS under_way_utc"
+                "  FROM recommendation_closes k"
+                "  JOIN venue_quotes q ON q.id = k.close_quote_id"
+                "  JOIN games g ON g.id = q.game_id"
+                " ORDER BY k.recommendation_id"):
+            start, unreadable = start_of(row)
+            where = (f"recommendation {row['recommendation_id']}'s close "
+                     f"({row['game_id']}, read {row['fetched_utc']})")
+            if unreadable:
+                faults.append(f"{where}: its game's start cannot be read ({unreadable})")
+            elif start is not None and not db.instant(row["fetched_utc"]) < start:
+                faults.append(
+                    f"{where} was read at or after its game's start, "
+                    f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')} (listed "
+                    f"{row['kickoff_utc']}, first seen under way "
+                    f"{row['under_way_utc'] or 'never'}): no read at or after "
+                    f"that instant is a close")
+    if "at_the_line_claims" in tables and "venue_quotes" in tables:
+        for row in conn.execute(
+                "SELECT c.id, c.game_id, c.created_utc, q.fetched_utc,"
+                f"       g.kickoff_utc, {seen} AS under_way_utc"
+                "  FROM at_the_line_claims c"
+                "  JOIN games g ON g.id = c.game_id"
+                "  JOIN venue_quotes q ON q.id = c.quote_id"
+                " ORDER BY c.id"):
+            if (row["id"], row["game_id"],
+                    row["created_utc"]) in IN_PLAY_CLAIMS_HELD_2026_09_07:
+                continue
+            start, unreadable = start_of(row)
+            where = (f"claim {row['id']} ({row['game_id']}, read "
+                     f"{row['fetched_utc']}, written {row['created_utc']})")
+            if unreadable:
+                faults.append(f"{where}: its game's start cannot be read ({unreadable})")
+            elif start is not None and not db.instant(row["fetched_utc"]) < start:
+                faults.append(
+                    f"{where} was read at or after its game's start, "
+                    f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')} (listed "
+                    f"{row['kickoff_utc']}, first seen under way "
+                    f"{row['under_way_utc'] or 'never'}): no read at or after "
+                    f"that instant is a claim")
+    return faults
+
+
+def check_no_close_or_claim_read_at_or_after_the_start(conn) -> None:
+    """Raise naming every close and claim on the record read at or after its
+    game's start as operator question 38 (A) defines it (gate step 2, on the
+    record's copy)."""
+    faults = reads_at_or_after_the_start_faults(conn)
+    if faults:
+        raise LawViolation(
+            "NO READ AT OR AFTER A GAME'S START IS A CLOSE OR A CLAIM (operator "
+            "question 38 (A), ruled 2026-10-06: \"A game's start is the earlier "
+            "of its listed start and the first poll that sees it truly under "
+            "way ... No read at or after that instant is a close or a claim\"):"
+            + _NL2 + _NL2.join(faults[:40])
+            + ("" if len(faults) <= 40 else f"{_NL2}... and {len(faults) - 40} more"))
+
+
+def _entries_on_the_slate(payload) -> list[tuple[str, int]]:
+    """Every place a slate payload draws one of `recommend.for_predictions`'
+    entries -- a Today card in a priced group, a recommendation line, a
+    combo's leg -- as (where, prediction id)."""
+    payload = payload or {}
+    today = payload.get("today") or {}
+    found: list[tuple[str, int]] = []
+    for group in ("clears", "below_floor", "watching"):
+        for card in today.get(group) or []:
+            if isinstance(card, dict) and card.get("prediction_id") is not None:
+                found.append((f"a Today card in {group}", card["prediction_id"]))
+    for line in ((payload.get("recommendations") or {}).get("lines")) or []:
+        if isinstance(line, dict) and line.get("prediction_id") is not None:
+            found.append(("a recommendation line", line["prediction_id"]))
+    combos = today.get("combos") or {}
+    for kind in ("cards", "graded"):
+        for card in combos.get(kind) or []:
+            for leg in (card or {}).get("legs") or []:
+                if isinstance(leg, dict) and leg.get("prediction_id") is not None:
+                    found.append((f"a combo's leg ({kind})", leg["prediction_id"]))
+    return found
+
+
+def not_still_upcoming_entry_faults(conn, payload, asked_at: str) -> list[str]:
+    """Every entry the slate draws (`_entries_on_the_slate`) on a game that
+    is not still upcoming at `asked_at` -- its status not 'scheduled', or
+    `asked_at` at or after its start as operator question 38 (A) defines it,
+    restated from the record -- naming where it is drawn, the game and why
+    (operator question 38, ruling 2: "recommend.for_predictions refuses any
+    game that is not still upcoming: in progress, final, postponed, or past
+    its start as defined in 1"). `asked_at` is a moment no later than the
+    slate was built, so a game that started while it was being built is
+    never named."""
+    from . import db
+
+    at = db.instant(asked_at)
+    faults: list[str] = []
+    seen = _under_way_of_g(conn)
+    for where, pid in _entries_on_the_slate(payload):
+        row = conn.execute(
+            "SELECT p.game_id, g.status, g.kickoff_utc,"
+            f"       {seen} AS under_way_utc"
+            "  FROM predictions p JOIN games g ON g.id = p.game_id"
+            " WHERE p.id = ?", (pid,)).fetchone()
+        if row is None:
+            continue
+        status = row["status"]
+        why = None
+        if status != "scheduled":
+            why = f"its game is {status!r}, not still to come"
+        else:
+            try:
+                start = _game_start_restated(row["kickoff_utc"], row["under_way_utc"])
+            except ValueError:
+                why = "its game's start cannot be read, so it is not known to be to come"
+            else:
+                if start is not None and not at < start:
+                    why = (f"its game's start, {start.strftime('%Y-%m-%dT%H:%M:%SZ')} "
+                           f"(listed {row['kickoff_utc']}, first seen under way "
+                           f"{row['under_way_utc'] or 'never'}), is not after "
+                           f"{asked_at}")
+        if why:
+            faults.append(f"{where} prices question {pid} on {row['game_id']}: {why}")
+    return faults
+
+
+def check_no_entry_for_a_game_not_still_upcoming(conn, payload,
+                                                 asked_at: str) -> None:
+    """Raise naming every entry a slate draws on a game that is not still
+    upcoming (gate step 2, every sport's slate, both forecasters, on the
+    record's copy)."""
+    faults = not_still_upcoming_entry_faults(conn, payload, asked_at)
+    if faults:
+        raise LawViolation(
+            "NOTHING IS PRICED ON A GAME THAT IS NOT STILL UPCOMING (operator "
+            "question 38, ruling 2 of 2026-10-06: \"recommend.for_predictions "
+            "refuses any game that is not still upcoming: in progress, final, "
+            "postponed, or past its start as defined in 1\"):"
+            + _NL2 + _NL2.join(faults[:40])
+            + ("" if len(faults) <= 40 else f"{_NL2}... and {len(faults) - 40} more"))
+
+
+# ---------------------------------------------------------------------------
 # A VENUE CONTRACT IS READ AT THE LINE IT SELLS (operator question 36 (i),
 # ruled 2026-09-30: "the writer -- read an away contract at +s (the stored
 # number as it is) from the release, with a planting that escapes on the
@@ -9628,20 +9864,52 @@ def check_the_at_the_line_record_is_never_pooled(conn) -> None:
 # since is the writer's fault, and named, never left out in silence.
 
 
+def _game_start_restated(listed: str | None, under_way: str | None):
+    """A game's start as operator question 38 (A) defines it (ruled
+    2026-10-06, second set; built 2026-10-07) -- the earlier of its listed
+    start and the instant the live poll first saw it truly under way, each
+    read as an instant -- worked out here from the two stored instants and
+    never through the door (`live.start_of`), so a reader that forgot the
+    second is seen. None where the record knows neither."""
+    from . import db
+
+    listed_at = db.instant(listed) if listed else None
+    seen_at = db.instant(under_way) if under_way else None
+    if listed_at is None or seen_at is None:
+        return listed_at if seen_at is None else seen_at
+    return min(listed_at, seen_at)
+
+
+def _under_way_of_g(conn) -> str:
+    """The instant a game was first seen truly under way, as a scalar
+    subquery on a `games` alias `g` -- read straight off its table by the
+    gate's own restatements (operator question 38 (A), 2026-10-07) -- or
+    NULL on a record that has no such table yet (read through a read-only
+    door, it cannot be migrated; every game on it starts at its listed
+    start)."""
+    keeps = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'live_first_under_way'").fetchone() is not None
+    return ("(SELECT u.under_way_utc FROM live_first_under_way u"
+            "  WHERE u.game_id = g.id)" if keeps else "NULL")
+
+
 def _claim_a_leg_is_priced_from(conn, prediction_id: int) -> int | None:
     """The claim `recommend.for_predictions` prices a question from: the
     latest written before its game's start, as instants, the id breaking a
-    tie -- worked out here in Python, not by the engine's SQL."""
+    tie -- worked out here in Python, not by the engine's SQL. The start is
+    the one operator question 38 (A) defines (2026-10-07), restated."""
     from . import db
 
     rows = conn.execute(
-        "SELECT c.id, c.created_utc, g.kickoff_utc FROM at_the_line_claims c"
+        "SELECT c.id, c.created_utc, g.kickoff_utc,"
+        f"       {_under_way_of_g(conn)} AS under_way_utc FROM at_the_line_claims c"
         "  JOIN games g ON g.id = c.game_id WHERE c.prediction_id = ?",
         (prediction_id,)).fetchall()
     best = None
     for row in rows:
         stamp = db.instant(row["created_utc"])
-        start = db.instant(row["kickoff_utc"]) if row["kickoff_utc"] else None
+        start = _game_start_restated(row["kickoff_utc"], row["under_way_utc"])
         if start is not None and not stamp < start:
             continue
         if best is None or (stamp, row["id"]) > best[0]:
@@ -14789,7 +15057,9 @@ def pick_contracts(conn, payload) -> dict:
     and its game, the side its words name against the claim's proposition,
     its own line from that proposition's view, the claim the page prices a
     row from (the latest written before the start) and the one a live
-    figure reads (the latest written), each with the line its number was
+    figure reads (the latest written; from 2026-10-07 the latest written
+    before the start too, the start as operator question 38 (A) defines
+    it), each with the line its number was
     read at and the line its contract sells, the latest opening ladder's
     contract at the question's own line and its main rung, and each standing
     recommendation's own claim (the taken rail's edge)."""
@@ -14822,10 +15092,12 @@ def pick_contracts(conn, payload) -> dict:
     ids.discard(None)
     out: dict = {}
     ladders: dict = {}
+    seen = _under_way_of_g(conn)
     for pid in sorted(ids):
         f = conn.execute(
             "SELECT p.id, p.market_type, p.subject, p.line_asked, p.model_side,"
-            "       p.game_id, g.home, g.away, g.kickoff_utc"
+            "       p.game_id, g.home, g.away, g.kickoff_utc,"
+            f"       {seen} AS under_way_utc"
             "  FROM predictions p JOIN games g ON g.id = p.game_id WHERE p.id = ?",
             (pid,)).fetchone()
         if f is None or f["market_type"] not in ("spread", "total"):
@@ -14859,9 +15131,13 @@ def pick_contracts(conn, payload) -> dict:
                 "across": (stored is None) != (sold is None)
                 or (stored is not None and abs(stored - sold) > 1e-9)})
         # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01), as
-        # the page's own claim window reads it -- never the stored text.
-        before = [c for c in claims if f["kickoff_utc"] is None
-                  or _db_instant(c["created_utc"]) < _db_instant(f["kickoff_utc"])]
+        # the page's own claim window reads it -- never the stored text. AND
+        # THE START OPERATOR QUESTION 38 (A) DEFINES (2026-10-07), restated:
+        # the earlier of the listed start and the first poll that saw the
+        # game truly under way.
+        start = _game_start_restated(f["kickoff_utc"], f["under_way_utc"])
+        before = [c for c in claims if start is None
+                  or _db_instant(c["created_utc"]) < start]
         key = (f["game_id"], f["market_type"])
         if key not in ladders:
             ladders[key] = conn.execute(
@@ -14905,7 +15181,12 @@ def pick_contracts(conn, payload) -> dict:
                     "subject_is_home": home_subject, "takes": takes,
                     "question_line": q_line,
                     "priced": before[-1] if before else None,
-                    "latest": claims[-1] if claims else None,
+                    # A LIVE FIGURE'S CLAIM IS THE LATEST WRITTEN BEFORE THE
+                    # START too from 2026-10-07 (operator question 38 (A): no
+                    # read at or after the start is a claim), as the page's
+                    # `views._pregame_claim` reads it now -- the latest
+                    # written at all until then.
+                    "latest": before[-1] if before else None,
                     "open": opened, "recs": taken}
     return out
 
@@ -16733,8 +17014,12 @@ _check_the_roster_scan_can_see()
 # a comparison.
 
 #: THE STORED STARTS: a game's listed start, and the UFC card's and bout's it
-#: is mirrored from.
-START_COLUMNS = frozenset({"kickoff_utc", "bout_utc", "event_utc"})
+#: is mirrored from -- and from 2026-10-07 the instant the live poll first saw
+#: a game truly under way (`live_first_under_way.under_way_utc`), the other
+#: half of a game's start as operator question 38 (A) defines it, so it too
+#: is compared only as an instant.
+START_COLUMNS = frozenset({"kickoff_utc", "bout_utc", "event_utc",
+                           "under_way_utc"})
 
 #: The names a start is held under in Python as stored text: the columns, a
 #: start under its own name, and a slate's first start. A name assigned from
@@ -17401,7 +17686,9 @@ def _check_the_start_scan_can_see() -> None:
     """Prove at import that the start scan sees each form of a text
     comparison of a start, and passes each instant one."""
     problems = []
-    s = max(START_COLUMNS)                # the games table's listed start
+    # the games table's listed start, named (it was `max(START_COLUMNS)`,
+    # which names another column once `under_way_utc` joined, 2026-10-07)
+    s = "kickoff_utc"
     for template, want in _START_FIXTURE_SQL:
         text = template.replace("{s}", s)
         got = [how for _i, how in _start_text_in_sql(_sql_tokens(text))]

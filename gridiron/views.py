@@ -1244,17 +1244,30 @@ def _at_the_line(conn: sqlite3.Connection, sport: str, ids: list[int],
     not say which of them to act on, and `audit.at_the_line_advice_faults`
     scans these words on every gate run.
     """
+    from . import live
     from .market import at_the_line as venue
 
     if not ids:
         return {}
     placeholders = ",".join("?" for _ in ids)
+    # THE LAST CLAIM WRITTEN BEFORE THE START (operator question 38 (A),
+    # ruled 2026-10-06, second set; built 2026-10-07: "No read at or after
+    # that instant is a close or a claim"). This took the last claim written
+    # whenever it was written, so a claim the first live run of the claim
+    # writer stored from reads taken in play (17 baseball claims of 7
+    # September, written two hours after their games' listed starts, before
+    # the writer refused an in-play read) stood beside its card as the
+    # venue's price; the sentence states a claim the at-the-line record
+    # could stand on, written before the game's start as ruling 1 defines it
+    # (`live.before_the_start`).
     rows = conn.execute(
         f"SELECT c.*, q.line AS quote_line, q.yes_side AS quote_side"
         f"  FROM at_the_line_claims c LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         f" WHERE c.prediction_id IN ({placeholders})"
         "   AND c.created_utc = (SELECT MAX(c2.created_utc) FROM at_the_line_claims c2"
-        "                        WHERE c2.prediction_id = c.prediction_id)",
+        "                         JOIN games g2 ON g2.id = c2.game_id"
+        "                        WHERE c2.prediction_id = c.prediction_id"
+        f"                          AND {live.before_the_start('c2.created_utc', 'g2', conn)})",
         ids).fetchall()
     if not rows:
         return {}
@@ -1930,6 +1943,16 @@ def _pregame_claim(conn, entry: dict, card: dict) -> dict | None:
         "SELECT name FROM sqlite_master WHERE type='table'")}
     if "at_the_line_claims" not in tables:
         return None
+    from . import live
+
+    # THE LATEST CLAIM WRITTEN BEFORE THE START (operator question 38 (A),
+    # ruled 2026-10-06, second set; built 2026-10-07: "No read at or after
+    # that instant is a close or a claim"). It was the latest written at
+    # all, which the claim guard was trusted to keep pregame; a game first
+    # seen truly under way before its listed start (ruling 1's start) and
+    # the 17 baseball claims of 7 September written from in-play reads
+    # before the guard existed are why it reads the start itself now, in
+    # its one SQL spelling (`live.before_the_start`).
     row = conn.execute(
         "SELECT c.id, c.line, c.model_prob, c.created_utc, p.sport, p.market_type,"
         "       p.predictor, g.home, q.line AS quote_line, q.yes_side AS quote_side"
@@ -1937,6 +1960,7 @@ def _pregame_claim(conn, entry: dict, card: dict) -> dict | None:
         "  JOIN games g ON g.id = p.game_id"
         "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
         " WHERE c.prediction_id = ?"
+        f"   AND {live.before_the_start('c.created_utc', 'g', conn)}"
         " ORDER BY c.created_utc DESC, c.id DESC LIMIT 1",
         (pid,)).fetchone()
     if row is None or row["model_prob"] is None:
@@ -2336,10 +2360,15 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
                               "a pregame figure")
         out["pregame_words"] = language.pregame_words(_pregame)
     if state == "final":
+        # NOT REACHED FROM THE PAGE FROM 2026-10-07 for a priced card
+        # (operator question 38, ruling 2: `recommend.for_predictions` gives
+        # no entry for a game that is not still upcoming, so a finished
+        # game's card is the settled group's, with no claim); kept, as the
+        # gate's checks still hold this shape, for a card handed an entry.
         # THE VERDICT OF THE CONTRACT THE CARD NAMES (step A's prover,
-        # 2026-09-30). A finished game's question is still priced
-        # (`recommend.for_predictions` skips a game in play, not a finished
-        # one), so its card in CLEARS or WATCHING names the claim's contract
+        # 2026-09-30). A finished game's question was still priced
+        # (`recommend.for_predictions` skipped a game in play, not a finished
+        # one), so its card in CLEARS or WATCHING named the claim's contract
         # and shows the claim's chance -- and said "the model had this at 65%
         # and it happened" of the QUESTION: its number and its outcome under
         # the contract's words. On the record, 12 finished cards (NFL week 3
@@ -2900,16 +2929,25 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
 
     median_price = statistics.median(prices) if prices else None
     fee_cents = None
-    if median_price is not None:
-        from .market import recommend as _recommend
+    from .market import recommend as _recommend
 
+    if median_price is not None:
         fee_cents = round(_recommend.fee(median_price) * 100, 1)
+    # WHICH OF THE SLATE'S GAMES ARE STILL TO COME (operator question 38,
+    # ruling 2, 2026-10-07): only those are priced now, so the strip's note
+    # says "no venue price yet" of them alone, and on a slate whose every
+    # game has started it says why nothing is priced -- the released words,
+    # "No venue price on this slate yet", were false there.
+    started = {r["prediction_id"] for r in _recommend.not_still_upcoming_among(
+        conn, [c["prediction_id"] for c in cards])} if conn is not None else set()
+    none_to_come = bool(cards) and len(started) == len(cards)
 
     # THE LIVE GROUP IS BUILT FROM THE CARDS, not from the priced entries.
-    # `recommend.for_predictions` calls `refuse_in_game` and drops a question
-    # whose game has started -- correctly, because nothing may be sized
-    # in-game -- so a card assembled from its output vanished the moment the
-    # first pitch was thrown instead of moving to Live.
+    # `recommend.for_predictions` drops a question whose game has started --
+    # correctly, because nothing may be sized in-game; from 2026-10-07 any
+    # game not still upcoming (operator question 38, ruling 2) -- so a card
+    # assembled from its output vanished the moment the first pitch was
+    # thrown instead of moving to Live.
     # THE SETTLED CARDS, for Results. Same card, third state: the loop
     # closed on the one that opened it.
     for card_row in cards:
@@ -2998,7 +3036,9 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         # sentence was on every row until this brief, which is how a page
         # teaches a reader that its rows are not worth reading.
         "no_price_words": (None if median_price is not None
-                           else language.first_price_words(_tasks.NEAR_START_HOURS)),
+                           else language.slate_started_words() if none_to_come
+                           else language.first_price_words(
+                               _tasks.NEAR_START_HOURS, some_started=bool(started))),
         "clears_heading": language.clears_the_bar_heading(len(clears),
                                                            len(below_floor)),
         "watching_heading": language.watching_heading(len(watching)),
@@ -3007,7 +3047,10 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         # THE CHIP LABELS, from here rather than from the renderer, for the
         # same reason every other visible string is.
         "labels": language.price_row_labels(),
-        "fee_line": language.fee_arithmetic_line(median_price, fee_cents),
+        # NO FEE LINE ON A SLATE WHOSE EVERY GAME HAS STARTED (2026-10-07):
+        # the note above says why nothing is priced, once.
+        "fee_line": (None if median_price is None and none_to_come
+                     else language.fee_arithmetic_line(median_price, fee_cents)),
         "taken_line": language.taken_line(len(
             [c for c in clears + below_floor + watching if c["taken"]])),
         "taken_today": taken_today(conn, cards),
@@ -3060,11 +3103,17 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
         # (`recommend.close_of`) -- names the line of the words, through the
         # one door; an edge worked out across two contracts is not stated.
         # BEFORE THE START AS INSTANTS (operator question 35, 2026-10-01):
-        # `julianday()` on both sides, never the stored text.
+        # `julianday()` on both sides, never the stored text -- and from
+        # 2026-10-07 the start operator question 38 (A) defines, the earlier
+        # of the listed start and the first poll that saw the game truly
+        # under way, in its one SQL spelling (`live.before_the_start`), as
+        # `recommend.pricing_claim` reads it.
         # AND THE SIDE IT BOUGHT AND ITS NUMBER (operator question 37, ruled
         # 2026-10-05): the rail names the contract the recommendation bought,
         # and where that is the other side of the question's words, the
         # model's own side and number beside it.
+        from . import live as _live
+
         edge = conn.execute(
             "SELECT r.edge_cents, r.side, r.fair_value, r.calibrated_fair_value, r.price,"
             "       c.id AS claim_id, c.line AS claim_line,"
@@ -3074,8 +3123,7 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
             "      SELECT c2.id FROM at_the_line_claims c2"
             "       WHERE c2.prediction_id = r.prediction_id"
             "         AND c2.created_utc <= r.created_utc"
-            "         AND (g.kickoff_utc IS NULL"
-            "              OR julianday(c2.created_utc) < julianday(g.kickoff_utc))"
+            f"         AND {_live.before_the_start('c2.created_utc', 'g', conn)}"
             "       ORDER BY c2.created_utc DESC, c2.id DESC LIMIT 1)"
             "  LEFT JOIN venue_quotes q ON q.id = c.quote_id"
             " WHERE r.prediction_id = ? AND r.created_utc <= ?"

@@ -1078,6 +1078,49 @@ def _no_holds(monkeypatch):
     monkeypatch.setattr(config, "HELD_MARKETS", {})
 
 
+#: The real clock, as `gridiron.db` defines it and every market module binds it
+#: (`from ..db import utcnow`).
+_REAL_UTCNOW = db.utcnow
+
+
+def _market_clocks_put_back() -> list[str]:
+    """Put the real clock back on every market module in `sys.modules` that
+    holds another, and name each one put back.
+
+    NO CLOCK LEFT BEHIND (Q38's prover, 2026-10-07). A blind window drops the
+    market package from `sys.modules`, and the next import builds it afresh,
+    binding `utcnow` to whatever `db.utcnow` is at that moment. A test that
+    holds `db.utcnow` (monkeypatch) and runs a pass across a blind window --
+    `test_starts_are_instants.py`'s final-pass tests did, at
+    2026-09-05T18:59:59Z -- left the fresh market modules on its held clock
+    when monkeypatch put `db.utcnow` back, for every test after it in the
+    session. From question 38 the engine and the page ask that clock whether
+    a game is still to come, so `test_three_states.py`'s two page tests
+    passed in the whole suite only because they ran on that leftover clock (a
+    month before their game) and failed alone at the real one: measured by
+    running the whole suite with the clock put back before each test."""
+    import sys
+
+    put_back = []
+    for name, module in list(sys.modules.items()):
+        if not (name == "gridiron.market" or name.startswith("gridiron.market.")):
+            continue
+        held = getattr(module, "utcnow", _REAL_UTCNOW)
+        if held is not _REAL_UTCNOW:
+            module.utcnow = _REAL_UTCNOW
+            put_back.append(name)
+    return put_back
+
+
+@pytest.fixture(autouse=True)
+def _no_market_clock_left_behind():
+    """After every test, no market module keeps a clock the test held
+    (`_market_clocks_put_back`). Torn down before monkeypatch undoes its own
+    settings, which then put back what it saved on the modules it set."""
+    yield
+    _market_clocks_put_back()
+
+
 @pytest.fixture(autouse=True)
 def _no_network(request, monkeypatch):
     """Shut the network for every test that has not declared it needs it."""

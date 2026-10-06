@@ -112,8 +112,12 @@ def test_the_append_only_tables_are_the_ones_sqlite_holds_a_rule_on(tmp_path):
     # rule and one with an update rule only -- and from 2026-09-29 the
     # "fitted below its gate" labels (operator question 23), append-only
     # from the day they were declared: 23 -- and the correction activations
-    # (operator question 32, the same day), append-only likewise: 24.
-    assert len(protected) == 24
+    # (operator question 32, the same day), append-only likewise: 24 -- and
+    # the first poll that saw each game truly under way (operator question
+    # 38 (A), 2026-10-07), append-only from the day it was declared: 25.
+    assert len(protected) == 25
+    assert protected["live_first_under_way"] == {
+        "live_first_under_way_no_delete", "live_first_under_way_no_update"}
     assert protected["correction_gate_labels"] == {
         "correction_gate_labels_no_delete", "correction_gate_labels_no_update"}
     assert protected["correction_activations"] == {

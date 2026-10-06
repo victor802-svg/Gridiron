@@ -84,6 +84,26 @@ def _claim(conn, pid, *, model_prob, venue_implied, game="g0"):
     conn.commit()
 
 
+@pytest.fixture(autouse=True)
+def _asked_before_the_games(monkeypatch):
+    """THE PAGE IS ASKED BEFORE THIS WORLD'S GAMES (operator question 38,
+    ruling 2, 2026-10-06; 2026-10-07): `recommend.for_predictions` gives no
+    entry for a game that is not still upcoming, so these Today cards --
+    every one about a game listed for 9 September -- are drawn as the page
+    drew them on the 8th, after their claims and before the games. Until the
+    ruling the page priced them at the real clock, a month after they were
+    played, which is the finished game's pick the ruling refuses.
+
+    ON THE MODULE AS IT IS NOW TOO: a blind window earlier in the session
+    drops the market package from `sys.modules`, so the page imports a
+    fresh `recommend` while this file still holds the one it imported (the
+    precedent of test_two_contract_claims.py's `_now`)."""
+    import importlib
+
+    for module in {recommend, importlib.import_module("gridiron.market.recommend")}:
+        monkeypatch.setattr(module, "utcnow", lambda: "2026-09-08T00:00:00Z")
+
+
 @pytest.fixture()
 def covered(monkeypatch):
     """Let this market be priceable, so the CARD can be tested.

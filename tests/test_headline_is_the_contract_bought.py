@@ -208,22 +208,53 @@ def test_a_watched_card_buys_nothing_and_keeps_its_question(tmp_path):
     conn.close()
 
 
-def test_a_finished_cards_figure_and_verdict_are_the_contract_bought(tmp_path):
-    """A finished game's card is still priced (step A's prover), so its card
-    in CLEARS headlines the contract bought too: New Orleans -2.5's 68% and
-    its claim's verdict (NO 27, ATL 20: New Orleans covered -2.5). The
-    board's finished row is the forecast's own verdict, the question's, and
-    carries no own side."""
+def _released_still_upcoming(status, kickoff_utc, under_way_utc, now):
+    """`recommend.not_still_upcoming` as released before operator question
+    38's ruling 2 (2026-10-06): only a game said to be in play was refused,
+    so a finished game's question was priced."""
+    return (recommend.BEING_PLAYED_WHY
+            if (status or "").lower() in recommend.IN_PLAY_STATUSES else None)
+
+
+def test_a_finished_cards_figure_and_verdict_are_the_contract_bought(tmp_path,
+                                                                     monkeypatch):
+    """A FINISHED GAME HAS NO PRICED CARD (operator question 38, ruling 2,
+    2026-10-06; 2026-10-07: "recommend.for_predictions refuses any game that
+    is not still upcoming"): rec 117's shape, finished NO 27 ATL 20, is in no
+    priced group of Today, its settled card is the question's own, and the
+    board's finished row is the forecast's own verdict with no own side.
+
+    AS RELEASED BEFORE THAT RULING a finished game's card was still priced
+    (step A's prover), and Q37 made its card in CLEARS headline the contract
+    bought too -- New Orleans -2.5's 68% and its claim's verdict (New
+    Orleans covered -2.5); with the released door put back, that shape is
+    still what the checks hold."""
     conn, pid, sport, week = _rec117(tmp_path / "final.db", final=(27, 20))
     payload = views.week(conn, sport, 2026, week)
-    card = _card(payload, pid, groups=("clears", "below_floor"))
-    assert card["state"] == "final" and card["question"] == "New Orleans covers -2.5"
-    assert card["settled_words"] == language.settled_outcome_words(
-        0.6848, 1, "New Orleans covers -2.5")
+    assert not [c for g in ("clears", "below_floor", "watching")
+                for c in payload["today"][g] if c["prediction_id"] == pid]
+    assert not [x for x in payload["recommendations"]["lines"]
+                if x["prediction_id"] == pid]
+    settled = _card(payload, pid, groups=("settled",))
+    assert "own_side_words" not in settled and not settled.get("buys_the_other_side")
     for kind, block, game in _blocks(payload, pid):
         assert block["state"] == "final" and "own_side_words" not in block
         assert block["line_words"] == "Atlanta +9.5"
     assert _every_check(conn, payload) == []
+    # AS RELEASED: the finished game priced, and its card headlining the
+    # contract bought -- the door put back on the market module as it is
+    # now (a blind window earlier in the session drops the package, and the
+    # page imports it afresh: test_two_contract_claims.py's `_now`)
+    import importlib
+
+    monkeypatch.setattr(importlib.import_module("gridiron.market.recommend"),
+                        "not_still_upcoming", _released_still_upcoming)
+    released = views.week(conn, sport, 2026, week)
+    card = _card(released, pid, groups=("clears", "below_floor"))
+    assert card["state"] == "final" and card["question"] == "New Orleans covers -2.5"
+    assert card["settled_words"] == language.settled_outcome_words(
+        0.6848, 1, "New Orleans covers -2.5")
+    assert _every_check(conn, released) == []
     conn.close()
 
 

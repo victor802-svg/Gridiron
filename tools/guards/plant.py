@@ -3796,8 +3796,7 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
 
         first = pick()
         for label, got in (("the forecast", first),
-                           ("the reasoning pass's forecast", pick(lpid)),
-                           ("the finished game's forecast", pick(fpid))):
+                           ("the reasoning pass's forecast", pick(lpid))):
             if got is None or got["side"] != "no" \
                     or abs((got["edge_cents"] or 0) - 3.5) > 0.05:
                 return escaped(
@@ -3805,6 +3804,15 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
                     f"expected {label} on the no side at +3.5c, got "
                     f"{got and got['side']} at {got and got['edge_cents']}. "
                     f"Fix that before trusting this planting")
+        # A FINISHED GAME IS NEVER PRICED (operator question 38, ruling 2,
+        # 2026-10-06; 2026-10-07): "recommend.for_predictions refuses any
+        # game that is not still upcoming", so there is no pick of it to
+        # re-derive at all -- stronger than what this planting held until
+        # then, a finished game's pick corrected by its claim's own instant.
+        if pick(fpid) is not None:
+            return escaped("a finished game's question was priced: "
+                           f"{pick(fpid)!r}; nothing on a game that is not "
+                           "still upcoming is priced (question 38, ruling 2)")
 
         fit = _c.Platt(slope=0.449, intercept=-0.270, n_train=106)
         _c.record_fit(conn, sport="mlb", market_type="moneyline",
@@ -3874,15 +3882,14 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
                 f"is its own category's -- sport, market type and forecaster "
                 f"-- and the reasoning pass has none here")
         over = pick(fpid)
-        if over is None or over["side"] != "no" \
-                or over.get("correction_version") is not None:
+        if over is not None:
             return escaped(
-                f"a finished game's pick was re-derived by a correction that "
+                f"a finished game's pick was priced again once a correction "
                 f"activated after its claim was written and after the game "
-                f"was played: {over and over['side']} at "
-                f"{over and over['edge_cents']}c (version "
-                f"{over and over.get('correction_version')}). Re-derive "
-                f"nothing retroactively (LAW 3)")
+                f"was played: {over['side']} at {over['edge_cents']}c "
+                f"(version {over.get('correction_version')}). Re-derive "
+                f"nothing retroactively (LAW 3), and price nothing on a game "
+                f"that is not still upcoming (question 38, ruling 2)")
 
         _rec.record_for(conn, [pid])
         row = conn.execute("SELECT * FROM recommendations").fetchone()
@@ -3912,8 +3919,9 @@ def plant_a_correction_that_does_not_reach_the_pick() -> Result:
                       f"active: still no; active v2: yes at "
                       f"+{flipped['edge_cents']}c from {flipped['fair_value']}, "
                       f"and with the gate met sized {gated['size']['units']} "
-                      f"units; the reasoning pass's pick and "
-                      f"the finished game's stay no, uncorrected; "
+                      f"units; the reasoning pass's pick "
+                      f"stays no, uncorrected, and the finished game's is "
+                      f"not priced at all; "
                       f"written with fair value {row['fair_value']}, corrected "
                       f"{row['calibrated_fair_value']}, version "
                       f"{row['correction_version']}; the rewrite refused: "
@@ -11243,9 +11251,24 @@ def _plant_the_questions_own_numbers(_views, guard, violation, missed, caught) -
 
     from gridiron import shortlist as _shortlist
 
+    from gridiron.market import recommend as _rec_door
+
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         conn, pid, sport, season, week = _line_world(Path(tmp) / "final111.db", "final111")
-        shipped = _views.week(conn, sport, season, week)
+        # A FINISHED GAME'S PRICED CARD IS NO LONGER DRAWN (operator question
+        # 38, ruling 2, 2026-10-07: `for_predictions` gives no entry for a
+        # game that is not still upcoming). The shape the check holds is
+        # built with the engine's door put back to the released rule, so the
+        # check is still proved on it; `plant_a_finished_games_pick_priced`
+        # holds the door itself.
+        door = getattr(_rec_door, "not_still_upcoming", None)
+        if door is not None:
+            _rec_door.not_still_upcoming = _q38_released_door
+        try:
+            shipped = _views.week(conn, sport, season, week)
+        finally:
+            if door is not None:
+                _rec_door.not_still_upcoming = door
         card = next((c for g in ("clears", "below_floor", "watching")
                      for c in shipped["today"].get(g) or [] if c.get("prediction_id") == pid),
                     None)
@@ -11605,7 +11628,9 @@ def plant_a_two_contract_claim_in_the_closing_line() -> Result:
                 missed.append("the closing line's recounts refuse the shipped line")
             real_rule = _recommend._priced_on_one_contract
             real_guard = calibration.refuse_recommendations_across_two_contracts
-            _recommend._priced_on_one_contract = lambda alias: ""
+            # (it takes the connection too from 2026-10-07: question 38's
+            # start reads whether the record keeps the first-under-way table)
+            _recommend._priced_on_one_contract = lambda *_args: ""
             try:
                 try:
                     calibration.clv_report(conn, sport="nfl")
@@ -17747,6 +17772,11 @@ def plant_both_sides_of_one_total_recommended() -> Result:
     # kill criterion reads each forecaster's line); the stand-in takes it.
     _coverage.priceable = lambda conn, sport, market, **_: {
         "priceable": True, "market": market, "why": "covered, in this planting"}
+    # THE PASS RAN AT 22:13:03Z, twenty-two minutes before the game (operator
+    # question 38, ruling 2, 2026-10-07: nothing on a game that is not still
+    # upcoming is priced, so the pass is asked at the clock it ran at, held).
+    saved_clock = _rec.utcnow
+    _rec.utcnow = lambda: "2026-09-21T22:13:03Z"
     try:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             # 1. THE PASS AS IT RAN.
@@ -17847,6 +17877,7 @@ def plant_both_sides_of_one_total_recommended() -> Result:
                 conn.close()
     finally:
         _coverage.priceable = saved
+        _rec.utcnow = saved_clock
     if faults:
         return Result(law, what, guard, False, "NOT CAUGHT - " + "; ".join(faults))
     return Result(law, what, guard, True,
@@ -20703,6 +20734,525 @@ def plant_an_unreadable_start_that_stops_the_near_start_run() -> Result:
                   f"on a start nobody can read were closed and forecasts "
                   f"{guessed_claims} claimed"
                   + (f"; the pass stopped: {stopped}" if stopped else ""))
+
+
+# ---------------------------------------------------------------------------
+# A GAME'S START IS THE EARLIER OF ITS LISTED START AND THE FIRST POLL THAT
+# SAW IT TRULY UNDER WAY; NOTHING IS PRICED ON A GAME THAT IS NOT STILL
+# UPCOMING (operator question 38 (A) and its two rulings, 2026-10-06, second
+# set, docs/briefs/2026-10-06-rulings-second.md; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# "1. A game's start is the earlier of its listed start and the first poll
+# that sees it truly under way (a score or period recorded; MLB's warm-up
+# "Live" before the listed start does not count). No read at or after that
+# instant is a close or a claim. 2. recommend.for_predictions refuses any
+# game that is not still upcoming: in progress, final, postponed, or past its
+# start as defined in 1. Planting: a finished game's pick priced; an in-play
+# read used as a close." Two plantings, as ruled. Each holds every clock it
+# reads, drives the shipped live poll from a baseball feed payload shaped as
+# the record's cached ones are (an inning's runs recorded), and escapes on
+# c0fa561 -- the release, whose start is the listed one and whose
+# `for_predictions` refused only a game marked 'in' -- and is caught here.
+
+LAW_Q38 = ("NO READ AT OR AFTER A GAME'S START IS A CLOSE OR A CLAIM, AND NOTHING "
+           "IS PRICED ON A GAME THAT IS NOT STILL UPCOMING")
+
+
+def _q38_feed(game_pk: int, listed: str) -> dict:
+    """A statsapi schedule payload, hydrated with the linescore, saying the
+    game is in progress with the first inning's runs recorded -- the shape
+    the record's cached feeds give a game truly under way (measured
+    2026-10-07)."""
+    return {"dates": [{"games": [{
+        "gamePk": game_pk, "gameDate": listed,
+        "status": {"abstractGameState": "Live", "detailedState": "In Progress",
+                   "codedGameState": "I", "statusCode": "I"},
+        "linescore": {
+            "currentInning": 1, "currentInningOrdinal": "1st",
+            "inningHalf": "Bottom", "inningState": "Bottom", "outs": 1,
+            "innings": [{"num": 1, "ordinalNum": "1st",
+                         "home": {"runs": 0, "hits": 0, "errors": 0},
+                         "away": {"runs": 1, "hits": 2, "errors": 0}}],
+            "teams": {"home": {"runs": 0}, "away": {"runs": 1}}}}]}]}
+
+
+def _q38_polled(conn, game_id: str, listed: str, at: str) -> None:
+    """The shipped live poll, run at the held instant `at` on the feed
+    above; its own clock held too, so the instant it stamps is `at`."""
+    import importlib
+
+    live = importlib.import_module("gridiron.live")
+    saved = live.utcnow
+    live.utcnow = lambda: at
+    try:
+        live.poll(conn, now=datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(
+                      tzinfo=timezone.utc),
+                  fetcher=lambda conn_, sport, day: live._read_mlb(
+                      _q38_feed(int(game_id.split("_")[1]), listed)))
+    finally:
+        live.utcnow = saved
+
+
+def _q38_polled_day(conn, games: list[tuple[str, str]], at: str) -> None:
+    """The shipped live poll at the held instant `at` on ONE DAY'S payload
+    holding every game named, each in progress with the first inning's runs
+    recorded -- the poll's one request for a day returns every game of it,
+    those outside its window too (Q38's prover, 2026-10-07)."""
+    import importlib
+
+    live = importlib.import_module("gridiron.live")
+    day = {"dates": [{"games": [
+        g for game_id, listed in games
+        for g in _q38_feed(int(game_id.split("_")[1]), listed)["dates"][0]["games"]]}]}
+    saved = live.utcnow
+    live.utcnow = lambda: at
+    try:
+        live.poll(conn, now=datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(
+                      tzinfo=timezone.utc),
+                  fetcher=lambda conn_, sport, day_: live._read_mlb(day))
+    finally:
+        live.utcnow = saved
+
+
+def _q38_released_door(status, kickoff_utc, under_way_utc, now):
+    """`recommend.not_still_upcoming` put back to the released rule: only a
+    game marked in play refused, so a finished one, one still listed past
+    its start, and one the poll saw under way before its listed start are
+    priced."""
+    from gridiron.market import recommend as _rec
+
+    return (_rec.BEING_PLAYED_WHY
+            if (status or "").lower() in _rec.IN_PLAY_STATUSES else None)
+
+
+def plant_a_finished_games_pick_priced() -> Result:
+    """Price a finished game's pick -- and one still listed as to come past
+    its start, and one the live poll saw truly under way before its listed
+    start (operator question 38, ruling 2: "recommend.for_predictions refuses
+    any game that is not still upcoming: in progress, final, postponed, or
+    past its start as defined in 1. Planting: a finished game's pick
+    priced").
+
+    THE WORLD, held at 20:05:00Z on 27 September: four baseball moneylines,
+    each shortlisted and claimed before its game at 46c against the model's
+    60% -- a pick that clears the bar -- on a game FINISHED (listed 17:10, 3
+    to 2), one still 'scheduled' past its listed 18:10 (postponed, or a
+    stale listing: the record cannot tell), one listed for 20:10 that the
+    shipped live poll saw in progress at 20:01 (the first inning's runs
+    recorded) and that a loader's refresh then set back to 'scheduled' (the
+    baseball loader writes 'scheduled' until a game is final), and one listed
+    for the next day -- the one game still to come.
+
+    AND, FROM Q38'S PROVER (2026-10-07), A FIFTH: one listed for 21:30 that
+    the same poll's day payload shows in progress at 20:01, half an hour
+    before its own window opens (the poll's request is the whole day's
+    scoreboard; the change as first built looked past every game outside its
+    window, so this one was priced as still to come) -- and the day strip's
+    note on the same slate read at 02:00 the next day, when none of its games
+    is still to come and one is still listed as to come past its start
+    (postponed, or a stale listing: it may never have started).
+
+    CAUGHT only if: the engine gives an entry for the game still to come and
+    none for the other four; the writer writes a recommendation for it alone
+    and names the other four as not still upcoming; the slate check passes
+    the page as built and, with the engine's door put back to the released
+    rule (only 'in' refused), names each of the four on the page; the gate's
+    step 2 makes the call; and the strip says why nothing is priced in words
+    true of a game listed past its start -- never that every game has
+    started.
+
+    AS RELEASED (c0fa561): the engine priced all five -- a finished game's
+    pick with its side, price, edge and size -- the writer wrote five, there
+    was no check, and the strip said nothing of why. AS FIRST BUILT: the
+    fifth was priced and written, and the strip said "Every game on this
+    slate has started" of a slate holding a game listed past its start.
+    """
+    import tempfile
+
+    from gridiron import db as _db, shortlist as _shortlist, views as _views
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+    from gridiron.priced import coverage as _coverage
+
+    what = "price a finished game's pick"
+    guard = ("market.recommend.not_still_upcoming in for_predictions; "
+             "audit.check_no_entry_for_a_game_not_still_upcoming (gate step 2)")
+    now = "2026-09-27T20:05:00Z"
+    games = (("mlb_990381", "2026-09-27T17:10:00Z", "final"),
+             ("mlb_990382", "2026-09-27T18:10:00Z", "scheduled"),
+             ("mlb_990383", "2026-09-27T20:10:00Z", "scheduled"),
+             ("mlb_990384", "2026-09-28T01:10:00Z", "scheduled"),
+             ("mlb_990385", "2026-09-27T21:30:00Z", "scheduled"))
+    missed: list[str] = []
+    saved_cover, saved_clock = _coverage.priceable, _rec.utcnow
+    saved_door = getattr(_rec, "not_still_upcoming", None)
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    ids: dict[str, int] = {}
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "q38.db")
+        try:
+            _atl.ensure_read_kind(conn)
+            for n, (gid, listed, status) in enumerate(games):
+                final = status == "final"
+                conn.execute(
+                    "INSERT INTO games (id, sport, season, week, game_type, home,"
+                    " away, kickoff_utc, status, league_date, home_score,"
+                    " away_score) VALUES (?, 'mlb', 2026, 1, 'R', ?, ?, ?, ?,"
+                    " '2026-09-27', ?, ?)",
+                    (gid, f"H{n}", f"A{n}", listed, status,
+                     3 if final else None, 2 if final else None))
+                conn.execute(
+                    "INSERT INTO predictions (created_utc, sport, game_id,"
+                    " market_type, subject, line_asked, model_prob, model_side,"
+                    " predictor, pass_kind, factor_set_version, factors_json,"
+                    " reasoning) VALUES ('2026-09-27T09:00:00Z', 'mlb', ?,"
+                    " 'moneyline', ?, NULL, 0.6, 'win', 'statistical', 'final',"
+                    " 'fs2', '{\"coverage\": 1.0}', 'planted')", (gid, f"H{n}"))
+                pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+                conn.execute(
+                    "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+                    " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+                    " last_price, volume, fetched_utc, read_kind) VALUES"
+                    " ('kalshi', ?, 'E', 'mlb', ?, 'moneyline', 'home_win', NULL,"
+                    " 'home', 0.45, 0.47, NULL, 900, '2026-09-27T10:00:00Z',"
+                    " 'near_start')", (f"T{n}", gid))
+                quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+                conn.execute(
+                    "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+                    " sport, game_id, market, quantity, line, side, shape,"
+                    " dist_mean, dist_sd, model_prob, venue_price, venue_implied,"
+                    " price_basis, created_utc) VALUES (?, ?, 'kalshi', 'mlb', ?,"
+                    " 'moneyline', 'home_win', NULL, 'home', 'line_less', NULL,"
+                    " NULL, 0.6, 0.46, 0.46, 'mid', '2026-09-27T10:01:00Z')",
+                    (pid, quote, gid))
+                ids[gid] = pid
+            conn.commit()
+            _shortlist.rank_rows(conn, list(ids.values()))
+            # THE POLL SEES mlb_990383 IN PROGRESS AT 20:01, nine minutes
+            # before its listed start; then the loader's refresh says
+            # 'scheduled' again, as the baseball loader's upsert does. ITS
+            # DAY PAYLOAD (Q38's prover, 2026-10-07) also shows mlb_990385,
+            # listed for 21:30, in progress -- outside the poll's window.
+            _q38_polled_day(conn, [("mlb_990383", "2026-09-27T20:10:00Z"),
+                                   ("mlb_990385", "2026-09-27T21:30:00Z")],
+                            "2026-09-27T20:01:00Z")
+            conn.execute("UPDATE games SET status = 'scheduled', home_score = NULL,"
+                         " away_score = NULL WHERE id = 'mlb_990383'")
+            conn.commit()
+            _rec.utcnow = lambda: now
+            up = ids["mlb_990384"]
+            not_up = [g for g, _, _ in games if g != "mlb_990384"]
+            others = [ids[g] for g in not_up]
+            priced = {e["prediction_id"] for e in _rec.for_predictions(
+                conn, list(ids.values()))}
+            if priced != {up}:
+                missed.append(
+                    f"the engine priced {sorted(priced)} where only {up}, the "
+                    f"game still to come, may be priced (finished {others[0]}, "
+                    f"listed past its start {others[1]}, seen under way before "
+                    f"its listed start {others[2]}, seen under way in the "
+                    f"poll's day payload before its window {others[3]})")
+            wrote = _rec.record_for(conn, list(ids.values()))
+            written = {r[0] for r in conn.execute(
+                "SELECT prediction_id FROM recommendations")}
+            named = {r["prediction_id"] for r in
+                     wrote.get("not_still_upcoming_named") or []}
+            if written != {up} or named != set(others):
+                missed.append(f"the writer wrote {sorted(written)} and named "
+                              f"{sorted(named)} as not still upcoming")
+            check = getattr(audit, "check_no_entry_for_a_game_not_still_upcoming",
+                            None)
+            if check is None or saved_door is None:
+                missed.append("the gate has no check that nothing is priced on a "
+                              "game that is not still upcoming")
+            else:
+                try:
+                    check(conn, _views.week(conn, "mlb", 2026, 1), now)
+                except audit.LawViolation as exc:
+                    missed.append(f"the slate check named the honest page: {exc}")
+                _rec.not_still_upcoming = _q38_released_door
+                planted = _views.week(conn, "mlb", 2026, 1)
+                faults = audit.not_still_upcoming_entry_faults(conn, planted, now)
+                for gid in not_up:
+                    if not any(f" on {gid}:" in f for f in faults):
+                        missed.append(f"the released door's entry on {gid} "
+                                      f"passed the slate check: {faults}")
+                try:
+                    check(conn, planted, now)
+                    missed.append("the gate's check raised nothing on the "
+                                  "released door's page")
+                except audit.LawViolation:
+                    pass
+                if saved_door is not None:
+                    _rec.not_still_upcoming = saved_door
+            if not _step_2_calls("check_no_entry_for_a_game_not_still_upcoming"):
+                missed.append("the gate's step 2 does not make the call")
+            # A ROW DRAWN AS TO COME, PAST ITS START, SAYS WHY IT HAS NO PRICE
+            # (Q38's prover, 2026-10-07): mlb_990382 is still listed
+            # 'scheduled' past its 18:10 start and was priced that morning;
+            # as first built its slot said "venue has not listed this yet".
+            from gridiron import language as _language
+
+            rows = {g.get("game_id"): g for g in
+                    ((_views.week(conn, "mlb", 2026, 1).get("board") or {})
+                     .get("games") or [])}
+            slot = ((rows.get("mlb_990382") or {}).get("pick") or {})
+            words = getattr(_language, "past_its_start_price_words", None)
+            if slot.get("price") is not None or words is None \
+                    or slot.get("price_words") != words():
+                missed.append(f"the row of mlb_990382, drawn as to come past its "
+                              f"start, priced {slot.get('price')!r} and said "
+                              f"{slot.get('price_words')!r}")
+            # THE STRIP'S WORDS ARE TRUE OF THE SLATE (Q38's prover,
+            # 2026-10-07): read at 02:00 the next day none of the five is
+            # still to come, and mlb_990382 and mlb_990384 are still listed
+            # as to come past their starts -- postponed, cancelled or a stale
+            # listing, which may never have started.
+            _rec.utcnow = lambda: "2026-09-28T02:00:00Z"
+            note = (_views.week(conn, "mlb", 2026, 1).get("today") or {}).get(
+                "no_price_words")
+            if not note or "started" in note or "past its listed start" not in note:
+                missed.append(f"on a slate none of whose games is still to come, "
+                              f"two of them listed past their starts, the strip "
+                              f"said {note!r}")
+        finally:
+            _coverage.priceable, _rec.utcnow = saved_cover, saved_clock
+            if saved_door is not None:
+                _rec.not_still_upcoming = saved_door
+            conn.close()
+    if missed:
+        return Result(LAW_Q38, what, guard, False, "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_Q38, what, guard, True,
+                  "only the game still to come was priced and recommended; the "
+                  "finished game, the one listed past its start, the one seen "
+                  "under way before its listed start and the one the poll's "
+                  "day payload showed under way before its window were named, "
+                  "the released door's page was named on each by the gate's "
+                  "check, and the strip said every game was under way, over or "
+                  "past its listed start")
+
+
+def plant_an_in_play_read_used_as_a_close() -> Result:
+    """Close a recommendation on a read taken while its game was being played
+    -- and claim that read -- because the game began before its listed start
+    (operator question 38 (A): "A game's start is the earlier of its listed
+    start and the first poll that sees it truly under way ... No read at or
+    after that instant is a close or a claim. ... Planting: ... an in-play
+    read used as a close").
+
+    THE WORLD, the item-1 plantings' own (`_close_window_world`, held
+    firings): a baseball moneyline listed for 19:10 on 27 September, priced
+    the day before at 46c; the near-start pass fires at 18:35:01 (the venue
+    at 50c); the shipped live poll sees the game in progress at 19:02:00 --
+    eight minutes before its listed start, the first inning's runs recorded;
+    the pass fires again at 19:05:01, when the venue (pricing off the game
+    being played) answers 88c; and at 19:35:01, when the closer runs.
+
+    CAUGHT only if: no game starting within the window is counted at 19:05:01
+    and the pass reads nothing then; no claim stands on a read at or after
+    19:02; the close is the 18:35:01 read (50c), 27.0 minutes before the
+    game's start; the record check passes that record -- and, with the one
+    door put back to the listed start (`live.start_of`), the same timeline
+    claims the 88c read and closes on it, and the record check names both;
+    and the gate's step 2 makes the call.
+
+    AS RELEASED (c0fa561): the game was read until 19:10 whatever the poll
+    saw, the 88c read was claimed and was the close (+42c of "closing-line
+    value" from a game already under way), and there was no check.
+
+    AND, FROM Q38'S PROVER (2026-10-07), THE SAME GAME LISTED FOR 19:45: the
+    poll's 19:02 request -- one day's scoreboard, its window opened by
+    another game listed for 19:00 -- shows it in progress forty-three
+    minutes before its listed start and thirty-three before its own window
+    opens. CAUGHT only if the poll writes its instant at 19:02 and, as
+    above, nothing is read or claimed after it and the close is the 18:35:01
+    read, 27.0 minutes before its start. AS RELEASED and AS FIRST BUILT the
+    poll looked past it (it was outside the window), so it was read at
+    19:05:01, the 88c in-play read claimed, and the close at 19:50:01 was
+    that read, +42c -- and no check on the record can see it, since the
+    record held no instant for it.
+    """
+    import tempfile
+
+    from gridiron import db as _db, tasks as _tasks
+    from gridiron.market import at_the_line as _atl
+
+    what = "use an in-play read as a close"
+    guard = ("live.start_of in the near-start selection, the claim writer and "
+             "the closer; audit.check_no_close_or_claim_read_at_or_after_the_start "
+             "(gate step 2)")
+    listed, game = "2026-09-27T19:10:00Z", "mlb_990380"
+    missed: list[str] = []
+
+    def timeline(conn):
+        """The firings and the poll, in order; what the pass did at 19:05."""
+        _atl.ensure_read_kind(conn)
+        pid, rec = _close_window_world(conn, start=listed, game=game,
+                                       market="moneyline")
+        with _HeldFirings({"2026-09-27T18:35:01Z": 0.50,
+                           "2026-09-27T19:05:01Z": 0.88}) as held:
+            held.fire(conn, "2026-09-27T18:35:01Z")
+            _q38_polled(conn, game, listed, "2026-09-27T19:02:00Z")
+            at_five = held.fire(conn, "2026-09-27T19:05:01Z")
+            held.fire(conn, "2026-09-27T19:35:01Z")
+        close = conn.execute(
+            "SELECT r.close_price, c.minutes_before_start, q.fetched_utc"
+            "  FROM recommendations r"
+            "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+            "  LEFT JOIN venue_quotes q ON q.id = c.close_quote_id"
+            " WHERE r.id = ?", (rec,)).fetchone()
+        in_play_claims = conn.execute(
+            "SELECT COUNT(*) FROM at_the_line_claims c"
+            "  JOIN venue_quotes q ON q.id = c.quote_id"
+            " WHERE c.prediction_id = ? AND q.fetched_utc >= '2026-09-27T19:02:00Z'",
+            (pid,)).fetchone()[0]
+        return at_five, close, in_play_claims
+
+    def timeline_before_its_window(conn):
+        """The game listed for 19:45; the poll's 19:02 day payload shows it
+        in progress, its window not yet open (another game's is). What the
+        pass did at 19:05, the close, the in-play claims, the instant."""
+        _atl.ensure_read_kind(conn)
+        later = "2026-09-27T19:45:00Z"
+        pid, rec = _close_window_world(conn, start=later, game="mlb_990387",
+                                       market="moneyline")
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES ('mlb_990388', 'mlb',"
+            " 2026, 1, 'R', 'ATL', 'PHI', '2026-09-27T19:00:00Z', 'scheduled',"
+            " '2026-09-27')")
+        conn.commit()
+        with _HeldFirings({"2026-09-27T18:35:01Z": 0.50,
+                           "2026-09-27T19:05:01Z": 0.88}) as held:
+            held.fire(conn, "2026-09-27T18:35:01Z")
+            _q38_polled_day(conn, [("mlb_990388", "2026-09-27T19:00:00Z"),
+                                   ("mlb_990387", later)], "2026-09-27T19:02:00Z")
+            at_five = held.fire(conn, "2026-09-27T19:05:01Z")
+            held.fire(conn, "2026-09-27T19:50:01Z")
+        close = conn.execute(
+            "SELECT r.close_price, c.minutes_before_start, q.fetched_utc"
+            "  FROM recommendations r"
+            "  LEFT JOIN recommendation_closes c ON c.recommendation_id = r.id"
+            "  LEFT JOIN venue_quotes q ON q.id = c.close_quote_id"
+            " WHERE r.id = ?", (rec,)).fetchone()
+        in_play_claims = conn.execute(
+            "SELECT COUNT(*) FROM at_the_line_claims c"
+            "  JOIN venue_quotes q ON q.id = c.quote_id"
+            " WHERE c.prediction_id = ? AND q.fetched_utc >= '2026-09-27T19:02:00Z'",
+            (pid,)).fetchone()[0]
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        seen = (conn.execute(
+            "SELECT under_way_utc FROM live_first_under_way WHERE game_id ="
+            " 'mlb_990387'").fetchone() if "live_first_under_way" in tables
+            else None)
+        return at_five, close, in_play_claims, (seen[0] if seen else None)
+
+    check = getattr(audit, "check_no_close_or_claim_read_at_or_after_the_start", None)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "honest.db")
+        try:
+            at_five, close, claims = timeline(conn)
+            soon = _tasks._games_starting_within(conn, "2026-09-27T19:05:01Z")
+            if soon or at_five.get("near_start_due"):
+                missed.append(f"at 19:05:01, three minutes after the poll saw the "
+                              f"game under way, {soon} game(s) were counted as "
+                              f"starting within the window and "
+                              f"{at_five.get('near_start_due')} forecast(s) read")
+            if claims:
+                missed.append(f"{claims} claim(s) stand on a read taken at or after "
+                              f"19:02, when the poll saw the game under way")
+            if close is None or close["fetched_utc"] != "2026-09-27T18:35:01Z" \
+                    or abs((close["close_price"] or 0) - 0.50) > 1e-9 \
+                    or abs((close["minutes_before_start"] or 0) - 27.0) > 1e-9:
+                missed.append(f"the close is {dict(close) if close else None}, "
+                              f"where it must be the 18:35:01 read at 50c, 27.0 "
+                              f"minutes before the game's start at 19:02:00")
+            if check is None:
+                missed.append("the gate has no check that no close or claim is a "
+                              "read at or after its game's start")
+            else:
+                try:
+                    check(conn)
+                except audit.LawViolation as exc:
+                    missed.append(f"the record check named the honest record: {exc}")
+        finally:
+            conn.close()
+        # THE GAME THE POLL'S DAY PAYLOAD SHOWED UNDER WAY BEFORE ITS WINDOW
+        # (Q38's prover, 2026-10-07).
+        conn = _db.open_db(pathlib.Path(tmp) / "before_its_window.db")
+        try:
+            at_five, close, claims, seen = timeline_before_its_window(conn)
+            if seen != "2026-09-27T19:02:00Z":
+                missed.append(f"the poll's 19:02 day payload showed the game "
+                              f"listed for 19:45 in progress, outside its window, "
+                              f"and the instant written was {seen!r}")
+            if at_five.get("near_start_due"):
+                missed.append(f"at 19:05:01 the game listed for 19:45, seen under "
+                              f"way at 19:02, was read "
+                              f"({at_five.get('near_start_due')} forecast(s))")
+            if claims:
+                missed.append(f"{claims} claim(s) stand on a read of the game "
+                              f"listed for 19:45 taken at or after 19:02")
+            if close is None or close["fetched_utc"] != "2026-09-27T18:35:01Z" \
+                    or abs((close["close_price"] or 0) - 0.50) > 1e-9 \
+                    or abs((close["minutes_before_start"] or 0) - 27.0) > 1e-9:
+                missed.append(f"the close of the game listed for 19:45 is "
+                              f"{dict(close) if close else None}, where it must "
+                              f"be the 18:35:01 read at 50c, 27.0 minutes before "
+                              f"its start at 19:02:00")
+            if check is not None:
+                try:
+                    check(conn)
+                except audit.LawViolation as exc:
+                    missed.append(f"the record check named the honest record "
+                                  f"of the game listed for 19:45: {exc}")
+        finally:
+            conn.close()
+        if check is not None:
+            import importlib
+
+            live = importlib.import_module("gridiron.live")
+            door = live.start_of
+            live.start_of = lambda listed_, under_way: _db.instant(listed_)
+            conn = _db.open_db(pathlib.Path(tmp) / "planted.db")
+            try:
+                at_five, close, claims = timeline(conn)
+                faults = audit.reads_at_or_after_the_start_faults(conn)
+                if not (close and close["fetched_utc"] == "2026-09-27T19:05:01Z"
+                        and claims):
+                    missed.append(f"with the door put back to the listed start the "
+                                  f"world did not close on or claim the in-play "
+                                  f"read: close {dict(close) if close else None}, "
+                                  f"{claims} in-play claim(s)")
+                if not any("close" in f and "is a close" in f for f in faults):
+                    missed.append(f"the in-play close passed the record check: {faults}")
+                if not any(f.startswith("claim ") for f in faults):
+                    missed.append(f"the in-play claim passed the record check: {faults}")
+                try:
+                    check(conn)
+                    missed.append("the gate's check raised nothing on the "
+                                  "put-back door's record")
+                except audit.LawViolation:
+                    pass
+            finally:
+                live.start_of = door
+                conn.close()
+    if not _step_2_calls("check_no_close_or_claim_read_at_or_after_the_start"):
+        missed.append("the gate's step 2 does not make the call")
+    if missed:
+        return Result(LAW_Q38, what, guard, False, "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_Q38, what, guard, True,
+                  "the game was not read after the poll saw it under way at "
+                  "19:02, no in-play read was claimed, and the close is the "
+                  "18:35:01 read at 50c, 27.0 minutes before its start; with the "
+                  "door put back to the listed start the 88c in-play read was "
+                  "claimed and closed on, and the record check named both; and "
+                  "the same game listed for 19:45, shown under way by the "
+                  "poll's day payload before its window opened, had its "
+                  "instant written at 19:02 and was neither read nor closed "
+                  "after it")
 
 
 # ---------------------------------------------------------------------------
@@ -26167,6 +26717,11 @@ def main() -> int:
     # AND ONE START NOBODY CAN READ STOPS NOTHING BUT ITSELF (2026-09-30,
     # item 1's prover): as first built it stopped the run for every game.
     results.append(plant_an_unreadable_start_that_stops_the_near_start_run())
+    # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second set;
+    # built 2026-10-07): "Planting: a finished game's pick priced; an in-play
+    # read used as a close."
+    results.append(plant_a_finished_games_pick_priced())
+    results.append(plant_an_in_play_read_used_as_a_close())
     # A PASS WRITTEN AT OR AFTER THE START IS NOT BLIND (operator question
     # 35, ruled 2026-09-30; built 2026-10-01): a start compared as text, a
     # pass written at the start's second standing, and the final pass

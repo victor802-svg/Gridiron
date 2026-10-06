@@ -149,6 +149,25 @@ def _before_the_start(written: str, kickoff: str | None) -> bool:
         return False
 
 
+def _claim_before_the_start(written: str, kickoff: str | None,
+                            under_way: str | None) -> bool:
+    """A CLAIM written strictly before its game's start AS OPERATOR QUESTION
+    38 (A) DEFINES IT (ruled 2026-10-06, second set; built 2026-10-07): the
+    earlier of the listed start and the instant the live poll first saw the
+    game truly under way -- restated here in Python from the two stored
+    instants, never through the door (`live.start_of`), so a door that
+    forgot the second disagrees with this. A game with no listed start keeps
+    every claim before it unless it was seen under way; a stamp that cannot
+    be read is before nothing, as `julianday()` of it is NULL to the doors."""
+    try:
+        at = instant(written)
+        if kickoff is not None and not at < instant(kickoff):
+            return False
+        return under_way is None or at < instant(under_way)
+    except (ValueError, TypeError):
+        return False
+
+
 def _final_before_the_start(pass_kind: str, written: str,
                             kickoff: str | None) -> bool:
     """`calibration.standing_pass_order`'s first term, in Python: a final
@@ -209,11 +228,23 @@ def claims(conn: sqlite3.Connection, *, sport: str, market: str,
     # its line and side as stored, so the rule leaving a claim priced across
     # two contracts out is worked out here by the one place, in Python
     # (`_across`), never by the door's SQL.
+    # AND THE INSTANT ITS GAME WAS FIRST SEEN TRULY UNDER WAY (operator
+    # question 38 (A), 2026-10-07), read straight off its table, so
+    # `_a_candidate` restates the start without the door -- none on a record
+    # no release carrying the table has opened (read through a read-only
+    # door, it cannot be migrated), whose every game starts at its listed
+    # start.
+    keeps = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'live_first_under_way'").fetchone() is not None
+    under_way = ("(SELECT u.under_way_utc FROM live_first_under_way u"
+                 "  WHERE u.game_id = g.id)" if keeps else "NULL")
     return [dict(r) for r in conn.execute(
         f"SELECT c.id, c.prediction_id, c.market, c.line, c.model_prob,"
         f"       c.venue_implied, c.created_utc, c.resolved_utc, c.outcome,"
         f"       p.pass_kind, p.created_utc AS forecast_utc,"
         f"       {bet.columns('p')}, g.kickoff_utc, g.season, g.week,"
+        f"       {under_way} AS under_way_utc,"
         "       q.line AS sold_line, q.yes_side AS sold_side,"
         "       EXISTS (SELECT 1 FROM prediction_voids v"
         "                WHERE v.prediction_id = c.prediction_id) AS voided"
@@ -241,11 +272,13 @@ def _a_candidate(row: dict) -> bool:
     """A claim the at-the-line record's standing rule may choose: its
     forecast withdrawn by no void, and written before the start -- as
     instants (operator question 35, 2026-10-01), as the door's window reads
-    it."""
+    it; and from 2026-10-07 before the start as operator question 38 (A)
+    defines it, the earlier of the listed start and the first poll that saw
+    the game truly under way (`_claim_before_the_start`)."""
     if row["voided"]:
         return False
-    return (row["kickoff_utc"] is None
-            or _before_the_start(row["created_utc"], row["kickoff_utc"]))
+    return _claim_before_the_start(row["created_utc"], row["kickoff_utc"],
+                                   row.get("under_way_utc"))
 
 
 def standing_claims_of(rows: list[dict]) -> dict[tuple, dict]:

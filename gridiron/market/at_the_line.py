@@ -744,11 +744,13 @@ def evaluate(conn: sqlite3.Connection,
             return counts_out
         where += " AND p.id IN (%s)" % ",".join("?" for _ in prediction_ids)
         params = list(prediction_ids)
+    from .. import live
+
     rows = conn.execute(
         "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type,"
         "       p.subject, p.line_asked, p.model_prob, p.model_side,"
         "       p.created_utc, p.factors_json, g.home, g.away, g.kickoff_utc,"
-        "       g.status"
+        f"       g.status, {live.under_way_sql('g', conn)} AS under_way_utc"
         "  FROM predictions p JOIN games g ON g.id = p.game_id"
         f" WHERE {where} ORDER BY p.id", params).fetchall()
 
@@ -776,8 +778,17 @@ def evaluate(conn: sqlite3.Connection,
         # as first built the parse raised here and took every other
         # forecast of the call with it -- a predict pass's whole slate.
         # Counted by its own name, as every hole is.
+        #
+        # AND THE START IS THE ONE OPERATOR QUESTION 38 (A) DEFINES (ruled
+        # 2026-10-06, second set; built 2026-10-07): "the earlier of its
+        # listed start and the first poll that sees it truly under way ...
+        # No read at or after that instant is a close or a claim." Read
+        # through the one door (`live.start_of`), so a game the live poll
+        # saw under way before its listed time has no read claimed from
+        # that instant on; one with no such instant starts at its listed
+        # start, as item 1 read it.
         try:
-            start = instant(pred["kickoff_utc"])
+            start = live.start_of(pred["kickoff_utc"], pred["under_way_utc"])
         except ValueError:
             counts_out["start_unreadable"] += 1
             continue
@@ -964,7 +975,12 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     game still stands, as `calibration.standing_row_clause` treats a row.
     A claim written at or after the start never stands (a forecast written
     exactly at the start stands in the blind record with a claim it cannot
-    have: `standing_row_clause` reads `<=`, this reads `<`).
+    have: `standing_row_clause` reads `<=`, this reads `<`). FROM 2026-10-07
+    THE START IS THE ONE OPERATOR QUESTION 38 (A) DEFINES -- the earlier of
+    the listed start and the first poll that saw the game truly under way
+    (`live.before_the_start`) -- for the claim; which PASS stands still reads
+    the forecast against the listed start (`calibration.standing_pass_order`,
+    the blind record's own rule, which the ruling leaves).
 
     AND A CLAIM PRICED ACROSS TWO CONTRACTS IS NEVER A CANDIDATE (operator
     ruling A.2, 2026-10-05: the claims "are excluded by a dated rule from
@@ -1015,7 +1031,7 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
     # final pass stood in the blind record). A final pass with no claim
     # before the start is no candidate here, as a withdrawn one is not: its
     # question stands on its early pass's last claim, as it did.
-    from .. import calibration
+    from .. import calibration, live
 
     refuse_a_pooled_count(sport, market, predictor, event_tier)
     tier_clause, params = "", [sport, market, predictor]
@@ -1043,9 +1059,12 @@ def standing_claims(conn: sqlite3.Connection, *, sport: str, market: str,
         # A CLAIM BEFORE THE START, READ AS INSTANTS (operator question 35,
         # ruled 2026-09-30, built 2026-10-01): `julianday()` on both sides,
         # never the stored text, which took a claim at "...T19:00:30Z" for
-        # one before a start stored to the minute ("...T19:00Z").
-        "    AND (g.kickoff_utc IS NULL"
-        "         OR julianday(c.created_utc) < julianday(g.kickoff_utc))"
+        # one before a start stored to the minute ("...T19:00Z"). AND THE
+        # START IS QUESTION 38'S (ruled 2026-10-06, built 2026-10-07): the
+        # earlier of the listed start and the first poll that saw the game
+        # truly under way, in its one SQL spelling (`live.before_the_start`)
+        # -- no read at or after that instant is a claim.
+        f"    AND {live.before_the_start('c.created_utc', 'g', conn)}"
         # PRICED OFF ONE CONTRACT (operator ruling A.2, 2026-10-05): a claim
         # whose stored line is not the line its contract sells -- an away
         # contract read at -s before Q36.1 -- is in no price comparison.
@@ -1267,6 +1286,8 @@ def bets_with_a_claim_left_out(conn: sqlite3.Connection, *, sport: str,
     whose only such claims were priced across two contracts is not read, and
     is said to be so for that reason, never put down to a missing
     distribution. `gridiron.recount` works the same set out again."""
+    from .. import live
+
     refuse_a_pooled_count(sport, market, predictor, event_tier)
     tier_clause, params = "", [sport, market, predictor]
     if event_tier is not None:
@@ -1283,8 +1304,9 @@ def bets_with_a_claim_left_out(conn: sqlite3.Connection, *, sport: str,
         " WHERE c.sport = ? AND c.market = ? AND p.predictor = ?"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
         "                    WHERE v.prediction_id = c.prediction_id)"
-        "   AND (g.kickoff_utc IS NULL"
-        "        OR julianday(c.created_utc) < julianday(g.kickoff_utc))"
+        # BEFORE THE START AS OPERATOR QUESTION 38 (A) DEFINES IT
+        # (2026-10-07), as the door's window reads it.
+        f"   AND {live.before_the_start('c.created_utc', 'g', conn)}"
         + tier_clause, params).fetchall()
     across = set(across_two_contracts_among(conn, [r["id"] for r in rows]))
     return {bet.of(r) for r in rows if r["id"] in across}

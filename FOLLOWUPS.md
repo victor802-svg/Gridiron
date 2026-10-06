@@ -14374,3 +14374,482 @@ on a pick)*:
   of the shipped tree's own names.
 - **THE HARNESS, AFTER.** The harness test alone, detached, on this tree:
   passed in 294.96 s (2026-10-06 18:00Z), where it ran out at 600 s before.
+
+## A game's start is the earlier of its listed start and the first poll that saw it truly under way; nothing is priced on a game that is not still upcoming -- built 2026-10-07 *(operator question 38 (A) and its two rulings, 2026-10-06, second set, docs/briefs/2026-10-06-rulings-second.md; the order "C -> Q38 -> recs 114/115 voids -> B -> ..."; built on c0fa561 -- C released as 6c54ed1, the two voids written; uncommitted for its prover)*
+
+The ruling, whole: "Q38 (A), plus: 1. A game's start is the earlier of its
+listed start and the first poll that sees it truly under way (a score or
+period recorded; MLB's warm-up "Live" before the listed start does not
+count). No read at or after that instant is a close or a claim. 2.
+recommend.for_predictions refuses any game that is not still upcoming: in
+progress, final, postponed, or past its start as defined in 1. Planting: a
+finished game's pick priced; an in-play read used as a close."
+
+- **MEASURED FIRST, on one verified copy of the record** (`rebuild.verified_backup`,
+  made 2026-10-06T18:45:24-18:46:18Z into the scratchpad's `q38\`, read
+  through `db.read_only`; scripts `q38/feeds.py`, `feeds2.py`,
+  `record_reads.py`, `moves.py`, `moves_diff.py`, `gate_rows.py`,
+  `step2_rows.py`, `rehearse.py`; deleted 2026-10-06T19:59:01Z, with its
+  -wal and -shm; the rehearsal's fresh build deleted when it ran):
+  - **THE RECORD KEPT NO INSTANT AT WHICH A GAME WAS FIRST SEEN UNDER WAY.**
+    `games.status` is 'scheduled' | 'in' | 'final' (on the copy: none 'in';
+    eight games still 'scheduled' past their listed start -- two baseball
+    (one 2024, mlb_823490 cancelled 27 September), one college (2024), five
+    UFC bouts); the live poll wrote `live_period`, `live_clock`,
+    `live_updated_utc` as its LAST poll saw them (139 baseball games, 35
+    college games, 2 September to 4 October) and `live_polls` counts
+    requests (2,757 baseball, 3,384 college). The poll follows baseball and
+    college football only (`live.LIVE_SPORTS`): NFL, NBA and UFC are never
+    polled, so their start is their listed start under any reading.
+  - **WHAT EACH FEED SAYS BEFORE, AT AND AFTER A START** (the cached payloads
+    in `http_cache`, read-only): statsapi's schedule hydrated with the
+    linescore -- 13 payloads with the linescore among 121 schedules -- gives a
+    Pre-Game game (abstract 'Preview', coded 'P') up to three hours before
+    its listed start a linescore of currentInning 1, "Top", outs 0, team runs
+    0-0 and ONE inning entry carrying no `runs` key (hits, errors, left on
+    base only); a Scheduled game ('S') none or an empty linescore; every game
+    in progress ('Live', 'In Progress', coded 'I'; and 'Player challenge',
+    'M') an inning entry with runs for each inning played; a postponed or
+    cancelled game ('Final', 'Postponed'/'Cancelled', coded 'D'/'C') no
+    linescore at all. No warm-up payload ('Live', 'Warmup', coded 'P') is
+    cached. ESPN's scoreboard (the live poll's college feed, 8 payloads, 144
+    events): a scheduled event is 'STATUS_SCHEDULED', state 'pre', period 0,
+    clock "0:00", both scores the string "0" and no per-period scores; a
+    finished one its period (4 or 5) and one score per period for each side.
+    ESPN's core status documents (the loaders', every sport): 'pre' at
+    period 0 for football (502) and UFC (94, clock "-"). So a pregame payload
+    DOES carry a 0-0 score and, for baseball, a first inning -- placeholders
+    the feed itself files under a status that says the game has not begun.
+  - **WHAT `for_predictions` PRICED** (the released code, the clock held at
+    2026-10-06T19:00Z, over all 2,512 shortlisted forecasts): 1,411 entries on
+    finished games (college 257, baseball 505, NFL 218, UFC 431; 119 with a
+    side: 20, 77, 22, 0), 28 on UFC bouts still 'scheduled' past their listed
+    start (none with a price), 66 on games still to come (college 12, NBA 20,
+    NFL 30, UFC 4). The build: none on the first two, the 66 unchanged.
+  - **CLOSES AND CLAIMS AT OR AFTER THE LISTED START** (no first-under-way
+    instant exists, so this is the record check's reading): no close among
+    the 84 measured (120 closes); 17 claims -- numbers 1 to 17, the claim
+    writer's first live run, written 2026-09-07T19:41:46-47Z from reads taken
+    at 19:37:14-16Z on seven baseball games listed for 17:05-19:10 that day
+    (`audit.IN_PLAY_CLAIMS_HELD_2026_09_07`). None stands in the at-the-line
+    record (written after the start, no window takes it) and no
+    recommendation is priced from one (`gate_rows.py`).
+- **THE READINGS** (the conservative default; docs/REPAIR_STATE.md, question
+  38's readings, keeps the same list):
+  - **(a) "The first poll that sees it truly under way" is an instant the
+    live poll writes**, once per game, into `live_first_under_way` -- one row
+    per game, WITHOUT ROWID, never updated, deleted or replaced (its three
+    rules, like `correction_gate_labels`'), its feed status in the feed's own
+    words and the evidence in words beside it, stamped with the poll's own
+    instant as it writes (as `live_updated_utc` is) and committed at once.
+    **"A score or period recorded" is read by the feed's own fields as
+    measured**: an inning's runs (statsapi), or a period numbered one or more
+    or a period's score (ESPN), under a status the feed calls under way or
+    over -- never a pregame payload's placeholders ("Top 1st" and 0-0 with no
+    inning's runs; scores of "0" at period 0), never a postponed game, and
+    never MLB's warm-up 'Live' before the listed start whatever it carries
+    (statsapi's 'Warmup' or 'Live' with the pre-game coded state 'P': the
+    ruling's own words, the feed's documented ones; none is cached, so the
+    warm-up's own payload could not be measured). A game with no row starts
+    at its listed start. Nothing is backfilled (LAW 3).
+  - **(b) ONE DOOR** -- `live.start_of`, `db.instant` of the earlier of the
+    two -- and beside it its one SQL spelling, `live.before_the_start`
+    (`julianday()` on both sides of each) with `live.under_way_sql`; every
+    reader of a close or a claim reads it (the CLAUDE.md row "THE START"
+    names each). **A record without the table** -- the operator's own, read
+    through the read-only door by the gate's tests before a release carrying
+    the table has opened it -- cannot be migrated by a reader, and never saw
+    a game under way: both spellings are the listed start there
+    (`live.keeps_first_under_way`), the opening read's precedent
+    (`drift._venue_claims`).
+  - **(c) "Still upcoming" is 'scheduled' AND the clock it is asked at
+    strictly before the start so defined.** 'in' is refused whatever its
+    cause (so baseball's warm-up 'in', which moves no start, stays refused
+    here, as it always was); 'final' refused; a game still 'scheduled' past
+    its start refused (postponed, cancelled or stale -- the record cannot
+    tell them apart); a listed start nobody can read refused (never guessed);
+    a game still 'scheduled' whose start the record does not know is to come.
+    Refused means no entry, never a raise; `record_for` names each it was
+    handed and refused, with its game and why (`not_still_upcoming_named`).
+  - **(d) The plantings as ruled, two**, each with a gate check the step 2
+    calls: the record check (no close or claim read at or after its game's
+    start as defined; the 17 held by number, game and write time) and the
+    slate check (no entry for a game not still upcoming, asked at the moment
+    before the slate was built, so a game that starts while it is built is
+    never named).
+- **THE PAGE, MEASURED** (the released code against this tree, the copy, the
+  clock held at 2026-10-06T19:00Z, every slate holding a shortlisted question
+  and every sport's current slate, both forecasters: 108 payloads, 1,879,251
+  values): 1,026 move. The Today block's priced groups lose every started
+  game's card -- clears 69 -> 16, watching 1,141 -> 104, below the floor 0,
+  recommendation lines 69 -> 16, proposed combos 27 -> 6; settled 1,176 and
+  live unchanged. DRAWN: the day strip on the 78 payloads holding a started
+  game -- its counts ("2 picks that clear the bar · 10 questions watched" ->
+  "nothing that clears the bar · 0 questions watched"), and its note and fee
+  line ("No venue price on this slate yet. The first is taken about 2 hours
+  before each game starts." and the fee line -> "Every game on this slate has
+  started, so nothing on it is priced any more." with no fee line); the
+  combos group on 15 (its proposals -> "no two ... picks clear the bar
+  today"); "no price to compare against yet" off 24 blocks of the four UFC
+  bouts still listed past their start (401913546, 401923433, 401923734,
+  401917348); and on the 7 September baseball slate the 17's at-the-line
+  sentences (17 cards; "Marlins winning is a 60% chance; the venue's price
+  implies 4%", "Red Sox ... 96%") and the reasons tooltip of 7 board blocks
+  ("No published line prices this market, so the venue's own number is the
+  comparison below." -> "There is no line to compare it with."). STEP A'S
+  FINISHED-CARD VERDICT AND Q37'S FINISHED-CARD HEADLINE are reached by no
+  page now (a finished game's card is the settled group's, unpriced; the
+  board's finished row was already the settled card's, the question's own);
+  the gate's checks still hold their shape, their tests and plantings build
+  it with the released door put back.
+- **RENDERED** (`q38/render_games.py`, the browser suite's world, NFL week 18
+  made one game finished, one in play, one the shipped poll saw under way
+  three minutes before its listed start five minutes ahead, and one still to
+  come priced through the shipped claim writer -- and a second time with
+  every game started; 1300 and 390, the build and the release side by side):
+  the rows are the same on both; the strip says "the model has 1 pick that
+  clears the bar · 2 questions watched · 8 live · 4 settled" where the
+  release said "6 questions watched" (the finished game's four), and on the
+  started slate "Every game on this slate has started, so nothing on it is
+  priced any more." with the fee line hidden, where the release said "No
+  venue price on this slate yet ..." twice; read at both widths: no
+  contradiction, the note in the muted ink, no horizontal scroll, no page
+  error; the small tap targets the capture lists (the "clears the bar only"
+  box at 22px, the week picker's summary and label) are the release's own.
+- **THE GATE ROWS ON THE COPY** (migrated by the rehearsal's `db.init`): the
+  record check passes (the 17 held, exactly the record's claims 1-17); the
+  slate check passes on all 108 payloads, and names 1,185 entries on the
+  release's (Today cards in watching 1,037 and clears 53, recommendation
+  lines 53, combo legs 42); the slate rows beside it (signals, plain words,
+  live rows, counts, sides, combos, lines, headlines, Props) pass on every
+  statistical payload; on the reasoning pass's slates "the board speaks
+  plain" names 'plays' and 'value' in the reasoning's own tooltip -- the
+  release's too (measured on c0fa561), and not a row the gate runs on that
+  forecaster (C's FOLLOWUPS: the word scan never reads the reasoning pass's
+  slates).
+- **THE REHEARSAL** (`q38/rehearse.py`, on the copy): `db.init` added exactly
+  the table and its three rules -- `live_first_under_way`,
+  `..._never_replaced`, `..._no_update`, `..._no_delete` -- removed and changed
+  nothing, moved no table's row count or column checksum (63 tables), left
+  the new table empty, and the copy then matches a fresh build of this tree
+  with no difference (9 cosmetic, the release's own); the fresh build
+  deleted.
+- **FOUND, AND IN THE QUEUE'S SCOPE (fixed here, under (b))**: THE 17 IN-PLAY
+  CLAIMS WERE DRAWN AS THE VENUE'S PRICE. `views._at_the_line` (the sentence
+  beside a card) and `views._pregame_claim` (a live card's pregame figure)
+  read the latest claim written, whenever it was written, so the 7 September
+  baseball slate said "the venue's price implies 4%" beside the Marlins and
+  96% beside the Red Sox -- in-play prices from the fourth inning -- on 17
+  cards (statistical 10, reasoning pass 7). A number beside a pick (finished
+  games, no recommendation on any): they read the latest claim written
+  before the start now.
+- **FOUND, AND IN THE QUEUE'S SCOPE (fixed here)**: THE DAY STRIP WOULD HAVE
+  LIED. With finished games unpriced, a slate whose every game has started
+  has no price, and the strip said "No venue price on this slate yet. The
+  first is taken about 2 hours before each game starts." and the fee line
+  said the same, of games priced before they began (78 payloads). It says
+  why nothing is priced now (`language.slate_started_words`), with no fee
+  line; with some games still to come its note is about those
+  (`first_price_words(some_started=True)`).
+- **LEFT, AND WHY** (not readers of a close or a claim; FOLLOWUPS only):
+  - **The blind record and the predict path** keep the listed start (Q35's
+    rule; `predict.not_before_its_start`, `calibration.standing_row_clause`,
+    `standing_pass_order`, the recount's `_before_the_start`): a forecast is
+    not a close or a claim, and the LAW 1 closure may not name the new table
+    (`audit.FORBIDDEN_IDENTIFIERS`). A forecast written after a game was
+    truly under way but before its listed start would stand blind; none can
+    be measured (the record never kept the instant), and the final pass runs
+    ahead of a start by its lead.
+  - **The opening read and the capture** (`tasks._opening_read`,
+    `capture.py`, `kalshi.capture_for_predictions`): they price nothing; the
+    claim writer decides what is a claim.
+  - **`recommend.correction_instant`** (which correction the page's
+    at-the-line sentence reads): a correction, not a close or a claim; a game
+    the poll saw under way is 'in' by the same poll, which it reads as begun.
+  - **The board's card state** reads the status: a game still 'scheduled'
+    past its start (the four UFC bouts above) is drawn as still to come,
+    "venue has not listed this yet", unpriced; and a baseball game a
+    loader's refresh sets back to 'scheduled' mid-game (`mlb_loader` writes
+    'scheduled' until a game is final) is drawn as to come until the next
+    poll -- unpriced now, by its start. *(The prover, 2026-10-07: the card
+    state is left; the price slot's words were not -- see THE PROVER below:
+    "venue has not listed this yet" was false of every NFL, NBA and UFC game
+    being played, which no poll follows, and the slot says "past its start,
+    so not priced" now.)*
+  - **The live poll's own window** opens ten minutes before a listed start
+    (`live.WINDOW_LEAD`): a game truly under way earlier than that is first
+    seen when the window opens, so its start is no earlier than ten minutes
+    before its listed start -- "the first poll that sees it", as ruled. NFL,
+    NBA and UFC are not polled at all. *(The prover, 2026-10-07: not so --
+    the poll's one request is the whole day's scoreboard, and it held such a
+    game while another game's window was open and looked past it. Its
+    instant is written now; the window still decides what else the poll
+    writes. THE PROVER below.)*
+  - **`tools/empty_bar.py`** counts a day by the claims written on it: 7
+    September holds 107 other claims (statistical 67, reasoning 40), so the
+    17 move no day.
+  - **A race, measured as unobservable**: a claim whose read lands in the
+    milliseconds between the poll stamping its instant and committing it
+    would be written and named by the record check; the poll commits each
+    row at once. *(The prover, 2026-10-07: the stamps are to the second, so
+    the window is the rest of the second the poll stamps in, not
+    milliseconds -- a near-start read fetched in that second, its claim
+    writer's look at the start taken before the poll's commit. It needs a
+    game truly under way before its listed start, first seen by a poll in
+    the same second the near-start pass reads it; the claim is then left out
+    by every reader (they read the claim's own stamp, which is not before
+    the start) and the record check names it, so a gate would stop on an
+    honest record, never pass a dishonest one. Left; the poll never
+    backdates -- it stamps as it writes, and no caller can hand it an
+    instant.)*
+- **NOT IN SCOPE, FOR THE RE-READ**: the live poll maps statsapi's
+  postponed or cancelled game ('Final' abstract state, no linescore) to
+  'final' and writes 0-0, and the baseball resolver voids every forecast on
+  it as "finished level" (mlb_823490, cancelled 27 September: forecasts
+  3013-3017 voided at 20:07:32Z) -- a void, never a wrong outcome, so not a
+  LAW 3 break; and "pregame 100%" in the browser suite's world (its NFL
+  totals), the release's own.
+- **PLANTINGS** (`tools/guards/plant.py`, harness list in `tests/test_guards.py`):
+  `plant_a_finished_games_pick_priced` and
+  `plant_an_in_play_read_used_as_a_close`, each ESCAPING on c0fa561 (the
+  release's `gridiron` with this plant.py: the four games priced and four
+  recommendations written, no check; the 88c in-play read claimed and the
+  close, 5.0 minutes before the listed start, +42c, no check) and caught
+  here, each in about half a second. plant.py whole: 421/421 caught in 286 s
+  (detached; the release's 419 in 280-295 s, so the two add about a second).
+  The plantings and tests whose worlds priced a game past its start were
+  moved, each saying why: asked at a clock before the game
+  (`plant_both_sides_of_one_total_recommended`, `test_recommend.py`'s pass
+  and close worlds, `test_card_face.py`, `test_today.py`,
+  `test_voids.py::test_a_voided_forecast_is_never_priced_as_a_pick`), the
+  finished game held unpriced (`plant_a_correction_that_does_not_reach_the_pick`,
+  `test_recommend.py::test_a_finished_games_pick_is_never_re_derived_by_a_later_correction`),
+  or the released door put back to build the shape a check holds
+  (`plant_the_questions_own_numbers_under_the_contracts_words`,
+  `test_every_number_names_its_line.py::test_a_finished_cards_figure_and_verdict_are_its_contracts`,
+  `test_headline_is_the_contract_bought.py::test_a_finished_cards_figure_and_verdict_are_the_contract_bought`);
+  `plant_a_two_contract_claim_in_the_closing_line` and its test put back a
+  rule that takes the connection now.
+- **TESTS**: `tests/test_a_game_seen_under_way.py`, 20, every one failing on
+  c0fa561 (run there with its own tree); `test_no_replacing_write.py` counts
+  25 append-only tables (the new one's two rules named). The tests that hold
+  the page's clock or put the released door back set it on the market
+  module as it is NOW (`importlib.import_module`), as well as on the one
+  their file imported: the first full run failed eight of them, each passing
+  alone, because a blind window earlier in the session drops the market
+  package and the page imports it afresh (test_two_contract_claims.py's
+  `_now`, the precedent).
+- **THE SUITE AND plant.py** (detached): plant.py whole 421/421 in 286 s; the
+  full suite 2,453 passed, 4 skipped, 1,211 s, the planting harness inside
+  its 600 s.
+
+### THE PROVER (2026-10-06, 21:00-22:30Z; dated 2026-10-07 in the code, as the build is)
+
+Adversarial, alone in the worktree, on the change as handed (uncommitted on
+c0fa561). Scratch: the scratchpad's `q38\pv\` (scripts `probe1.py`,
+`make_handed.py` -- the change as handed rebuilt from the tree by taking the
+prover's edits back out, checked hunk for hunk against the builder's diff --,
+`run_plantings.py`, `pv_copy.py`, `pv_feeds.py`, `pv_feeds2.py`,
+`pv_rehearse.py`, `pv_step2.py`, `pv_moves.py`, `pv_moves_diff.py`,
+`pv_w2_derived.py`, `render_games.py`, the probe plugin `plugin\q38clock.py`),
+`q38\pv_probe.ps1` and `q38\pv_run_detached.ps1` (a copy of
+`c\prover\run_detached.ps1`, the token text alone changed).
+
+- **WHAT HELD** (each tried and not broken): a start stored to the minute --
+  the door and its SQL spelling agree stamp for stamp around a first-under-way
+  instant inside the minute (`probe1.py`, 3); a warm-up 'Live' with no
+  inning's runs, before or after the listed start, writes nothing; an
+  observation written twice -- `INSERT`, `INSERT OR REPLACE`, `OR IGNORE`,
+  `REPLACE`, the game's id spelled as a number -- is refused by the schema's
+  rule in its own words; a second poll losing the race to the first is
+  caught by those words and writes nothing; no row is ever backdated (the
+  only writer stamps as it writes; `poll(now=...)` cannot move the stamp); a
+  game with no observation starts at its listed start in every reader; a
+  start nobody can read is refused by every reader and the engine; the
+  record check reads the READ's instant (`fetched_utc`) as the ruling's
+  words do, and every reader of a claim its WRITE instant, which is never
+  earlier, so a reader is never less strict than the check; the closer
+  cannot be outrun by a later instant (a row is stamped after the closer's
+  "now", and so never before a listed start the closer already passed).
+- **FOUND AND FIXED: THE POLL LOOKED PAST A GAME OUTSIDE ITS WINDOW**
+  (`live.poll`, `live.record_first_under_way(only_before_its_listed_start=,
+  sport=)`). The window holds the games listed within ten minutes of now,
+  but the poll's one request is the whole day's scoreboard, and the builder
+  recorded an instant only for the window's games. A game listed for 19:45
+  that the 19:02 payload showed in progress -- a stale listing, the case
+  question 38 was ruled for -- got no row: its in-play reads were read at
+  19:05, the 88c read claimed, the close at 19:50 that read (+42c), and the
+  engine priced it, its status still 'scheduled' (`probe1.py`, 5: the build
+  as handed said "still upcoming" at 19:05). The reading taken: the poll
+  "sees" what its own payload says of a game the record holds -- the
+  stricter reading of "the first poll that sees it truly under way" (both
+  readings are inside the words; the question's own text spoke of "the ten
+  minutes the live poll sees before a listed start" of the status refusal,
+  not of this). The instant is written by the same evidence, only while the
+  game's listed start is still ahead of the stamp (the only case in which it
+  moves a start: a non-final game whose listed start has passed is in the
+  window already) and only for a game the record files under the
+  scoreboard's sport; nothing else about the game is written and no
+  request is added. MEASURED on the copy: the cached day payloads are each
+  the last fetch of their URL, so none can show it (`pv_feeds.py`: 57
+  payloads, 10,184 games, 9,956 under way by the evidence, none fetched
+  before its listed start); the 251 games whose record listing is later
+  than the feed's own date are postponements (the feed's original date's
+  entry, no runs), never a game played early (`pv_feeds2.py`).
+- **FOUND AND FIXED: THE STRIP'S NOTE WAS FALSE OF A GAME LISTED PAST ITS
+  START.** "Every game on this slate has started, so nothing on it is priced
+  any more." -- but a game still listed 'scheduled' past its start
+  (postponed, cancelled, a stale listing; the four UFC bouts on the record)
+  is not still to come and may never have started. It says "Every game on
+  this slate is under way, over, or past its listed start, so nothing on it
+  is priced any more." (`language.slate_started_words`) -- the ruling's
+  three ways a game is not still upcoming. On the copy: the note on 78
+  payloads, nothing else.
+- **FOUND AND FIXED: A ROW PAST ITS START SAID "VENUE HAS NOT LISTED THIS
+  YET".** A game still listed 'scheduled' is drawn as to come
+  (`board._state_of`, by the status), and ruling 2 leaves it unpriced, so
+  its price slot fell to the no-price words -- "venue has not listed this
+  yet", its tooltip "No venue price yet. The first read is taken about 2
+  hours before the start" -- false of a game the venue listed and that was
+  priced before it began. EVERY NFL, NBA AND UFC GAME BEING PLAYED is such a
+  row: no live poll follows them and their status stays 'scheduled' until
+  a loader writes the result (nflverse, the four-hourly refresh) -- the
+  release drew its pregame price, size and outline there (the in-game
+  rule's breach ruling 2 ends), the build as handed the false sentence. The
+  slot says "past its start, so not priced" now, its tooltip why
+  (`language.past_its_start_price_words`, `_tip`; `board.build` asks
+  `recommend.not_still_upcoming_among` once for the page's questions, both
+  forecasters', and `_question_block(past_its_start=)` words a market read
+  at the venue; a prop keeps its own words). Not "no longer priced": the
+  four UFC bouts were never priced. On the copy (worked out from the
+  tree's payloads, built before the copy was deleted, by the rule -- an
+  upcoming row's unpriced block in a market read at the venue whose listed
+  start was before the held clock; the copy held no instant): 23 blocks (7
+  picks, 16 questions) on 8 payloads, the four UFC bouts (401913546,
+  401917348, 401923433, 401923734), each "venue has not listed this yet"
+  before (`pv_w2_derived.py`).
+- **FOUND AND FIXED: A CLOCK LEFT BEHIND MADE TWO TESTS PASS ON IT.**
+  `test_three_states.py::test_a_card_moves_to_live_on_its_own_and_then_to_settled`
+  and `::test_the_card_shows_what_the_record_already_knew` read the page at
+  the real clock about a game listed for 9 September, so ruling 2 refuses
+  it -- they failed alone, and passed in the builder's whole suite. The
+  cause, measured by running the whole suite on a scratch copy of the tree
+  with a plugin that puts the real clock back on the market modules before
+  each test and logs what it finds (`q38\pv_probe.ps1`, 966 s; the only
+  other failures were the tests that read the record or git, which the copy
+  lacks): a blind window drops the market package, the next import builds
+  it afresh binding `utcnow` to whatever `db.utcnow` is then, and
+  `test_starts_are_instants.py`'s two final-pass tests hold `db.utcnow`
+  across one -- so every test after them ran on a market clock of
+  2026-09-05T18:59:59Z, a month before those tests' game. Not a law's
+  breach; a gate count that was not true (two tests passing on a leftover).
+  `tests/conftest.py::_market_clocks_put_back` (autouse, after every test)
+  puts the real clock back on every market module that holds another, and
+  the two tests ask at a clock before their game; re-measured with the
+  plugin over `test_starts_are_instants.py` and `test_three_states.py`:
+  nothing left behind.
+- **LEFT, AND NAMED (FOLLOWUPS only; none breaks LAW 1 or 3, makes a gate
+  count false or could put a wrong number on a pick):**
+  - **The close's schema rules read the listed start alone**
+    (`recommendation_close_is_a_later_read_of_its_own_contract`, Q35's
+    `recommendation_close_is_read_before_the_start_instant`): a companion
+    rule reading the first-under-way instant would be new schema the ruling
+    does not name; the closer reads the door and the gate's record check
+    holds every close to the start as defined.
+  - **A first-under-way row written by hand with an earlier stamp**: no
+    rule refuses it (the correction activations' "stamped when written" is
+    the precedent); the only writer stamps as it writes, and the record
+    check would name every claim or close such a row put after its start.
+  - **The page asks the clock four times in one build** (its recommendation
+    lines, its Today cards, the strip's note and the board's price slot),
+    milliseconds apart: a game whose start falls between draws a line
+    without its card, or a slot without its strip, in that one build. Passing one clock to all three would correct the engine's number
+    by the correction in force at a held instant rather than now, which
+    test worlds holding the page's clock rely on.
+  - **The media line's near-start look** (`market_snapshots` 'near_start',
+    drift's "where the line went") is taken only for a game the selection
+    keeps, which reads the door; no reader of it asks the start again --
+    under the listed start, as before.
+  - **A zoneless or empty listed start** (none on the record): the door
+    refuses a zoneless one where `julianday()` reads it as UTC, and reads an
+    empty one as no start where `julianday('')` is NULL -- the SQL spelling
+    and the door part there, as they did from Q35.
+- **ON ONE VERIFIED COPY** (`rebuild.verified_backup`, made
+  2026-10-06T21:21:25-21:22:25Z into `q38\pv\record.db`, integrity ok,
+  nothing mismatched, 64 tables; DELETED 2026-10-06T21:32:32Z with its -wal
+  and -shm, and with the scratch copy of it the rehearsal migrated; the
+  rehearsal's fresh build deleted inside the rehearsal; no other copy):
+  - **The rehearsal of db.init**, on a scratch copy of the copy (the one
+    backup door): it added exactly `live_first_under_way` and its three
+    rules, removed and changed nothing, moved no table's row count or column
+    checksum (63 tables), left the table empty, and the migrated scratch
+    copy then shows 0 differences from a fresh build of this tree (9
+    cosmetic).
+  - **Gate step 2's rows, dry** (on the migrated scratch copy,
+    `GRIDIRON_VERIFYING` set): 54 slates (every sport's current slate and
+    every slate holding a shortlisted question) x 2 forecasters through the
+    eleven slate rows beside question 38's -- 1,188 run, 16 failing, every
+    one "the board speaks plain" on the reasoning pass's slates ('plays',
+    'play' in its own tooltips), the same 16 payloads on c0fa561 and not a
+    row the gate runs for that forecaster; the slate check 0 faults; the
+    record check 0 faults, the held register equal to the record's claims
+    1-17, none standing in the at-the-line record, none pricing a
+    recommendation; the record rows beside it (priced at the line, never
+    pooled, no comparison across two contracts, no withdrawn close counted,
+    each pair once, drift never pooled, the final pass stands, starts as
+    instants, no replacing write, no orphan, the closures, the door, counted
+    once) all passing; `prose_reaching_the_raw_side()` == [].
+  - **What moves on the page** (108 payloads, both forecasters, the clock
+    held at 2026-10-06T21:22:00Z, read-only on the unmigrated copy):
+    c0fa561 against this tree, 1,026 of 1,888,675 values -- the Today
+    block's priced groups lose every started game's card (clears 69 -> 16,
+    watching 1,173 -> 136, recommendation lines 69 -> 16, proposed combos
+    27 -> 6; settled 1,176 unchanged), the strip's counts, note and fee line
+    on 78 payloads, the combos group on 15, 31 board values (the four UFC
+    bouts' edge words, 24, and the 7 September tooltips, 7); the change as
+    handed against this tree, 78 -- the strip's note alone; and the price
+    slot's 23 blocks, worked out as above.
+- **RENDERED** (`q38\pv\render_games.py`, the browser suite's world on a
+  loopback server, never 8848, a dummy token; Chromium at 1300 and 390;
+  `q38\pv\render\`): this tree as the builder drew it (a finished game, two
+  in play -- one seen under way before its listed start -- and one still to
+  come, priced), every game started, and a new state, "listed": the game
+  still to come listed two hours ago and still 'scheduled'; the change as
+  handed beside the last two. READ: on "listed", the strip "the model has
+  nothing that clears the bar · 0 questions watched · 3 live · 9 settled"
+  over "Every game on this slate is under way, over, or past its listed
+  start, so nothing on it is priced any more." in the muted ink, the fee
+  line hidden, and the SEA-SF row, drawn as to come at 12:40 PM, "OVER 41.5
+  TOTAL · 100% · past its start, so not priced" -- where the change as
+  handed said "Every game on this slate has started" above the same row,
+  never started, "venue has not listed this yet"; no contradiction, no
+  horizontal scroll, no page error at either width; the small targets the
+  capture lists (the 22px "clears the bar only" box, the week picker) are
+  the release's own; "100%" on the totals is the fixture world's.
+- **PLANTINGS** -- the two as ruled, each with the prover's forms, ESCAPING
+  on c0fa561 (the git archive with this plant.py) and on the change as
+  handed, CAUGHT here (`q38\pv\run_plantings.py`): a fifth game in
+  `plant_a_finished_games_pick_priced`, shown under way at 20:01 by the
+  poll's day payload before its window (priced and written as handed), its
+  row past its start (said "venue has not listed this yet" as handed, "46c"
+  as released) and the strip at 02:00 the next day (said "Every game on this
+  slate has started" as handed, nothing as released); and in
+  `plant_an_in_play_read_used_as_a_close`, the same game listed for 19:45
+  (as handed and as released: no instant, read at 19:05, the 88c read
+  claimed, the close at 19:50 on it, 40.0 minutes before the listed start;
+  here the instant at 19:02 and the close the 18:35:01 read, 27.0 minutes).
+  plant.py whole (detached, `q38\pvplant.txt`): 421/421 caught in 307 s,
+  exit 0 -- the builder's run was 286 s; the prover's forms are about a
+  second of it (each planting under 2 s alone), the rest the machine.
+- **TESTS** -- `test_a_game_seen_under_way.py` is 23, each failing on
+  c0fa561; the prover's three
+  (`::test_the_poll_writes_the_instant_of_a_game_its_days_payload_shows_under_way_before_its_window`,
+  `::test_a_row_drawn_as_to_come_past_its_start_says_why_it_has_no_price`,
+  and the strip's words in
+  `::test_the_day_strip_says_why_a_started_slate_has_no_price`) failing on
+  the change as handed too, and `::test_no_test_leaves_a_held_clock_on_the_market_modules`;
+  `test_three_states.py`'s two page tests ask at a clock before their game.
+- **THE SUITE** (detached, `q38\pv_run_detached.ps1 -What suite`, a dummy
+  token, TMP/TEMP at their defaults; `q38\pvsuite.txt`): 2,456 passed, 4
+  skipped, 0 failed, exit 0, in 1,229 s -- the planting harness inside its
+  600 s; the builder's 2,453 and the prover's three new tests.

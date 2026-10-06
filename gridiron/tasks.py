@@ -788,7 +788,10 @@ def _near_start_snapshots(conn: sqlite3.Connection) -> dict:
     # and the closer only touches recommendations whose start has passed --
     # both read as instants from 2026-09-30, and neither by the status (the
     # rows above were games still SCHEDULED, compared as text, until then).
-    # Nothing is closed here that the second look would have priced.
+    # Nothing is closed here that the second look would have priced. FROM
+    # 2026-10-07 BOTH READ ONE START (operator question 38 (A): the earlier
+    # of the listed start and the first poll that saw the game truly under
+    # way, `live.start_of`), so they stay disjoint.
     #
     # WHAT THE CLOSE IS, from 2026-09-23: the recommendation's own contract's
     # last near-start read before kickoff, or UNMEASURED where there is none
@@ -926,7 +929,20 @@ def _near_start_selection(conn: sqlite3.Connection, now: str) -> dict:
     was under way or over, with that status and its listed start -- so the
     next firing that reads a game in its warm-up says so on the record -- and
     every candidate whose listed start cannot be read.
+
+    UNTIL ITS START AS OPERATOR QUESTION 38 (A) DEFINES IT (ruled
+    2026-10-06, second set; built 2026-10-07): "A game's start is the
+    earlier of its listed start and the first poll that sees it truly under
+    way (a score or period recorded; MLB's warm-up "Live" before the listed
+    start does not count). No read at or after that instant is a close or a
+    claim." So a game is kept until that start (`live.start_of`, the one
+    door: the listed start, or the instant the live poll first saw it truly
+    under way if that came first), never past it -- a game begun before its
+    listed time is not read again once the poll has seen it under way. A
+    warm-up 'Live' writes no such instant, so item 1's reading of it stands:
+    still read until the listed start, and named here with its status.
     """
+    from . import live
     from .market import recommend
 
     at = db.instant(now)
@@ -935,7 +951,7 @@ def _near_start_selection(conn: sqlite3.Connection, now: str) -> dict:
 
     def ahead(row: sqlite3.Row) -> bool:
         try:
-            when = db.instant(row["kickoff_utc"])
+            when = live.start_of(row["kickoff_utc"], row["under_way_utc"])
         except ValueError:
             unreadable[row["id"]] = {"prediction_id": row["id"],
                                      "game_id": row["game_id"],
@@ -944,7 +960,8 @@ def _near_start_selection(conn: sqlite3.Connection, now: str) -> dict:
         return when is not None and at < when <= horizon
 
     drift_rows = [r for r in conn.execute(
-        "SELECT p.id, p.game_id, g.kickoff_utc, g.status FROM predictions p"
+        "SELECT p.id, p.game_id, g.kickoff_utc, g.status,"
+        f"       {live.under_way_sql('g', conn)} AS under_way_utc FROM predictions p"
         " JOIN games g ON g.id = p.game_id"
         " JOIN market_snapshots o"
         "   ON o.prediction_id = p.id AND o.kind = 'open_at_predict'"
@@ -953,7 +970,7 @@ def _near_start_selection(conn: sqlite3.Connection, now: str) -> dict:
         if ahead(r)]
     rec_rows = [r for r in conn.execute(
         "SELECT DISTINCT r.prediction_id AS id, r.game_id, g.kickoff_utc,"
-        "       g.status"
+        f"       g.status, {live.under_way_sql('g', conn)} AS under_way_utc"
         "  FROM recommendations r"
         " JOIN games g ON g.id = r.game_id"
         " WHERE r.closed_utc IS NULL"
@@ -983,14 +1000,20 @@ def _games_starting_within(conn: sqlite3.Connection, now: str) -> int:
     told -- and never stops the count (2026-09-30, item 1's prover: as first
     built one such start among every game of the record raised here); the
     selection names any such game a forecast of its would have been read
-    on."""
+    on. AND BY ITS START AS OPERATOR QUESTION 38 (A) DEFINES IT (2026-10-07):
+    the earlier of the listed start and the first poll that saw the game
+    truly under way (`live.start_of`), so the words count the games the
+    selection would have read."""
+    from . import live
+
     at = db.instant(now)
     horizon = at + timedelta(hours=NEAR_START_HOURS)
     count = 0
     for row in conn.execute(
-            "SELECT kickoff_utc FROM games WHERE kickoff_utc IS NOT NULL"):
+            f"SELECT g.kickoff_utc, {live.under_way_sql('g', conn)} AS under_way_utc"
+            "  FROM games g WHERE g.kickoff_utc IS NOT NULL"):
         try:
-            when = db.instant(row["kickoff_utc"])
+            when = live.start_of(row["kickoff_utc"], row["under_way_utc"])
         except ValueError:
             continue
         if when is not None and at < when <= horizon:
@@ -1163,6 +1186,12 @@ def _run_live(conn: sqlite3.Connection) -> tuple[str, str, dict]:
               f"{report['changed']} updated")
     if report["finals"]:
         detail += f", {report['finals']} final"
+    # THE FIRST POLL THAT SAW A GAME TRULY UNDER WAY (operator question 38
+    # (A), 2026-10-07): said when this poll wrote one, since it moves that
+    # game's start, and with it which reads are closes and claims.
+    if report.get("first_under_way"):
+        detail += (f", {language.counted(len(report['first_under_way']), 'game')}"
+                   f" first seen under way")
     if settled:
         detail += f", {settled} settled"
     return "ok", detail, report

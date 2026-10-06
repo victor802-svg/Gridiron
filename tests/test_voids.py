@@ -356,9 +356,14 @@ def test_a_voided_forecast_is_never_priced_as_a_pick(conn, monkeypatch):
     pid = _forecast(conn, "g1")
     _priced(conn, "g1", pid, closes=False)
     shortlist.rank_rows(conn, [pid])
-    assert recommend.for_predictions(conn, [pid]), "the fixture prices nothing"
+    # ASKED BEFORE THE GAME (operator question 38, ruling 2, 2026-10-07):
+    # nothing on a game that is not still upcoming is priced, so the pass is
+    # asked on the 8th, before this world's game on the 9th.
+    asked = "2026-09-08T00:00:00Z"
+    assert recommend.for_predictions(conn, [pid], now=asked), \
+        "the fixture prices nothing"
     _void(conn, pid)
-    assert recommend.for_predictions(conn, [pid]) == []
+    assert recommend.for_predictions(conn, [pid], now=asked) == []
 
 
 # --- the page ------------------------------------------------------------------

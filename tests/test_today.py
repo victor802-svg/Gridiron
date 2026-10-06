@@ -15,6 +15,20 @@ DIST = {"quantity": "home_margin", "family": "normal", "mean": 2.0, "sd": 13.0,
 WHOLE = json.dumps({"coverage": 1.0, "margin_distribution": DIST})
 
 
+@pytest.fixture(autouse=True)
+def _asked_before_the_games(monkeypatch):
+    """THE PAGE IS ASKED BEFORE THIS WORLD'S GAMES (operator question 38,
+    ruling 2, 2026-10-06; 2026-10-07): nothing on a game that is not still
+    upcoming is priced or watched, so Today is drawn as it was on 8
+    September, before the games listed for the 9th -- on the market module
+    as it is now (a blind window earlier in the session may have dropped
+    the one imported first; test_two_contract_claims.py's `_now`)."""
+    import importlib
+
+    recommend = importlib.import_module("gridiron.market.recommend")
+    monkeypatch.setattr(recommend, "utcnow", lambda: "2026-09-08T00:00:00Z")
+
+
 def _world(tmp_path, games=2):
     conn = db.open_db(tmp_path / "today.db")
     for i in range(games):
