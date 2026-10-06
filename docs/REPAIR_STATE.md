@@ -19,7 +19,8 @@
   **A.2 AND Q37 released as e9d4cf5 (2026-10-06 00:19Z; gate 4/4, 415/415;
   the first gate run was stopped at 30 minutes by the shell's new limit on
   background commands, mid step 2, nothing failed; the gate now runs
-  detached, `scratchpadun_gate.ps1`):** the stored two-contract claims
+  detached, `scratchpad
+un_gate.ps1`):** the stored two-contract claims
   (275) are left out of every price comparison by a dated read rule and stay
   in the blind record; THE VOIDS written 00:19:25Z by
   `tools/void_two_contract_recommendations.py --write --live` after a dry
@@ -31,7 +32,19 @@
   the venue's line MLB 102 'past the 100' -> 64 of 100, gate cannot clear
   this season; NFL 29 -> 23; NCAAF 91 -> 71; market/model Brier MLB
   0.2611/0.2085 -> 0.2301/0.2232; the closing line's window MLB 15 -> 3,
-  NFL 15 -> 6, NCAAF 14 -> 11. **Next: A.5** (the spread edge re-run).
+  NFL 15 -> 6, NCAAF 14 -> 11.
+  **A.5 done 2026-10-06 00:30Z (read-only; docs/closeouts/2026-10-05-the-spread-
+  edge-again.md):** the 26 Sep method, spreads only: NCAAF statistical 237
+  priced rows, model 0.2184 vs market 0.1883, +0.0301 (+0.0117, +0.0485) --
+  MARKET AHEAD BEYOND NOISE (26 Sep: within noise, 131 rows; the 106 rows
+  settled since did it); NCAAF reasoning pass 111 rows, within noise; NFL
+  statistical 57 rows, -0.0060 (-0.0383, +0.0242), within noise; MLB run line
+  still no price. The Q36 voids and A.2's exclusion do not touch this
+  comparison (it reads forecasts and the media line), shown by running it on
+  the code before A.2. THE VENUE-LINE COMPARISON (a different one, labelled
+  so): MLB run line's 'model ahead' before A.2 (-0.0527, interval clear of
+  zero, 102 claims) came entirely from the 39 two-contract claims; with them
+  out, 64 claims, -0.0069 (-0.0233, +0.0097), within noise. **Next: C.**
   **Q36 (ii) BUILT (2026-10-05, on c829daa; uncommitted for its prover;
   FOLLOWUPS "A claim priced across two contracts is in no price
   comparison; the 54 voided by rule"; CLAUDE.md row of that name):**
