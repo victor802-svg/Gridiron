@@ -12,6 +12,21 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **C RELEASED as 6c54ed1 (2026-10-06 18:40Z; gate 4/4, 419/419; serving
+  6c54ed1ea134)** -- C (ba27ba3), the orphan scan read once so the
+  planting harness fits its 600 s (49ccb8a; ruled in the operator's
+  absence by precedent, below), and the void tool's operator's word
+  (114, 115) (6c54ed1). THE VOIDS: `tools/void_two_contract_
+  recommendations.py` run from the released checkout, dry through the
+  read-only door (56 selected; the 54 and 114, 115 the ruled set; 51
+  already voided, 62, 63, 66 left; would void 2: [114, 115]), then
+  `--write --live`: 2 voids written at 2026-10-06T18:41:19Z ('priced
+  across two contracts, Q36'); a second dry run would void 0. Nothing
+  counted moves (the read rule already left them out; they leave the
+  'Priced across two contracts' row for 'Withdrawn'). The operator types
+  the two power payouts on the Props page (Settings door) when he wants
+  break-evens; until then the page asks. **Next: Q38 (scratchpad
+  wf_q38.js).**
 - **THE ORDER (5 Oct, docs/briefs/2026-10-05-rulings.md; wins over
   every order below):** A -- the rest of Q36 (A.2: void the 54
   recommendations, "priced across two contracts, Q36"; recs 114 and 115
