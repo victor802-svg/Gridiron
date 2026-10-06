@@ -478,6 +478,46 @@ close-out and not before:** (1) the Record page states "market ahead" per
 sport and market with its interval; (2) the market blend (model plan M3)
 moves to the front of the model plan.
 
+## 2026-10-06 — the spread edge again: no edge in any spread market; NCAAF spread now market-ahead beyond noise
+
+**A DATED FINDING, recorded by operator ruling of 2026-10-06**
+(`docs/briefs/2026-10-06-rulings.md`): **the model shows no edge in any spread
+market; NCAAF spread (statistical) is now market-ahead beyond noise.**
+
+Measured read-only on 2026-10-06 at about 00:22Z (one verified copy of the
+record, the clock held), by the 26 September method above -- the graded
+standing rows `calibration.resolved` returns that carry the media line's first
+price for the model's own side; Brier of each; their paired difference with a
+bootstrap 95% interval (4,000 resamples, seed 20260926) -- for the spread
+markets only, as the operator's ruling of 2026-10-05 (A.5) asked, after the
+Q36 voids. Full report: `docs/closeouts/2026-10-05-the-spread-edge-again.md`.
+
+| spread · forecaster | 26 Sep: rows, model − market (95%) | 6 Oct: rows, model / market, model − market (95%) |
+|---|---|---|
+| NCAAF · statistical | 131, +0.0188 (−0.0093, +0.0470), within noise | 237, 0.2184 / 0.1883, +0.0301 (+0.0117, +0.0485) -- **market ahead, beyond noise** |
+| NCAAF · reasoning | 5, too few | 111, 0.2267 / 0.2055, +0.0212 (−0.0061, +0.0490) -- market ahead, within noise |
+| NFL · statistical | 30, +0.0018 (−0.0363, +0.0357) | 57, 0.2359 / 0.2419, −0.0060 (−0.0383, +0.0242) -- within noise |
+| NFL · reasoning | 1, too few | 28, under 30, not a finding |
+| MLB run line | graded, no price | graded, no price -- no measurement |
+
+What moved it: the games settled since 26 September (NCAAF 106 rows for each
+forecaster, NFL 27). The Q36 recommendation voids and the exclusion of the
+claims priced across two contracts do not touch this comparison -- it reads
+forecasts and the media line, not recommendations or the venue's claims --
+shown by running it on the code from before that change (every figure
+identical). The app's own LAW 4 disagreement count passes its 100 only for NCAAF
+spread (statistical, 119), and points against the model there: the model's side
+came in 44.5% where the model said 69.6% and the market 52.0%.
+
+**At the venue's price (a different comparison, not the 26 September method,
+recorded beside it because the sign error flattered it):** before the
+exclusion of the claims priced across two contracts, MLB run line's settled
+claims showed the model ahead, −0.0527 (−0.0813, −0.0227) on 102 claims; that
+came entirely from the 39 claims whose price belonged to another line. With
+them out, 64 claims, −0.0069 (−0.0233, +0.0097): within noise. NCAAF spread
+(71 claims) and NFL spread (23) are within noise either way. Every venue-line
+figure is under its gate of 100.
+
 ## 2026-09-27 — two BROKEN findings recorded, and the closing line counts again from its repair
 
 **RULED 2026-09-23 (operator; ruling 8 of `docs/briefs/2026-09-23-repair.md`,
