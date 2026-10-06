@@ -602,7 +602,8 @@ def test_the_tools_ruled_set_is_question_36s_54_and_its_reason_the_operators():
     tool = _tool()
     assert len(QUESTION_36) == 54 == len(set(QUESTION_36))
     assert sorted(tool.RULED) == sorted(QUESTION_36)
-    assert tool.ON_THE_OPERATORS_WORD == ()
+    # THE OPERATOR'S WORD of 2026-10-06 (docs/briefs/2026-10-06-rulings.md)
+    assert tool.ON_THE_OPERATORS_WORD == (114, 115)
     assert tool.REASON == recommend.TWO_CONTRACTS_VOID_REASON == (
         "priced across two contracts, Q36")
     assert len(tool.REASON.strip()) >= 10
@@ -628,10 +629,13 @@ def _record_shape(path):
 
 
 def test_the_tool_writes_the_54_once_lists_114_and_115_and_leaves_the_withdrawn(
-        tmp_path, capsys):
+        tmp_path, capsys, monkeypatch):
+    """As released on 2026-10-06 00:19Z, before the operator's word on 114
+    and 115 (the constant empty): they are listed as waiting, never written."""
     path = tmp_path / "record.db"
     _record_shape(path)
     tool = _tool()
+    monkeypatch.setattr(tool, "ON_THE_OPERATORS_WORD", ())
     assert tool.main(["--database", str(path)]) == 0
     out = capsys.readouterr().out
     assert "56 recommendation(s) were priced from a claim across two contracts" in out
@@ -663,6 +667,50 @@ def test_the_tool_writes_the_54_once_lists_114_and_115_and_leaves_the_withdrawn(
     conn.close()
 
 
+def test_on_the_operators_word_the_tool_voids_114_and_115_after_the_51(
+        tmp_path, capsys):
+    """2026-10-06: "Recs 114 and 115: void them, same reason as the 51
+    ('priced across two contracts, Q36'). Dry run first, then the write." On
+    the record as it stands after the 51 were written, the dry run lists
+    exactly the two to write, nothing waiting; the write voids them with the
+    ruling's reason, once; and nothing counted moves -- they leave the
+    "Priced across two contracts" row for "Withdrawn"."""
+    path = tmp_path / "record.db"
+    _record_shape(path)
+    tool = _tool()
+    conn = db.connect(path)
+    tool.write_voids(conn, sorted(set(QUESTION_36) - {62, 63, 66}))
+    conn.close()
+    assert tool.main(["--database", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "and [114, 115] on the operator's word" in out
+    assert "--write would void 2: [114, 115]" in out
+    assert "waiting for the operator's word" not in out
+    conn = db.read_only(path, "the test's own world")
+    report = calibration.clv_report(conn, sport="nfl")
+    before = next(b for b in report["forecasters"] if b["predictor"] == "statistical")
+    conn.close()
+    assert tool.main(["--database", str(path), "--write"]) == 0
+    assert "wrote 2 void(s)" in capsys.readouterr().out
+    assert tool.main(["--database", str(path), "--write"]) == 0
+    assert "wrote 0 void(s)" in capsys.readouterr().out
+    conn = db.read_only(path, "the test's own world")
+    voids = {r[0]: r[1] for r in conn.execute(
+        "SELECT recommendation_id, reason FROM recommendation_voids")}
+    assert set(voids) == set(QUESTION_36) | {114, 115}
+    assert voids[114] == voids[115] == tool.REASON == (
+        "priced across two contracts, Q36")
+    report = calibration.clv_report(conn, sport="nfl")
+    block = next(b for b in report["forecasters"] if b["predictor"] == "statistical")
+    assert block["n"] == before["n"] == 117 - 56
+    assert before["across_two_contracts"]["n"] == 2
+    assert block["across_two_contracts"]["n"] == 0
+    assert block["withdrawn"] == before["withdrawn"] + 2 == 56
+    assert audit.withdrawn_counted_faults(conn, report) == []
+    assert audit.pair_counted_faults(conn, report) == []
+    conn.close()
+
+
 def test_the_tool_refuses_a_ruled_set_the_rule_does_not_select(tmp_path, capsys,
                                                                monkeypatch):
     conn = db.open_db(tmp_path / "small.db")
@@ -676,6 +724,8 @@ def test_the_tool_refuses_a_ruled_set_the_rule_does_not_select(tmp_path, capsys,
         tool.main(["--database", str(path), "--write"])
     assert refused.value.code == 2
     assert "which the rule does not select" in capsys.readouterr().out
+    # the small world holds no 114 or 115: the operator's word set aside here
+    monkeypatch.setattr(tool, "ON_THE_OPERATORS_WORD", ())
     monkeypatch.setattr(tool, "RULED", (across, one))
     with pytest.raises(SystemExit):
         tool.main(["--database", str(path), "--write"])

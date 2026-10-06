@@ -11870,8 +11870,12 @@ def plant_a_void_tool_writing_outside_its_ruled_set() -> Result:
             caught.append("a write handed an id outside the ruled set is refused")
         finally:
             conn.close()
-        # THE HONEST RUN, ITS RULED SET THIS WORLD'S FIRST
-        tool.RULED = (across[0],)
+        # THE HONEST RUN, ITS RULED SET THIS WORLD'S FIRST -- and the
+        # operator's word (114 and 115, 2026-10-06) set aside: this world
+        # holds neither, and a ruled number the rule does not select is
+        # refused, as the first step shows
+        real_word = tool.ON_THE_OPERATORS_WORD
+        tool.RULED, tool.ON_THE_OPERATORS_WORD = (across[0],), ()
         try:
             code, said = run(["--database", str(world), "--write"])
             got = voids(world)
@@ -11885,7 +11889,7 @@ def plant_a_void_tool_writing_outside_its_ruled_set() -> Result:
                 caught.append("the ruled set alone is written, the rest listed, "
                               "once")
         finally:
-            tool.RULED = real_ruled
+            tool.RULED, tool.ON_THE_OPERATORS_WORD = real_ruled, real_word
     if missed:
         return Result(LAW_ACROSS_TWO_CONTRACTS, violation, guard, False,
                       "NOT CAUGHT - " + " | ".join(missed))

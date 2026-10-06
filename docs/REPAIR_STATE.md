@@ -2275,6 +2275,12 @@ depend on the answer.
   (ba27ba3), gated with C.
 - **Q38's (A) is built after C's release and the 114/115 voids**, as the
   order says; the voids ride C's gate, the next one.
+- **Recs 114 and 115 on the operator's word (2026-10-06):** the void
+  tool's `ON_THE_OPERATORS_WORD` is (114, 115), its own commit after the
+  orphan scan's, gated with C; its planting's honest run, whose world holds
+  neither, sets the word aside as it sets the ruled set to its own. After
+  the release: the tool dry through the read-only door, then `--write
+  --live`.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

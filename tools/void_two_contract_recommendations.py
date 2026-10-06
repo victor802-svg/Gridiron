@@ -38,9 +38,9 @@ was released -- the same case, found after question 36 was written.
 
 WHAT IT WRITES, and nothing else: one append-only `recommendation_voids` row
 for each recommendation of THE RULED SET -- `RULED`, the 54, and
-`ON_THE_OPERATORS_WORD`, empty until the operator rules on 114 and 115
-(question 31's precedent: a set the rule selects beyond the ruling's words
-is listed and written only on the operator's word) -- dated when it is
+`ON_THE_OPERATORS_WORD`, 114 and 115 from the operator's word of
+2026-10-06 (question 31's precedent: a set the rule selects beyond the
+ruling's words is listed and written only on the operator's word) -- dated when it is
 written, with the ruling's reason, `recommend.TWO_CONTRACTS_VOID_REASON`.
 Every other recommendation the rule selects is LISTED, as selected and
 waiting for the operator's word, and not written.
@@ -99,11 +99,14 @@ RULED = (
     88, 90, 91,
 )
 
-#: THE OPERATOR'S WORD, beyond the 54: empty until he rules. Recs 114 and
-#: 115 are selected by the same rule and listed as waiting (the brief's
+#: THE OPERATOR'S WORD, beyond the 54: empty until he ruled. Recs 114 and
+#: 115 are selected by the same rule and were listed as waiting (the brief's
 #: reading, docs/briefs/2026-10-05-rulings.md, "How this brief is read";
 #: question 31's precedent). His word adds them here, and nothing else does.
-ON_THE_OPERATORS_WORD: tuple[int, ...] = ()
+#: RULED 2026-10-06 (docs/briefs/2026-10-06-rulings.md): "Recs 114 and 115:
+#: void them, same reason as the 51 ('priced across two contracts, Q36'). Dry
+#: run first, then the write."
+ON_THE_OPERATORS_WORD: tuple[int, ...] = (114, 115)
 
 #: The reason each void carries, exactly as the operator wrote it.
 REASON = recommend.TWO_CONTRACTS_VOID_REASON
