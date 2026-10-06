@@ -2224,6 +2224,57 @@ depend on the answer.
     - **(B)** The listed start only, as item 1 built it (the ruling's words
       read as "its listed start").
     Default until ruled: (B), as built; nothing more.
+    **RULED (A), 2026-10-06 (second set, docs/briefs/2026-10-06-rulings-
+    second.md), plus: `recommend.for_predictions` refuses any game that is
+    not still upcoming -- in progress, final, postponed, or past its start as
+    (A) defines it; plantings: a finished game's pick priced, an in-play read
+    used as a close. Next after C's release and the 114/115 voids.**
+
+39. **The venue's player-prop series are not read, so ruling C.2 can be met
+    for no leg. (Found by C's builder, 2026-10-06; not a pick-number finding:
+    no leg shows a main line, a chance there or a pick -- so FOLLOWUPS, and
+    asked here because only the operator can queue it.)** `kalshi.capture_
+    for_games` reads spread, total and moneyline only; `venue_quotes` has no
+    player column; no prop series is cached. Every Props leg shows its
+    projection (counting stats only), "not listed by the venue", and the
+    break-evens once typed; the Kalshi ladder view is empty on every slate.
+    Reading them is its own build on the new-market checklist (the series,
+    each player matched to the record, the rung) and needs the network.
+    - **(A)** Queue it (where in the order is the operator's).
+    - **(B)** Leave it unread; the Props board stays projections and
+      break-evens.
+    Default until ruled: (B), nothing built.
+
+40. **A main line far from an even chance. (Found by C's builder and its
+    prover, 2026-10-06; would become a pick-number finding the day a venue
+    prop ladder is read -- none is today.)** Ruling C names the main line as
+    "the rung nearest 50¢" and no band, so a ladder whose nearest rung is far
+    from 50¢ still has one: for MLB home runs an 18¢ rung would be the main
+    line, and "NO home run · 86%" a pick at +28 points where the venue says
+    82%. The leg's chance is the model's at a line the app may not offer.
+    - **(A)** Declare a band (for example 35-65¢); a ladder with no rung in
+      it has no main line, and the leg shows "no line near an even chance".
+    - **(B)** As built: the rung nearest 50¢, whatever its price.
+    Default until ruled: (B), as built (no ladder is read, so nothing shows).
+
+## Rulings taken in your absence (2026-10-06)
+
+- **The planting harness's 600-second limit is not raised; the orphan scan
+  is made cheaper.** C's builder and prover each found the harness test
+  killed by its own limit (603 s, 600.5 s, and plant.py whole at 610 s
+  timed), no planting escaping; the two orphan-scan plantings were 305 s of
+  it. The builder asked "raise the limit, or make the orphan scan cheaper".
+  Precedent settles it: the operator's word of 2026-09-27 on the flaky tap
+  targets, "fix the elements ... Never widen a tolerance." `audit.orphan_
+  functions` now reads the caller sources once (`audit._word_uses`) instead
+  of once per name; measured over all 1,221 names on this tree and on the
+  planting's copy with names made to trip it: every count the same (none
+  differed, none moved between zero and not), 177 s to 0.38 s. Held by
+  `test_rulings.py::test_the_orphan_scan_read_once_counts_as_the_scan_did`.
+  The harness test alone then passed in 295 s. Its own commit after C's
+  (ba27ba3), gated with C.
+- **Q38's (A) is built after C's release and the 114/115 voids**, as the
+  order says; the voids ride C's gate, the next one.
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

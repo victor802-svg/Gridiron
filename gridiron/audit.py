@@ -906,21 +906,60 @@ def orphan_functions(root: Path | None = None) -> list[str]:
     functions = _public_functions(root)
     sources = _caller_sources(root)
 
+    uses = _word_uses(sources, [n for n in functions if n not in ORPHAN_ALLOWLIST])
     orphans = []
     for name, where in sorted(functions.items()):
         if name in ORPHAN_ALLOWLIST:
             continue
-        pattern = re.compile(rf"\b{re.escape(name)}\b")
-        uses = 0
-        for body in sources.values():
-            for line in body.splitlines():
-                stripped = line.strip()
-                if stripped.startswith((f"def {name}", f"async def {name}")):
-                    continue
-                uses += len(pattern.findall(line))
-        if uses == 0:
+        if uses[name] == 0:
             orphans.append(f"{name} ({where}) is defined and never called")
     return orphans
+
+
+_WORD = re.compile(r"\w+")
+
+
+def _word_uses(sources: dict[str, str], names) -> dict[str, int]:
+    """How many times each name is used in the caller sources, as the scan has
+    always counted a use: `\\bname\\b` on every line, a line whose stripped text
+    begins `def <name>` or `async def <name>` not counted for that name.
+
+    READ ONCE, NOT ONCE PER NAME (2026-10-06). The scan asked one pattern of
+    every line of every caller for each public function, and by ruling C's
+    build it took about 180 seconds a run; the planting harness runs it in two
+    plantings, and the harness test ran out of its 600-second limit three
+    times. The limit is not widened (the operator's word of 2026-09-27, "never
+    widen a tolerance"); the scan reads the sources once instead. The count is
+    the same count: a name is word characters only, so a match of
+    `\\bname\\b` is exactly a whole run of word characters equal to it, and the
+    runs of a line are its matches. The skip is the same prefix test -- the run
+    after `def ` read whole, every prefix of it a name the line defines, so
+    `def foobar` is skipped for `foo` as it always was. A name that is not word
+    characters only (none: every name is an identifier) is counted by its own
+    pattern, as before.
+    """
+    names = set(names)
+    uses = dict.fromkeys(names, 0)
+    odd = {name for name in names if not _WORD.fullmatch(name)}
+    for body in sources.values():
+        for line in body.splitlines():
+            words = [word for word in _WORD.findall(line) if word in names]
+            stripped = line.strip()
+            skipped: set[str] = set()
+            for head in ("def ", "async def "):
+                if stripped.startswith(head):
+                    lead = _WORD.match(stripped, len(head))
+                    if lead:
+                        run = lead.group()
+                        skipped = {run[:i] for i in range(1, len(run) + 1)} & names
+            for word in words:
+                if word not in skipped:
+                    uses[word] += 1
+            for name in odd:
+                if stripped.startswith((f"def {name}", f"async def {name}")):
+                    continue
+                uses[name] += len(re.findall(rf"\b{re.escape(name)}\b", line))
+    return uses
 
 
 def check_no_orphan_functions(root: Path | None = None) -> None:

@@ -14341,3 +14341,36 @@ on a pick)*:
   (read-only on the record) into the temp folder at about 04:41Z and
   migrated there. It was deleted at 04:42:57Z; the dry run was then made to
   patch the gate module's own globals, and no copy was made again.
+
+## The orphan scan, read once -- built 2026-10-06 *(ruled in the operator's absence by precedent: "never widen a tolerance", 2026-09-27; docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-06)"; on ba27ba3, C committed locally)*
+
+- **WHY.** `tests/test_guards.py::test_the_planted_violation_harness_catches_everything`
+  runs `tools/guards/plant.py` whole under a 600-second limit. On C's build it
+  ran out three times (twice in the full suite, once alone at 600.5 s) and on
+  its prover's full suite once more; plant.py whole caught 419/419 every time,
+  in 577 s alone and 609.7-610 s timed. The two orphan-scan plantings were
+  305 s of it (182.1 s and 122.6 s), because `audit.orphan_functions` compiled
+  one pattern per public function and asked it of every line of every caller
+  file: 1,221 names over 124 files, about 180 seconds a run (173.5-177.4 s on
+  246014c; C added 3-7 s with its code).
+- **WHAT.** `audit._word_uses` reads the sources once: each line's whole runs
+  of word characters, counted for the names asked, a line skipped for every
+  name its `def ` or `async def ` run begins with -- the same prefix test as
+  before. A match of `\bname\b` is exactly a whole run equal to the name
+  (names are identifiers), so the count is the same count; a name that is not
+  word characters only (none) is counted by its own pattern as before.
+- **MEASURED (scratchpad `c/orphan_equiv.py`).** On this tree: 1,221 names,
+  124 files, counts differing 0, zero/non-zero differing 0; the old scan
+  177.2 s, the new 0.38 s; orphans none. On the orphan planting's copy (the
+  package alone in a temporary folder, so `tools/` is not a caller), with a
+  coroutine nobody awaits and two names one of which begins the other's
+  `def` line: 1,225 names, 92 files, counts differing 0, zero/non-zero
+  differing 0 (131.6 s and 0.24 s); both plantings still caught.
+- **HELD BY** `tests/test_rulings.py::test_the_orphan_scan_read_once_counts_as_the_scan_did`:
+  the count one pattern per name gave, worked out again in the test, against
+  `_word_uses` on a world of the tricky cases (a use after a dot, in a string
+  or a comment, beside punctuation, none inside a longer word, a `def` line
+  for the name or a longer one, `async def`, a `.spec` file) and on every 40th
+  of the shipped tree's own names.
+- **THE HARNESS, AFTER.** The harness test alone, detached, on this tree:
+  passed in 294.96 s (2026-10-06 18:00Z), where it ran out at 600 s before.

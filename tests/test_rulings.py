@@ -154,6 +154,55 @@ def test_tests_do_not_count_as_callers():
                    for p in sources)
 
 
+def _uses_one_pattern_per_name(sources, name):
+    """The orphan scan's count as it was until 2026-10-06, one pattern per name."""
+    import re
+
+    pattern = re.compile(rf"\b{re.escape(name)}\b")
+    uses = 0
+    for body in sources.values():
+        for line in body.splitlines():
+            stripped = line.strip()
+            if stripped.startswith((f"def {name}", f"async def {name}")):
+                continue
+            uses += len(pattern.findall(line))
+    return uses
+
+
+def test_the_orphan_scan_read_once_counts_as_the_scan_did():
+    """2026-10-06: the scan reads the sources once instead of once per name, so
+    the planting harness fits its 600-second limit without the limit being
+    widened. Every count must be the count one pattern per name gave -- a use
+    after a dot, in a string or a comment, beside punctuation; no use inside a
+    longer word; a line defining the name, or a longer name it begins, not
+    counted for it; `async def` the same -- and on a sample of the shipped
+    tree's own names. (Measured over all 1,221 names on the day: none differed.)"""
+    from pathlib import Path
+
+    sources = {
+        "a.py": "\n".join([
+            "def foo():", "    return 1", "def foobar():", "    return foo_x",
+            "async def baz():", "    pass", "x = mod.qux(1)  # quux and qux",
+            "y = 'corge' + grault_", "  def   spaced(): pass", "def garply_and(): garply()",
+            "z = [waldo,waldo]", "    async def fred(): fred()",
+        ]),
+        "b.spec": "plugh(foo) ; xyzzy=1\n\tdef thud(): pass\nthud\n",
+    }
+    names = ["foo", "foobar", "foo_x", "baz", "qux", "quux", "corge", "grault",
+             "spaced", "garply", "garply_and", "waldo", "fred", "plugh", "xyzzy",
+             "thud", "nobody", "ba"]
+    counted = audit._word_uses(sources, names)
+    assert counted == {n: _uses_one_pattern_per_name(sources, n) for n in names}
+
+    root = Path(audit.__file__).resolve().parent
+    real = audit._caller_sources(root)
+    every = sorted(audit._public_functions(root))
+    sample = every[::40] + ["orphan_functions", "check_no_orphan_functions"]
+    counted = audit._word_uses(real, sample)
+    for name in sample:
+        assert counted[name] == _uses_one_pattern_per_name(real, name), name
+
+
 # --- RULING 4: gates that cannot clear -------------------------------------
 
 def test_an_unreachable_gate_says_so_with_its_arithmetic(tmp_path):
