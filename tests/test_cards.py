@@ -255,7 +255,9 @@ def test_the_props_chips_come_from_the_declared_list(page):
         """[...document.querySelectorAll('#props-chips .chip-btn')]
              .map(t => t.dataset.key)""")
     assert keys and keys[0] == "", "the first chip is not 'All'"
-    assert keys[1] == "alt", "the second chip is not 'Alt lines'"
+    # THE KALSHI LADDER VIEW SITS WHERE "ALT LINES" DID (operator ruling C,
+    # 2026-10-05: "The full ladder moves to its own 'Kalshi ladder' view").
+    assert keys[1] == "ladder", "the second chip is not 'Kalshi ladder'"
     assert keys[2:] == list(config.SPORT_PROP_MARKETS.get(sport, ())), (
         f"the chips for {sport} are {keys[2:]}, and the declared prop markets "
         f"are {list(config.SPORT_PROP_MARKETS.get(sport, ()))}. A chip row "

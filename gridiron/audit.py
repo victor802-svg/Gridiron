@@ -12729,18 +12729,22 @@ def board_signal_faults(payload) -> list[str]:
     for i, tile in enumerate((board.get("props") or {}).get("tiles") or []):
         check(tile, f"board.props.tiles[{i}]")
         # RULING c, 2026-09-25: a prop tile wears no outline until a real
-        # multiplier exists for its line -- read from a venue, or typed in
-        # the entry rail. The tile's own multiple is DECLARED, and a cushion
-        # against a declared number is arithmetic, not an edge. The colour is
-        # earned in the rail, against the number the operator typed.
-        if tile.get("signal") in ("clears", "costs") and tile.get("multiple_source") != "read":
+        # multiplier exists for its line -- read from a venue, or typed. The
+        # tile's multiple was DECLARED until 2026-10-06, and an outline
+        # against a declared number is arithmetic, not an edge. FROM RULING C
+        # (2026-10-05; built 2026-10-06) the operator types each power payout
+        # (C.3) and a leg that clears the bar against one is a pick (C.2), so
+        # a TYPED multiple earns the outline as a read one would; anything
+        # else -- declared, assumed, untyped or unsaid -- does not.
+        if tile.get("signal") in ("clears", "costs") and \
+                tile.get("multiple_source") not in ("read", "typed"):
             faults.append(
                 f"board.props.tiles[{i}] wears the {tile.get('signal')!r} outline "
                 f"against a multiplier the app assumed "
                 f"({tile.get('multiple_source') or 'none'}). A prop tile's "
-                f"outline needs a multiplier that was READ for that line; until "
-                f"one is, the cushion shows and the colour does not (ruled "
-                f"2026-09-25).")
+                f"outline needs a multiplier that was READ for that line or "
+                f"TYPED by the operator; until one is, the colour does not "
+                f"show (ruled 2026-09-25 and 2026-10-05).")
         if tile.get("alt") and not tile.get("high_end_badge_words"):
             faults.append(
                 f"board.props.tiles[{i}] is an alt line with no high-end "
@@ -12768,6 +12772,472 @@ BOARD_SIGNAL_FIXTURE_ASSUMED = {"board": {"props": {"tiles": [{
 BOARD_SIGNAL_FIXTURE_READ = {"board": {"props": {"tiles": [{
     "signal": "clears", "badge_words": "12/100", "badge_n": 12,
     "multiple_source": "read"}]}}}
+
+
+# ---------------------------------------------------------------------------
+# THE PROPS BOARD CALLS NO VENUE RUNG A PICK'EM PICK (operator ruling C,
+# 2026-10-05; built 2026-10-06)
+# ---------------------------------------------------------------------------
+#
+# "1. Never present a venue ladder rung as a pick'em pick. Per player and
+# stat: the model's projection and its chance at the market's main line (the
+# rung nearest 50c), labelled 'about the app's line, check the app'. The full
+# ladder moves to its own 'Kalshi ladder' view. 2. Browse plus picks: every
+# listed player shows projection, chance at the main line, and the
+# break-evens; only legs clearing B.2 get a pick badge. 3. Default break-even
+# when no entry is typed: 2-pick power and 3-pick power, both shown on each
+# leg. The operator types each multiplier once (no payout hard-coded as
+# fact); until typed, the page asks for it and shows no break-even. 4.
+# Plantings: a ladder rung presented as a pick; a 90% leg at 91c shown as a
+# pick; a slate with nothing clearing drawn with picks; a break-even shown
+# from an untyped multiplier." And B.2: "A leg is called a pick only if its
+# edge after fees is 3 percentage points or more."
+#
+# EVERY NUMBER IS WORKED OUT AGAIN, never read off the payload's own say-so:
+# the payouts from the record's own settings rows (`_typed_pickem_payouts`,
+# read straight off the table); the main line from the ladder the payload's
+# own Kalshi ladder view lists for that player and stat (the rung priced
+# nearest an even chance); the model's chance at it from the stored forecast
+# (`_over_chance_at`: its own answer at the line it asked, or a counting
+# stat's stored rate read at the line in its declared form, and nothing
+# else); the break-even, the edge and the bar by arithmetic held here.
+
+#: THE BAR AS RULED, held here so a builder that moves `config.PICK_MIN_EDGE`
+#: is named rather than followed (B.2, 2026-10-05: three points or more).
+PICK_MIN_EDGE_AS_RULED = 0.03
+
+#: Nothing a pick'em pick carries may sit on a Kalshi ladder row or rung
+#: (reading (e) of ruling C: "never a pick'em pick, no badge").
+LADDER_PICK_FIELDS = ("pick", "pick_words", "edge", "edge_words", "entries",
+                      "breakeven", "breakeven_words", "signal", "clears",
+                      "badge_words", "badge_n", "main_chance", "main_chance_words")
+
+#: A leg still to start carries these; a live or settled tile none of them.
+LEG_FIELDS = ("entries", "pick", "pick_words", "main_line", "main_chance",
+              "main_note_words", "leg_words")
+
+#: FLOAT NOISE ON THE BAR, held here as the builder holds its own (the prover
+#: of ruling C, 2026-10-06): an edge worked out as 0.029999999999999985 is
+#: three points; one at 2.99995 points is not, and until this date both the
+#: builder and this check rounded it to six places and called it a pick.
+PICK_BAR_FLOAT_NOISE_AS_HELD = 1e-9
+
+
+def _typed_pickem_payouts(conn) -> dict[int, float | None]:
+    """The power payouts the operator typed, by legs, read straight off the
+    record's `settings` rows -- never through `settings` or `board` -- with
+    None where nothing (or nothing that is a payout) was typed."""
+    out: dict[int, float | None] = {}
+    for legs, name in config.PICKEM_POWER_ENTRIES:
+        row = conn.execute("SELECT value FROM settings WHERE name = ?"
+                           " ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+        got = None
+        if row is not None and str(row[0] or "").strip():
+            try:
+                got = float(str(row[0]).strip().lower().rstrip("x"))
+            except ValueError:
+                got = None
+            if got is not None and not 1.0 < got <= 100.0:
+                got = None
+        out[legs] = got
+    return out
+
+
+def _over_chance_at(forecast: dict, line: float) -> float | None:
+    """The model's chance the stat goes OVER `line`, worked out from the
+    stored forecast alone: its own answer where `line` is the line it asked,
+    its stored rate read at `line` in the declared form where it is a
+    counting stat, otherwise None -- the model states nothing there."""
+    from . import subjects
+    from .model import counts
+
+    asked = forecast.get("line_asked")
+    if asked is not None and abs(float(asked) - float(line)) <= 1e-9:
+        taken = subjects.side_taken("prop", forecast.get("model_side"))
+        prob = float(forecast["model_prob"])
+        return prob if taken == "yes" else 1.0 - prob
+    if counts.is_count_market(forecast.get("prop_type")):
+        try:
+            rate = (json.loads(forecast.get("factors_json") or "{}") or {}).get("expected_count")
+        except ValueError:
+            rate = None
+        if rate is None:
+            return None
+        form, dispersion = counts.form_for(forecast["prop_type"])
+        if not form:
+            return None
+        return counts.p_over(float(rate), float(line), form=form, dispersion=dispersion)
+    return None
+
+
+def _nearest_even(rungs: list[dict]) -> float | None:
+    """The line of the rung priced nearest an even chance, a tie to the lower
+    line -- the main line, worked out again."""
+    best = None
+    for r in rungs or []:
+        price = r.get("price")
+        if r.get("line") is None or price is None or not 0.0 < float(price) < 1.0:
+            continue
+        key = (round(abs(float(price) - 0.5), 6), float(r["line"]))
+        if best is None or key < best:
+            best = key
+    return None if best is None else best[1]
+
+
+def _line_in_words(line: float, words: str | None) -> bool:
+    """Do the words name this line? A half-unit line is said in words ("records
+    a passing touchdown"), so any words name it."""
+    if words is None:
+        return False
+    if abs(float(line) - 0.5) < 1e-9:
+        return bool(words)
+    return f"{float(line):g}" in words
+
+
+def props_board_faults(payload, *, typed: dict[int, float | None],
+                       forecasts: dict[int, dict] | None = None,
+                       conn=None) -> list[str]:
+    """Every way the Props board can present a venue rung as a pick'em pick,
+    call a leg a pick below the bar, fill a slate with picks, or draw a
+    break-even from a payout nobody typed (ruling C, 2026-10-05; B.2).
+
+    `typed` is the record's typed payouts by legs (`_typed_pickem_payouts`);
+    `forecasts` the stored forecast behind each tile by id, to work the
+    chance at a main line out again (left out, that one test is not asked);
+    `conn` lets the chance be the one a reader is shown where a correction is
+    in force (`correction.shown_proposition`, item 3's door)."""
+    from . import language
+
+    board = (payload or {}).get("board") or {}
+    props = board.get("props")
+    if not props:
+        return []
+    faults: list[str] = []
+    rule = "(operator ruling C, 2026-10-05)"
+    bar = PICK_MIN_EDGE_AS_RULED
+    if abs(float(config.PICK_MIN_EDGE) - bar) > 1e-12:
+        faults.append(
+            f"the pick bar is {config.PICK_MIN_EDGE!r}, not the three points ruled "
+            f"(B.2, 2026-10-05: \"A leg is called a pick only if its edge after "
+            f"fees is 3 percentage points or more\")")
+    cards = {c.get("prediction_id"): c for c in payload.get("cards") or []}
+    ladder = props.get("ladder") or {}
+    rows_by_id = {r.get("prediction_id"): r for r in ladder.get("rows") or []}
+
+    # THE KALSHI LADDER VIEW: every rung under its own contract, never a pick.
+    for i, row in enumerate(ladder.get("rows") or []):
+        where = f"board.props.ladder.rows[{i}] ({row.get('player')!r} {row.get('family')!r})"
+        for key in LADDER_PICK_FIELDS:
+            if row.get(key) not in (None, False, "", []):
+                faults.append(f"{where} carries {key!r} ({row.get(key)!r}): a Kalshi "
+                              f"ladder row is never a pick'em pick {rule}")
+        mains = [r for r in row.get("rungs") or [] if r.get("main")]
+        want = _nearest_even(row.get("rungs") or [])
+        if want is not None and (len(mains) != 1 or abs(float(mains[0]["line"]) - want) > 1e-9):
+            faults.append(f"{where} marks {[m.get('line') for m in mains]!r} as the main "
+                          f"line, where the rung priced nearest an even chance is {want:g} "
+                          f"{rule}")
+        for j, rung in enumerate(row.get("rungs") or []):
+            for key in LADDER_PICK_FIELDS:
+                if rung.get(key) not in (None, False, "", []):
+                    faults.append(
+                        f"{where}.rungs[{j}] (line {rung.get('line')!r}, price "
+                        f"{rung.get('price')!r}) carries {key!r} ({rung.get(key)!r}): a "
+                        f"venue ladder rung presented as a pick'em pick -- a rung is a "
+                        f"contract at the venue, its edge against its own price, never "
+                        f"against a pick'em break-even {rule}")
+            if not _line_in_words(rung.get("line"), rung.get("contract_words")):
+                faults.append(f"{where}.rungs[{j}] is not named under its own contract: "
+                              f"line {rung.get('line')!r}, words "
+                              f"{rung.get('contract_words')!r} (step A's rule) {rule}")
+
+    # WHAT THE OPERATOR TYPED, and the page asking until he has.
+    missing = [legs for legs, _n in config.PICKEM_POWER_ENTRIES if typed.get(legs) is None]
+    payouts = props.get("payouts") or {}
+    said = {e.get("legs"): e for e in payouts.get("entries") or []}
+    for legs, _name in config.PICKEM_POWER_ENTRIES:
+        entry = said.get(legs)
+        if entry is None:
+            faults.append(f"board.props.payouts names no {legs}-pick power payout {rule}")
+            continue
+        got = entry.get("multiple")
+        if (got is None) != (typed.get(legs) is None) or (
+                got is not None and abs(float(got) - float(typed[legs])) > 1e-9):
+            faults.append(
+                f"board.props.payouts says a {legs}-pick power entry pays {got!r}, where "
+                f"the record holds {typed.get(legs)!r} as typed -- no payout is "
+                f"hard-coded as fact {rule}")
+    if bool(payouts.get("ask_words")) != bool(missing):
+        faults.append(
+            f"board.props.payouts {'does not ask' if missing else 'asks'} for a payout "
+            f"while {missing or 'none'} is untyped: until typed, the page asks for it "
+            f"{rule}")
+
+    # EACH LEG.
+    entries_ruled = [legs for legs, _n in config.PICKEM_POWER_ENTRIES]
+    upcoming_picks, upcoming = 0, 0
+    for i, tile in enumerate(props.get("tiles") or []):
+        pid = tile.get("prediction_id")
+        where = f"board.props.tiles[{i}] (question {pid}, {tile.get('player')!r})"
+        if tile.get("state") != "upcoming":
+            for key in LEG_FIELDS:
+                if tile.get(key) not in (None, False, [], ""):
+                    faults.append(f"{where} is {tile.get('state')!r} and carries {key!r}: a "
+                                  f"game being played or finished carries nothing to act "
+                                  f"on {rule}")
+            continue
+        upcoming += 1
+        card = cards.get(pid)
+        if card is not None and tile.get("question") != card.get("phrase"):
+            faults.append(
+                f"{where} is headed {tile.get('question')!r}, not the question the record "
+                f"asked ({card.get('phrase')!r}): the model's own question is said as its "
+                f"own, and a venue rung never stands in its place {rule}")
+        if card is not None and not str(tile.get("own_question_words") or "").startswith(
+                "The model's own question: " + str(card.get("phrase"))):
+            faults.append(f"{where} does not say its own question as the model's own "
+                          f"({tile.get('own_question_words')!r}) {rule}")
+        # THE MAIN LINE: the rung of its ladder nearest an even chance, or none.
+        row = rows_by_id.get(pid)
+        want_line = _nearest_even((row or {}).get("rungs") or [])
+        main = tile.get("main_line")
+        if want_line is None:
+            if main is not None or tile.get("main_chance") is not None:
+                faults.append(
+                    f"{where} reads its leg at {main!r} ({tile.get('main_chance')!r}) with no "
+                    f"ladder listed for it in the Kalshi ladder view: a main line is a rung "
+                    f"of the venue's own ladder {rule}")
+        elif main is None or abs(float(main) - want_line) > 1e-9:
+            faults.append(
+                f"{where} reads its leg at {main!r}, where the main line -- the rung of its "
+                f"ladder priced nearest an even chance -- is {want_line:g}: a venue ladder "
+                f"rung presented as the app's line {rule}")
+        if main is not None:
+            if tile.get("main_note_words") != language.APP_LINE_WORDS:
+                faults.append(f"{where} shows its main line without "
+                              f"{language.APP_LINE_WORDS!r} beside it "
+                              f"({tile.get('main_note_words')!r}) {rule}")
+            if not _line_in_words(main, tile.get("main_words")):
+                faults.append(f"{where} draws its main line {main!r} under the words "
+                              f"{tile.get('main_words')!r} {rule}")
+        # THE WORDS THE LEG IS NAMED BY OFF ITS TILE (the entry rail; the
+        # prover of ruling C, 2026-10-06): the main line's own contract where
+        # there is one -- its chance is drawn beside them -- and otherwise
+        # words naming no line, never the question the record asked at its
+        # own line beside a chance at another.
+        leg_words = tile.get("leg_words")
+        if main is not None:
+            if not leg_words or leg_words != tile.get("main_words"):
+                faults.append(
+                    f"{where} names its leg {leg_words!r} off its tile, where its main line "
+                    f"is {tile.get('main_words')!r}: the entry rail draws a leg's chance at "
+                    f"the main line beside these words, so they are that contract's {rule}")
+        else:
+            asked = (card or {}).get("line_asked")
+            if not leg_words or leg_words in (tile.get("question"), tile.get("line_words")) or (
+                    asked is not None and abs(float(asked) - 0.5) > 1e-9
+                    and f"{float(asked):g}" in leg_words):
+                faults.append(
+                    f"{where} names its leg {leg_words!r} off its tile with no main line: "
+                    f"a leg with no main line is named by its player and stat, never by "
+                    f"the line the record asked {rule}")
+        chance = tile.get("main_chance")
+        # THE CHANCE AS THE FORECAST STATES IT, unrounded, where the stored
+        # forecast is to hand: the bar is read on it (2026-10-06).
+        exact = None
+        if main is not None and forecasts is not None and pid in forecasts:
+            over = _over_chance_at(forecasts[pid], float(main))
+            if over is not None and conn is not None:
+                from . import correction
+
+                over, _v = correction.shown_proposition(
+                    conn, sport=forecasts[pid].get("sport") or payload.get("sport"),
+                    market_type="prop", forecaster=forecasts[pid]["predictor"],
+                    proposition=float(over))
+            want = None if over is None else (over if over >= 0.5 else 1.0 - over)
+            exact = want
+            if (want is None) != (chance is None) or (
+                    want is not None and abs(float(chance) - want) > 2e-6):
+                faults.append(
+                    f"{where} gives {chance!r} at the main line {main:g}, where the stored "
+                    f"forecast states {None if want is None else round(want, 6)!r} there -- "
+                    f"its own answer at the line it asked, or a counting stat's rate read "
+                    f"at the line, and nothing else {rule}")
+        # THE BREAK-EVENS, THE EDGES, THE BAR.
+        entries = tile.get("entries") or []
+        if sorted(e.get("legs") for e in entries) != entries_ruled:
+            faults.append(f"{where} shows break-evens for {[e.get('legs') for e in entries]!r}, "
+                          f"not a 2-pick and a 3-pick power entry each {rule}")
+        cleared = []
+        for e in entries:
+            legs = e.get("legs")
+            m = typed.get(legs)
+            be = e.get("breakeven")
+            if m is None:
+                if be is not None or e.get("multiple") is not None or e.get("edge") is not None \
+                        or e.get("clears"):
+                    faults.append(
+                        f"{where} shows a {legs}-pick power break-even "
+                        f"{e.get('breakeven_words')!r} from a multiplier nobody typed "
+                        f"({e.get('multiple')!r}): until typed, no break-even is shown "
+                        f"{rule}")
+                continue
+            want_be = float(m) ** (-1.0 / int(legs))
+            if be is None or abs(float(be) - want_be) > 2e-6 or e.get("multiple") != m:
+                faults.append(
+                    f"{where} shows a {legs}-pick power break-even of {be!r} from "
+                    f"{e.get('multiple')!r}, where the typed {m:g}x breaks a leg even at "
+                    f"{want_be:.6f} {rule}")
+                continue
+            if f"{want_be * 100:.1f}%" not in str(e.get("breakeven_words") or ""):
+                faults.append(f"{where} says {e.get('breakeven_words')!r} for a break-even "
+                              f"of {want_be:.6f} {rule}")
+            edge = e.get("edge")
+            if chance is None:
+                if edge is not None or e.get("clears"):
+                    faults.append(
+                        f"{where} carries an edge ({edge!r}) against the {legs}-pick power "
+                        f"break-even with no chance at the main line: the model's chance "
+                        f"at the app's line is the only number a leg is read on {rule}")
+                continue
+            # THE EDGE ON THE FORECAST'S OWN CHANCE where it is to hand, the
+            # page's six places otherwise (the prover of ruling C, 2026-10-06).
+            # Until this date the bar was read on the page's rounded chance,
+            # rounded again to six places: a leg at 2.99995 points passed as a
+            # pick, and one at 2.99994 that the builder rightly left a number
+            # was named as a fault.
+            want_edge = (exact if exact is not None else float(chance)) - want_be
+            if edge is None or abs(float(edge) - want_edge) > 2e-6:
+                faults.append(f"{where} carries the edge {edge!r} against the {legs}-pick "
+                              f"power break-even, where its chance less the break-even is "
+                              f"{want_edge:+.6f} {rule}")
+                continue
+            clears = want_edge >= bar - PICK_BAR_FLOAT_NOISE_AS_HELD
+            # READ OFF THE PAGE ALONE, a chance rounded to six places cannot
+            # tell an edge within a millionth of the bar either way, and the
+            # page's own call stands there; with the forecast it always can.
+            decided = exact is not None or abs(want_edge - bar) > 1e-6
+            if decided and bool(e.get("clears")) != clears:
+                faults.append(
+                    f"{where} says its {legs}-pick power edge {want_edge * 100:+.5f} "
+                    f"{'clears' if e.get('clears') else 'does not clear'} the bar of "
+                    f"{bar * 100:g} points (B.2: \"3 percentage points or more\") {rule}")
+            if clears if decided else bool(e.get("clears")):
+                cleared.append(legs)
+        is_pick = bool(tile.get("pick"))
+        if is_pick and not cleared:
+            faults.append(
+                f"{where} is called a pick ({tile.get('pick_words')!r}) with no edge of "
+                f"{bar * 100:g} points or more at its main line: below that a leg is shown "
+                f"as a number, never as a pick (B.2) {rule}")
+        if cleared and not is_pick:
+            faults.append(f"{where} clears the bar for {cleared!r} and is not called a pick "
+                          f"{rule}")
+        if is_pick != bool(tile.get("pick_words")) or (
+                is_pick != (tile.get("signal") == "clears")):
+            faults.append(f"{where}: its pick ({is_pick}), its words "
+                          f"({tile.get('pick_words')!r}) and its outline "
+                          f"({tile.get('signal')!r}) do not agree {rule}")
+        if is_pick and not tile.get("badge_words"):
+            faults.append(f"{where} is a pick with no record badge beside it (LAW 4) {rule}")
+        if is_pick and cleared:
+            upcoming_picks += 1
+    # NO FILLING: a slate with legs to come and none clearing says so.
+    nothing = props.get("nothing_words")
+    if upcoming and not upcoming_picks and nothing != language.props_nothing_worth_taking_words():
+        faults.append(
+            f"board.props: {upcoming} legs still to start and none clears the bar, and the "
+            f"page does not say \"Nothing worth taking today\" ({nothing!r}) -- B.4's words, "
+            f"on this page from ruling C {rule}")
+    if upcoming_picks and nothing:
+        faults.append(f"board.props says {nothing!r} beside {upcoming_picks} picks {rule}")
+    return faults
+
+
+#: THE ENTRY RAIL'S LEG ROW, as `renderEntryRail` draws it (the prover of
+#: ruling C, 2026-10-06). As built the rail drew `l.line_words` -- the words
+#: of the question the record asked at its OWN line -- beside `main_chance`,
+#: the model's chance at the venue's MAIN line, so a taken leg read "over 200.5
+#: passing yards · 64%" for a chance at 250.5, on whichever side the model
+#: favours there: a number under another contract's words. The row draws the
+#: leg's own words (`leg_words`, the main line's contract), and neither the
+#: question's words nor its own chance.
+_RAIL_FUNCTION = re.compile(r"\n  (?:async )?function renderEntryRail\(")
+_RAIL_NEXT_FUNCTION = re.compile(r"\n  (?:async )?function \w+\(")
+
+
+def entry_rail_leg_faults(js: str | None = None) -> list[str]:
+    """The entry rail drawing a taken leg under any words but its own
+    (`leg_words`), or beside the question's own chance (`prob_words`); or
+    keeping a payout the page filled in for another number of legs."""
+    if js is None:
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    js = _without_comments(js, "js")
+    start = _RAIL_FUNCTION.search(js)
+    if start is None:
+        return ["`renderEntryRail` is gone from app.js, so nothing says what the entry "
+                "rail draws a taken leg under (operator ruling C, 2026-10-05)"]
+    after = _RAIL_NEXT_FUNCTION.search(js, start.end())
+    body = js[start.start():after.start() if after else len(js)]
+    line = js.count(chr(10), 0, start.start()) + 2
+    faults = []
+    if not re.search(r"\.leg_words\b", body):
+        faults.append(f"app.js:{line} `renderEntryRail` does not draw a leg's own words "
+                      f"(`leg_words`): its chance at the main line stands under other words "
+                      f"(operator ruling C, 2026-10-05)")
+    for field in ("line_words", "prob_words", "question"):
+        if re.search(r"\.%s\b" % field, body):
+            faults.append(
+                f"app.js:{line} `renderEntryRail` reads `{field}`, the question the record "
+                f"asked at its own line, beside a leg's chance at the venue's main line: a "
+                f"number under another contract's words (operator ruling C, 2026-10-05)")
+    # THE PAYOUT THE PAGE FILLS IN FOLLOWS THE LEGS (the prover of ruling C,
+    # 2026-10-06): filled only into an empty field, the 2-pick's typed payout
+    # stayed when a third leg was taken and the verdict read a 3-leg entry at
+    # a payout nobody typed for it. A value the page filled is filled again
+    # for the number of legs taken; one the operator types is left alone.
+    if not _RAIL_REFILL.search(body):
+        faults.append(
+            f"app.js:{line} `renderEntryRail` fills the entry's payout only into an empty "
+            f"field, so a payout typed for another number of legs stays when a leg is "
+            f"taken and the verdict reads the entry at it (operator ruling C.3, "
+            f"2026-10-05: no payout the operator did not type)")
+    return faults
+
+
+#: The rail's fill: an empty field, or one the page filled, is filled again.
+_RAIL_REFILL = re.compile(
+    r"if\s*\(\s*!pays\.value\s*\|\|\s*pays\.dataset\.filled\s*\)\s*\{[\s\S]{0,400}?"
+    r"\.legs\s*===\s*legs\.length[\s\S]{0,400}?pays\.dataset\.filled\s*=\s*'")
+
+
+def check_the_props_board_calls_no_rung_a_pick(conn, payload, *, app_js: str | None = None) -> None:
+    """THE GATE'S CALL (step 2, every sport's slate, both forecasters, on the
+    record's copy): `props_board_faults` with the payouts typed and the
+    forecasts behind the tiles read off the record itself, and the entry
+    rail's leg row read off the shipped app.js (`entry_rail_leg_faults`;
+    `app_js` hands a planted one in)."""
+    tiles = (((payload or {}).get("board") or {}).get("props") or {}).get("tiles") or []
+    ids = [t["prediction_id"] for t in tiles if t.get("prediction_id") is not None]
+    forecasts: dict[int, dict] = {}
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        for r in conn.execute(
+                "SELECT id, sport, line_asked, model_prob, model_side, prop_type,"
+                f"       predictor, factors_json FROM predictions WHERE id IN ({marks})", ids):
+            forecasts[r[0]] = {"sport": r[1], "line_asked": r[2], "model_prob": r[3],
+                               "model_side": r[4], "prop_type": r[5], "predictor": r[6],
+                               "factors_json": r[7]}
+    faults = props_board_faults(payload, typed=_typed_pickem_payouts(conn),
+                                forecasts=forecasts, conn=conn)
+    faults += entry_rail_leg_faults(app_js)
+    if faults:
+        raise LawViolation(
+            "THE PROPS BOARD PRESENTS A NUMBER AS A PICK'EM PICK THAT IS NOT ONE "
+            "(operator ruling C, 2026-10-05: \"Never present a venue ladder rung as "
+            "a pick'em pick ... only legs clearing B.2 get a pick badge ... until "
+            "typed, the page asks for it and shows no break-even\"):"
+            + _NL2 + _NL2.join(faults[:8]))
 
 
 #: Where a hand-typed club hex would sit: the web files and the composers
@@ -12847,6 +13317,16 @@ BOARD_TEXT_KEYS = (
     # THE MODEL'S OWN SIDE, beside a pick headlining the contract bought on
     # the other side of it (operator question 37, ruled 2026-10-05).
     "own_side_words",
+    # THE PROPS BOARD (operator ruling C, 2026-10-05; built 2026-10-06): a
+    # leg's projection, main line, chance, break-evens, edge and pick, the
+    # model's own question, the payouts asked for and typed, the Kalshi
+    # ladder view's contracts, and an entry's own tooltip.
+    "projection_words", "main_words", "main_note_words", "main_chance_words",
+    "pick_words", "own_question_words", "typed_words", "ask_words",
+    "nothing_words", "ladders_words", "contract_words", "main_tip",
+    "app_line_words", "tip",
+    # A LEG'S WORDS OFF ITS TILE, the entry rail's (its prover, 2026-10-06).
+    "leg_words",
 )
 
 

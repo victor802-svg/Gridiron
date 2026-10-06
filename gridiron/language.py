@@ -5597,8 +5597,13 @@ def board_labels() -> dict:
         "took": "I took this",
         "taken": "taken",
         "record": "record",
-        "cushion": "cushion",
+        # THE PROPS TILE'S THREE ROWS (operator ruling C, 2026-10-05): the
+        # projection, the venue's main line and the break-evens; "cushion"
+        # went with the declared multiple it was measured against.
+        "projection": "projection",
+        "main_line": "main line",
         "breakeven": "break-even",
+        "save": "Save",
         "venue": "venue line",
         "not_read": "not read yet",
         "not_listed": "not listed",
@@ -5622,15 +5627,16 @@ def board_labels() -> dict:
         "legend_costs": "costs after fees",
         "legend_won": "won",
         "legend_lost": "lost",
-        "needs": "needs",
-        "best": "best line",
-        "sorted": "sorted by cushion",
         "polled": "polled",
         # SORT AND FILTER (visual pass, 2026-09-25) and the detail panel.
         "sort": "sort",
         "sort_time": "start time",
         "sort_prob": "the model's chance",
-        "sort_cushion": "cushion",
+        # THE PROPS PAGE SORTS BY EDGE OR BY GAME (operator ruling C,
+        # 2026-10-05, with B.1's "chance of hitting alone never ranks
+        # anything"): the cushion was the model's chance less one declared
+        # number, so ranking by it was ranking by chance.
+        "sort_edge": "edge",
         "show": "show",
         "clears_only": "clears the bar only",
         "market": "market",
@@ -5951,52 +5957,253 @@ def nothing_clears_words() -> str:
     return "Nothing clears the bar today. Every pick below is priced, and none of them beats the fee."
 
 
-def cushion_words(cushion: float | None) -> str:
-    """The cushion in points of probability, signed."""
-    if cushion is None:
-        return "no cushion to show"
-    return f"{cushion * 100:+.1f} points"
-
-
-def breakeven_words(breakeven: float) -> str:
-    return f"{breakeven * 100:.1f}% to break even"
-
-
-def cushion_tip(shown: float | None, breakeven: float, multiple: float,
-                legs: int, declared: str) -> str:
-    """Why the tile sits where it sits, and what the number is NOT."""
-    when = (declared or "")[:10]
-    if shown is None:
-        return "No probability on this tile, so no cushion."
-    return (f"The model's chance, {round(shown * 100)}%, minus the "
-            f"{breakeven * 100:.1f}% a leg needs to break even in a "
-            f"{legs}-pick entry paying {multiple:g} times. The {multiple:g} "
-            f"times is declared on {when}, not read from a venue: no pick'em "
-            f"venue is read yet, so this is arithmetic against a standard "
-            f"entry and not an edge against a price.")
-
-
-def venue_line_tip() -> str:
-    return ("No pick'em venue is read yet, so the only line here is the one "
-            "the record asked. Other lines from the same venue would sit here "
-            "once one is read.")
-
-
 def props_empty_words(sport_label: str) -> str:
     return f"No {sport_label} player props forecast on this slate."
 
 
-def props_not_read_words() -> str:
-    """The Props page's standing note: where the lines come from, and that a
-    venue's are not read yet."""
-    return ("Every tile is a question this record asked at its own line. No "
-            "pick'em venue is read yet, so a venue line reads 'not read yet' "
-            "and the cushion is against a declared standard entry.")
+# ---------------------------------------------------------------------------
+# THE PROPS BOARD (operator ruling C, 2026-10-05; built 2026-10-06)
+# ---------------------------------------------------------------------------
+#
+# "Never present a venue ladder rung as a pick'em pick. Per player and stat:
+# the model's projection and its chance at the market's main line (the rung
+# nearest 50c), labelled 'about the app's line, check the app'. The full
+# ladder moves to its own 'Kalshi ladder' view." Until this date every tile
+# was a question this record asked at its own line, beside "57.7% to break
+# even" and a cushion from a declared 3x nobody typed. Each tile is now one
+# player and one stat: the projection, the chance at the venue's main line,
+# the break-even of each payout the operator typed, and a pick only where
+# the edge clears the bar (B.2). The words are here; `board` chooses which.
+
+#: THE OPERATOR'S OWN WORDS beside every number at the venue's main line
+#: (C.1): the main line stands for the pick'em app's line, which this app
+#: never reads (LAW 5; ruling D), so it says so wherever it is shown.
+APP_LINE_WORDS = "about the app's line, check the app"
 
 
-def alt_lines_empty_words() -> str:
-    return ("No alt lines: a venue's alternate lines are not read yet, so "
-            "there is nothing here to rank.")
+def pickem_entry_name(legs: int) -> str:
+    """"2-pick power": an entry by its size and kind, as an app names it."""
+    return f"{int(legs)}-pick power"
+
+
+def pickem_payout_label(legs: int) -> str:
+    """The label of the field the operator types a power payout into."""
+    return f"A {pickem_entry_name(legs)} entry pays"
+
+
+def pickem_typed_words(typed_utc: str | None) -> str:
+    """"typed Monday 5 October": when the operator typed a payout (C.3, read
+    (b): shown with when it was typed)."""
+    when = date_words_from_iso((typed_utc or "")[:10]) if typed_utc else None
+    return f"typed {when}" if when else "typed on a day the record does not hold"
+
+
+def pickem_payouts_heading() -> str:
+    return "What your app pays"
+
+
+def pickem_payouts_ask_words(missing: list[int]) -> str | None:
+    """THE PAGE ASKS (C.3: "until typed, the page asks for it and shows no
+    break-even"), naming each payout not yet typed; None when both are."""
+    if not missing:
+        return None
+    entries = [f"a {pickem_entry_name(n)} entry" for n in missing]
+    named = " and ".join(entries)
+    verb, them = ("pays", "it") if len(entries) == 1 else ("pay", "them")
+    return (f"Type what {named} {verb} in your app. Until you do, no "
+            f"break-even is shown for {them}, and no leg is called a pick "
+            f"against {them}: nothing here assumes a payout.")
+
+
+def pickem_payouts_note() -> str:
+    return ("Typed once and kept, each with the day you typed it; type again "
+            "to change it. Nothing here is read from any pick'em app.")
+
+
+def pickem_breakeven_words(legs: int, breakeven: float | None) -> str:
+    """"2-pick power 57.7%", or that its payout is not typed yet."""
+    if breakeven is None:
+        return f"{pickem_entry_name(legs)}: payout not typed"
+    return f"{pickem_entry_name(legs)} {breakeven * 100:.1f}%"
+
+
+def pickem_breakeven_tip(legs: int, multiple: float | None,
+                         breakeven: float | None, typed_utc: str | None) -> str:
+    """Where a break-even comes from: the payout typed, and the arithmetic."""
+    name = pickem_entry_name(legs)
+    if multiple is None or breakeven is None:
+        return (f"No payout is typed for a {name} entry, so no break-even is "
+                f"shown and no leg is called a pick against it. Type what your "
+                f"app pays at the top of this page.")
+    # PLAIN WORDS (the prover of ruling C, 2026-10-06): this said "2 legs that
+    # likely all hit together one time in 3", which says nothing a reader can
+    # follow. At the break-even every leg hits together exactly as often as
+    # the payout pays back.
+    every = "both legs" if int(legs) == 2 else f"all {int(legs)} legs"
+    return (f"A {name} entry paying {multiple:g} times, as you typed it "
+            f"({pickem_typed_words(typed_utc)}). Every leg must hit, so a leg "
+            f"breaks even at {breakeven * 100:.1f}%: at that chance {every} "
+            f"hit together one time in {multiple:g}, and a payout of "
+            f"{multiple:g} times only gives back what the entries cost.")
+
+
+def prop_projection_words(projection: float | None, family_words: str) -> str:
+    """"about 4.4 receptions", or none, said plainly."""
+    if projection is None:
+        return f"none for {family_words}"
+    return f"about {projection:.1f} {family_words}"
+
+
+def prop_projection_tip(projection: float | None, family_words: str) -> str:
+    if projection is None:
+        return (f"The model answers {family_words} as a yes-or-no question at "
+                f"its own line and states no expected number, so there is no "
+                f"projection to show. None is guessed.")
+    return (f"The model's own expectation for this player and stat in this "
+            f"game, written with its forecast before any line was read: about "
+            f"{projection:.1f} {family_words}.")
+
+
+def prop_main_absent_words() -> str:
+    """No main line for this player and stat: the venue lists none here."""
+    return "not listed by the venue"
+
+
+def prop_leg_words(player: str | None, family_words: str) -> str:
+    """"Jared Goff · passing yards": a leg named by its player and stat where
+    the venue lists no main line -- no line is named, because no line is the
+    app's (the prover of ruling C, 2026-10-06: the entry rail drew a taken leg
+    under its own question's line beside its chance at another)."""
+    return f"{player or ''} · {family_words}".strip(" ·")
+
+
+def prop_main_absent_tip() -> str:
+    return ("The venue's player-prop ladders are not read, so there is no main "
+            "line — the rung priced nearest an even chance, which stands for "
+            "the app's line — and no chance from the model at it. No leg is "
+            "called a pick without one.")
+
+
+def prop_main_line_tip(price: float | None) -> str:
+    cents = "" if price is None else f" (the venue's price {price * 100:.0f}¢)"
+    return ("The venue's main line for this player and stat: of every rung it "
+            f"lists, the one priced nearest an even chance{cents}. It stands "
+            "for the pick'em app's line, which this app never reads — about "
+            "the app's line, check the app. Every rung is in the Kalshi "
+            "ladder view.")
+
+
+def prop_no_chance_words() -> str:
+    """Reading (a): the model states no chance at the main line."""
+    return "the model has no chance at this line yet"
+
+
+def prop_no_chance_tip(family_words: str) -> str:
+    return (f"The model answers {family_words} only at the line it asked, and "
+            f"nothing it wrote can be read at another, so it has no chance at "
+            f"this line yet. None is guessed, and no leg is called a pick "
+            f"without one.")
+
+
+def prop_chance_words(chance: float | None) -> str:
+    return "" if chance is None else f"{round(chance * 100)}%"
+
+
+def prop_chance_tip(contract_words: str, chance: float, how: str) -> str:
+    return (f"The model gives \"{contract_words}\" {round(chance * 100)}%: "
+            f"{how}. {APP_LINE_WORDS[0].upper() + APP_LINE_WORDS[1:]}.")
+
+
+def prop_chance_how_words(asked_here: bool, projection: float | None,
+                          family_words: str) -> str:
+    """How the model's chance at the main line was stated."""
+    if asked_here:
+        return "its own question, asked at this line"
+    if projection is not None:
+        return (f"its expected {projection:.1f} {family_words}, read at this "
+                f"line as a count")
+    return "read at this line from what it wrote"
+
+
+def prop_edge_words(edge: float | None) -> str | None:
+    """"edge +4.3": the chance at the main line minus a break-even, in points."""
+    return None if edge is None else f"edge {edge * 100:+.1f}"
+
+
+def prop_pick_words(legs: list[int]) -> str | None:
+    """"Pick · 2-pick power" -- a leg whose edge clears the bar for these
+    entries (B.2); None for a leg that clears for none."""
+    if not legs:
+        return None
+    names = [pickem_entry_name(n) for n in sorted(legs)]
+    if len(names) == 1:
+        return f"Pick · {names[0]}"
+    sizes = " and ".join(f"{int(n)}-pick" for n in sorted(legs))
+    return f"Pick · {sizes} power"
+
+
+def prop_pick_tip(bar: float) -> str:
+    return (f"Its edge — the model's chance at the main line minus the "
+            f"break-even of the payout you typed — is {bar * 100:g} points or "
+            f"more for this entry. Below that a leg is shown as a number and "
+            f"never as a pick (ruled 5 October). About the app's line, check "
+            f"the app.")
+
+
+def props_nothing_worth_taking_words() -> str:
+    """B.4's words, on the Props page from ruling C (2026-10-05): no leg on
+    the slate clears the bar, and nothing is filled in to look like one."""
+    return "Nothing worth taking today"
+
+
+def prop_own_question_words(question: str, chance_words: str) -> str:
+    """The question the record asked at its own line, and what it said."""
+    said = f" · {chance_words}" if chance_words else ""
+    return f"The model's own question: {question}{said}"
+
+
+def prop_own_question_tip() -> str:
+    return ("The question this record asked at its own line before any line "
+            "was read, and what the model said: the forecast, graded as asked. "
+            "It is not the app's line, so it carries no break-even and is "
+            "never called a pick.")
+
+
+def props_board_note() -> str:
+    """The Props page's standing note: what each tile is."""
+    return ("Each tile is one player and one stat: the model's projection, its "
+            "chance at the venue's main line — about the app's line, check the "
+            "app — and the break-even of each payout you typed. A leg is "
+            "called a pick only where its edge is 3 points or more.")
+
+
+def props_ladders_not_read_words() -> str:
+    """Why no tile has a main line: the venue's prop ladders are not read."""
+    return ("The venue's player-prop ladders are not read, so no main line is "
+            "listed for any player yet.")
+
+
+def venue_ladder_view_words() -> dict:
+    """The Kalshi ladder view's fixed words (C.1: "The full ladder moves to
+    its own 'Kalshi ladder' view"; reading (e): each rung named under its own
+    contract, never a pick'em pick, no badge)."""
+    return {
+        "chip": "Kalshi ladder",
+        "heading": "Kalshi ladder",
+        "note": ("Every rung the venue lists for a player and stat, each under "
+                 "its own contract and price. A rung is a contract at the "
+                 "venue, never a pick'em pick: nothing here carries a "
+                 "break-even, an edge or a pick."),
+        "empty": ("The venue's player-prop ladders are not read: no prop rung "
+                  "is on the record, so there is nothing to list."),
+        "main": "main line",
+        "main_tip": ("The rung priced nearest an even chance — the one the "
+                     "Props tiles read as standing for the app's line."),
+    }
+
+
+def ladder_rung_price_words(price: float | None) -> str:
+    return "no price" if price is None else f"{price * 100:.0f}¢"
 
 
 def entry_words() -> dict:
@@ -6005,11 +6212,17 @@ def entry_words() -> dict:
         "heading": "Entry",
         "empty": ("Tap a tile to mark it taken; taken props are the legs "
                   "here."),
-        "note": ("Three readings of the same entry: the model's own chance, "
-                 "the same chance with half its cushion taken away, and "
-                 "Kalshi's price where one is listed. The floor is what the "
-                 "entry would have to pay for the model to break even. "
-                 "Nothing here is a balance and nothing is placed."),
+        # THE RAIL READS THE CHANCE AT THE APP'S LINE (operator ruling C,
+        # 2026-10-05): the model's chance at the venue's main line, never its
+        # own question's at another line, and the payout you typed, never a
+        # declared one.
+        "note": ("Three readings of the same entry: the model's chance at "
+                 "each leg's main line (about the app's line, check the "
+                 "app), the same chance with half its distance from the "
+                 "break-even taken away, and Kalshi's price where one is "
+                 "listed. The floor is what the entry would have to pay for "
+                 "the model to break even. Nothing here is a balance and "
+                 "nothing is placed."),
         "kalshi_absent": "Kalshi lists no player props, so there is nothing to price this against.",
         # THE VERDICT (ruling c, 2026-09-25): the one place a prop earns a
         # colour, against the multiple the operator typed. "Worth it" is an
@@ -6017,10 +6230,12 @@ def entry_words() -> dict:
         "verdict_clears": "Clears the bar at",
         "verdict_short": "Falls short at",
         "verdict_untyped": "Type what the venue pays to read a verdict.",
-        "verdict_tip": ("From the multiple you typed and the model's own numbers: "
-                        "the entry returns more than a dollar per dollar at the "
-                        "model's chances, or it does not. A venue read would "
-                        "replace the typed number; none is read yet."),
+        "verdict_no_chance": ("A leg here has no chance from the model at the "
+                              "app's line, so the entry is not read."),
+        "verdict_tip": ("From the multiple you typed and the model's chances at "
+                        "each leg's main line: the entry returns more than a "
+                        "dollar per dollar at those chances, or it does not. "
+                        "About the app's line, check the app."),
     }
 
 

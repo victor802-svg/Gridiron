@@ -33,6 +33,7 @@ masked display and a "rotate" action that runs `tools/make_token.py`.
 
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 
@@ -95,6 +96,43 @@ def _a_multiple(value: str) -> str:
         raise SettingRefused(
             f"{got:g} is higher than any price on the board pays, so nothing "
             f"would ever be shown. The highest this page accepts is 20.")
+    return f"{got:g}"
+
+
+def _a_power_payout(value: str) -> str:
+    """What a pick'em power entry pays, as the operator's app shows it: a
+    multiple of the stake, like 3 for "pays three times".
+
+    TYPED, NEVER DECLARED (operator ruling C.3, 2026-10-05: "The operator
+    types each multiplier once (no payout hard-coded as fact)"). Refused at
+    or below 1.0 -- an entry that pays back no more than it cost has no
+    break-even below a certainty -- and above 100, which no two- or
+    three-pick entry pays and which reads as a slip of the keyboard. The
+    bounds say what a payout can mean; neither is a payout.
+    """
+    text = str(value).strip().lower().rstrip("x").strip()
+    try:
+        got = float(text)
+    except (TypeError, ValueError):
+        got = None
+    # NOT A NUMBER IS NOT A PAYOUT (the prover of ruling C, 2026-10-06):
+    # Python reads "nan" as a float that passes both bounds below, and it was
+    # stored as the typed payout -- the Settings page saying "nan" and the
+    # Props page asking again as if nothing were typed.
+    if got is None or math.isnan(got):
+        raise SettingRefused(
+            f"{value!r} is not a payout. Write what the entry pays as a "
+            f"multiple of the stake, the way your app shows it, like 3 for an "
+            f"entry that pays three times what it costs.") from None
+    if got <= 1.0:
+        raise SettingRefused(
+            f"{got:g} would be an entry that pays back no more than it cost, "
+            f"so no leg could ever break even on it. Write the multiple your "
+            f"app shows, like 3.")
+    if got > 100.0:
+        raise SettingRefused(
+            f"{got:g} is more than any two- or three-pick entry pays. Check "
+            f"the number your app shows and write it again.")
     return f"{got:g}"
 
 
@@ -257,6 +295,36 @@ EDITABLE: dict[str, dict] = {
         "check": _money_or_unset,
         "default": "",
     },
+    # WHAT YOUR PICK'EM APP PAYS FOR A POWER ENTRY (operator ruling C.3,
+    # 2026-10-05; built 2026-10-06): "Default break-even when no entry is
+    # typed: 2-pick power and 3-pick power, both shown on each leg. The
+    # operator types each multiplier once (no payout hard-coded as fact);
+    # until typed, the page asks for it and shows no break-even." EMPTY BY
+    # DEFAULT, because a default would be a payout nobody typed -- which is
+    # what the declared 3x on every prop tile was until this date. Stored
+    # here because this table is append-only and dated: each typed value is
+    # shown with when it was typed, and an earlier one is never lost. The
+    # Props page asks for both and writes them through the same door.
+    "pickem_two_pick_power": {
+        "label": "A 2-pick power entry pays",
+        "why": ("what your pick'em app shows for a 2-pick power entry, as a "
+                "multiple of the stake. Typed once; nothing is assumed, and "
+                "until you type it the Props page shows no break-even"),
+        "section": "pick'em payouts",
+        "kind": "multiple",
+        "check": _a_power_payout,
+        "default": "",
+    },
+    "pickem_three_pick_power": {
+        "label": "A 3-pick power entry pays",
+        "why": ("what your pick'em app shows for a 3-pick power entry, as a "
+                "multiple of the stake. Typed once; nothing is assumed, and "
+                "until you type it the Props page shows no break-even"),
+        "section": "pick'em payouts",
+        "kind": "multiple",
+        "check": _a_power_payout,
+        "default": "",
+    },
     "notify_results": {
         "label": "Tell me when results land",
         "why": "sent only when something actually settled",
@@ -417,6 +485,25 @@ def current(conn: sqlite3.Connection) -> dict:
 
 def value(conn: sqlite3.Connection, name: str) -> str:
     return current(conn).get(name, EDITABLE[name]["default"])
+
+
+def typed(conn: sqlite3.Connection, name: str) -> dict | None:
+    """The value the operator TYPED for a setting and when, or None where no
+    row was ever written for it -- the setting is at its default, and nobody
+    typed anything (operator ruling C.3, 2026-10-05: a pick'em payout is
+    shown "with when it was typed", and until typed the page asks for it).
+
+    The latest row by its number, as `current` reads it; an empty value is
+    no value typed.
+    """
+    if name not in EDITABLE:
+        raise SettingRefused(f"{name!r} is not an operational setting")
+    row = conn.execute(
+        "SELECT value, changed_utc FROM settings WHERE name = ?"
+        " ORDER BY id DESC LIMIT 1", (name,)).fetchone()
+    if row is None or not str(row["value"] or "").strip():
+        return None
+    return {"value": str(row["value"]), "typed_utc": row["changed_utc"]}
 
 
 def set_value(conn: sqlite3.Connection, name: str, raw: str,

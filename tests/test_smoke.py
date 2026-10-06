@@ -994,6 +994,10 @@ _MEASURE_THE_TARGETS = """(SEL) => {
 
 #: The board's views, each with what brings it to the screen.
 BOARD_VIEWS = ("games", "games, a row open", "games, every row open", "props",
+               # THE KALSHI LADDER VIEW (operator ruling C, 2026-10-05: "The
+               # full ladder moves to its own 'Kalshi ladder' view"), and the
+               # Props page's payout fields beside it.
+               "props, the Kalshi ladder",
                "record", "results", "settings", "the menu")
 
 
@@ -1001,7 +1005,8 @@ def _open_a_view(phone, view):
     """Bring one board view to the screen at 390px and let it come to rest."""
     route = {"games": "#/games", "games, a row open": "#/games",
              "games, every row open": "#/games",
-             "props": "#/props", "record": "#/record", "results": "#/results",
+             "props": "#/props", "props, the Kalshi ladder": "#/props",
+             "record": "#/record", "results": "#/results",
              "settings": "#/settings", "the menu": "#/games"}[view]
     _open_route(phone, route)
     if view.startswith("games") or view == "the menu":
@@ -1032,9 +1037,14 @@ def _open_a_view(phone, view):
             " g.classList.contains('open'))", timeout=10000)
         assert phone.locator("#games-rows .game.open summary").count() > 0, \
             "no prompt disclosure on any open row of this world"
-    if view == "props":
+    if view.startswith("props"):
         phone.wait_for_selector("#props-tiles .prop, #props-notes .empty",
                                 timeout=15000)
+    if view == "props, the Kalshi ladder":
+        with wait_for_the_redraw_it_starts(phone, "props-tiles"):
+            phone.click("#props-chips .chip-btn[data-key='ladder']")
+        phone.wait_for_selector(
+            "#props-chips .chip-btn[data-key='ladder'][aria-pressed='true']", timeout=10000)
     if view == "record":
         phone.wait_for_selector("#view-record .panel:not([hidden])", timeout=15000)
     if view == "results":

@@ -12335,6 +12335,564 @@ def plant_a_recommendation_headlining_the_side_it_does_not_buy() -> Result:
                   first or "")
 
 
+# ---------------------------------------------------------------------------
+# THE PROPS BOARD CALLS NO VENUE RUNG A PICK'EM PICK (operator ruling C,
+# 2026-10-05; built 2026-10-06): "4. Plantings: a ladder rung presented as a
+# pick; a 90% leg at 91c shown as a pick; a slate with nothing clearing drawn
+# with picks; a break-even shown from an untyped multiplier."
+# ---------------------------------------------------------------------------
+
+LAW_THE_PROPS_BOARD = "RULING C: NO VENUE RUNG IS A PICK'EM PICK"
+_PROPS_CHECK = "check_the_props_board_calls_no_rung_a_pick"
+_PROPS_GUARD = "audit.props_board_faults"
+
+
+def _props_world(path: Path, rows, *, typed=None):
+    """One NFL game in 2099 (GB at DET, week 5) and its prop questions --
+    rows of (subject, prop type, line asked, model prob, side, extra) -- with
+    the payouts `typed` written through the settings door. Returns (conn,
+    ids). No model, no venue read: the page is built from the rows alone."""
+    import json as _json
+
+    from gridiron import settings as _settings
+
+    conn = db.open_db(path)
+    conn.execute(
+        "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+        " kickoff_utc, status, league_date) VALUES ('gC', 'nfl', 2026, 5, 'REG',"
+        " 'DET', 'GB', '2099-10-12T17:00:00Z', 'scheduled', '2026-10-12')")
+    for code, full, short, city in (("DET", "Detroit Lions", "Lions", "Detroit"),
+                                    ("GB", "Green Bay Packers", "Packers", "Green Bay")):
+        conn.execute(
+            "INSERT INTO teams (sport, tricode, display_name, short_name, location,"
+            " source_url, fetched_utc) VALUES ('nfl', ?, ?, ?, ?, 'planting',"
+            " '2026-09-01T00:00:00Z')", (code, full, short, city))
+    ids = []
+    for subject, prop, line, prob, side, extra in rows:
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type, prop_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES"
+            " ('2026-10-07T15:00:00Z', 'nfl', 'gC', 'prop', ?, ?, ?, ?, ?, 'statistical',"
+            " 'early', 'fs2', ?, 'planting')",
+            (prop, subject, line, prob, side,
+             _json.dumps(dict({"coverage": 1.0}, **(extra or {})))))
+        ids.append(conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0])
+    conn.commit()
+    names = {2: "pickem_two_pick_power", 3: "pickem_three_pick_power"}
+    for legs, value in (typed or {}).items():
+        # A RELEASE BEFORE RULING C HAS NO SUCH SETTING and refuses it by
+        # name; the planting then finds the page drawing what it drew.
+        try:
+            _settings.set_value(conn, names[legs], value)
+        except _settings.SettingRefused:
+            pass
+    return conn, ids
+
+
+def _hand_in_ladders(board_mod, by_subject: dict):
+    """The venue's ladder handed in -- no prop ladder is read on the record
+    (measured 2026-10-06) -- through the one place the board reads one.
+    Returns the function it replaced, or None where the board has no such
+    place (the release before ruling C)."""
+    real = getattr(board_mod, "_venue_prop_ladders", None)
+    if real is None:
+        return None
+
+    def handed_in(conn, sport, cards):
+        out = {}
+        for c in cards:
+            if c.get("subject") in by_subject:
+                out[board_mod.ladder_key(c)] = [
+                    {"line": float(line), "price": price, "ticker": f"t{line}"}
+                    for line, price in by_subject[c["subject"]]]
+        return out, None
+
+    board_mod._venue_prop_ladders = handed_in
+    return real
+
+
+def _props_faults(conn, payload) -> list[str] | None:
+    """The check's faults on a payload, the forecasts and the payouts read
+    off the world; None where the gate has no such check."""
+    scan = getattr(audit, "props_board_faults", None)
+    if scan is None:
+        return None
+    forecasts = {r[0]: {"sport": r[1], "line_asked": r[2], "model_prob": r[3],
+                        "model_side": r[4], "prop_type": r[5], "predictor": r[6],
+                        "factors_json": r[7]}
+                 for r in conn.execute(
+                     "SELECT id, sport, line_asked, model_prob, model_side, prop_type,"
+                     " predictor, factors_json FROM predictions")}
+    return scan(payload, typed=audit._typed_pickem_payouts(conn), forecasts=forecasts,
+                conn=conn)
+
+
+def _props_planted(conn, shipped, forms: dict, want: str, missed: list) -> str | None:
+    """Each planted form of `shipped` must be named by the check (a fault
+    holding `want`) and make the gate's call raise. Returns the first fault."""
+    import json as _json
+
+    first = None
+    for name, put_back in forms.items():
+        planted = _json.loads(_json.dumps(shipped, default=str))
+        put_back(planted)
+        faults = [f for f in (_props_faults(conn, planted) or []) if want in f]
+        if not faults:
+            missed.append(f"{name} passed")
+            continue
+        first = first or faults[0]
+        try:
+            audit.check_the_props_board_calls_no_rung_a_pick(conn, planted)
+            missed.append(f"{name}: the check raised nothing")
+        except audit.LawViolation:
+            pass
+    return first
+
+
+def _props_tile(payload, pid):
+    return next((t for t in payload["board"]["props"]["tiles"]
+                 if t["prediction_id"] == pid), {})
+
+
+def _props_result(violation: str, missed: list, first) -> Result:
+    if not _step_2_calls(_PROPS_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_PROPS_CHECK}`")
+    if missed:
+        return Result(LAW_THE_PROPS_BOARD, violation, _PROPS_GUARD, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_THE_PROPS_BOARD, violation, _PROPS_GUARD, True, first or "")
+
+
+def plant_a_ladder_rung_presented_as_a_pick() -> Result:
+    """C.1: "Never present a venue ladder rung as a pick'em pick." A venue
+    rung carrying a pick in the Kalshi ladder view, a leg read at a rung that
+    is not the main line (the one priced nearest an even chance), a tile
+    headed by a venue rung's words in place of the question the record
+    asked, and the builder's own main line put back to the venue's surest
+    rung -- each named by `audit.props_board_faults`, the gate's check
+    raising and step 2 making the call.
+
+    AS RELEASED (246014c): no venue ladder is read, there is no Kalshi
+    ladder view, nothing chooses a main line, and there is no check.
+    """
+    from gridiron import board as _board, views as _views
+
+    violation = "a venue ladder rung presented as a pick'em pick"
+    missed: list[str] = []
+    first = None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, (goff,) = _props_world(
+            Path(tmp) / "ladder.db",
+            [("Jared Goff passing_yards", "passing_yards", 250.5, 0.64, "over", {})],
+            typed={2: "3", 3: "6"})
+        real = _hand_in_ladders(_board, {"Jared Goff passing_yards": [
+            (230.5, 0.91), (250.5, 0.52), (270.5, 0.27)]})
+        real_main = getattr(_board, "_main_rung", None)
+        try:
+            if real is None:
+                missed.append("the page reads no venue ladder and has no Kalshi ladder view")
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            props = shipped["board"]["props"]
+            tile = _props_tile(shipped, goff)
+            rows = (props.get("ladder") or {}).get("rows") or []
+            said = (tile.get("main_line"), tile.get("main_note_words"),
+                    [sorted(r) for row in rows for r in row.get("rungs") or []][:1])
+            if real is not None and said != (250.5, "about the app's line, check the app",
+                                              [["contract_words", "line", "main", "price",
+                                                "price_words"]]):
+                missed.append(f"the shipped page reads the leg and the ladder as {said!r}")
+            if _props_faults(conn, shipped) is None:
+                missed.append("the gate has no check that the Props board presents no "
+                              "venue rung as a pick'em pick")
+            elif _props_faults(conn, shipped):
+                missed.append(f"the shipped page is named: {_props_faults(conn, shipped)[:2]}")
+            else:
+                def rung_with_a_pick(p):
+                    rung = p["board"]["props"]["ladder"]["rows"][0]["rungs"][0]
+                    rung.update(pick=True, pick_words="Pick · 2-pick power", edge=0.32)
+
+                def leg_at_another_rung(p):
+                    _props_tile(p, goff).update(
+                        main_line=230.5, main_chance=0.9,
+                        main_words="Jared Goff over 230.5 passing yards")
+
+                def headed_by_a_rung(p):
+                    _props_tile(p, goff)["question"] = "Jared Goff over 230.5 passing yards"
+
+                first = _props_planted(conn, shipped, {
+                    "a Kalshi ladder rung carrying a pick": rung_with_a_pick,
+                    "a leg read at a rung that is not the main line": leg_at_another_rung,
+                    "a tile headed by a venue rung's words": headed_by_a_rung,
+                }, "ruling C", missed)
+                # AND THE BUILDER'S OWN MAIN LINE PUT BACK: the venue's surest rung.
+                _board._main_rung = lambda ladder: max(ladder or [], key=lambda r: r["price"],
+                                                       default=None)
+                surest = _views.week(conn, "nfl", 2026, 5)
+                _board._main_rung = real_main
+                if not [f for f in _props_faults(conn, surest) or []
+                        if "where the main line" in f]:
+                    missed.append("the main line put back to the venue's surest rung passed: "
+                                  f"{_props_tile(surest, goff).get('main_line')!r}")
+        finally:
+            if real is not None:
+                _board._venue_prop_ladders = real
+            if real_main is not None:
+                _board._main_rung = real_main
+            conn.close()
+    return _props_result(violation, missed, first)
+
+
+def plant_a_90_percent_leg_at_91_cents_shown_as_a_pick() -> Result:
+    """C.4's second planting: the model's question sits at the rung the venue
+    prices at 91c and says 90%. Against the venue's own price that is an edge
+    of -1 point; against a pick'em break-even it would look like +32. The
+    main line is the rung nearest an even chance, where a yardage stat has no
+    chance, so nothing is a pick -- and a leg read at the 91c rung and called
+    a pick, the 91c rung in the Kalshi ladder view carrying one, and the
+    builder's main line put back to the surest rung are each named. AND,
+    FROM ITS PROVER (2026-10-06): the leg named off its tile by its 91c
+    question's words, in the payload and in the entry rail's own row, which
+    drew it so as built beside the chance at the main line.
+
+    AS RELEASED (246014c): the tile "Jared Goff over 200.5 passing yards ·
+    90%" stood beside "57.7% to break even" and a cushion of +32.3 points,
+    first by cushion, and there was no check.
+    """
+    from gridiron import board as _board, views as _views
+
+    violation = "a 90% leg at 91c shown as a pick"
+    missed: list[str] = []
+    first = None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, (goff,) = _props_world(
+            Path(tmp) / "ninety.db",
+            [("Jared Goff passing_yards", "passing_yards", 200.5, 0.90, "over", {})],
+            typed={2: "3", 3: "6"})
+        real = _hand_in_ladders(_board, {"Jared Goff passing_yards": [
+            (200.5, 0.91), (250.5, 0.52), (290.5, 0.20)]})
+        real_main = getattr(_board, "_main_rung", None)
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            tile = _props_tile(shipped, goff)
+            said = (tile.get("main_line"), tile.get("main_chance"), tile.get("pick"),
+                    shipped["board"]["props"].get("nothing_words"))
+            if said != (250.5, None, False, "Nothing worth taking today"):
+                missed.append(f"the shipped page draws the 90% leg as {said!r} "
+                              f"({tile.get('line_words')!r}, {tile.get('prob_words')!r}, "
+                              f"{tile.get('breakeven_words')!r}, {tile.get('cushion_words')!r})")
+            if _props_faults(conn, shipped) is None:
+                missed.append("the gate has no check that a leg is read at the main line")
+            else:
+                def leg_at_91c(p):
+                    t = _props_tile(p, goff)
+                    t.update(main_line=200.5, main_chance=0.9, pick=True, signal="clears",
+                             pick_words="Pick · 2-pick and 3-pick power",
+                             main_words="Jared Goff over 200.5 passing yards",
+                             main_note_words="about the app's line, check the app")
+                    for e in t["entries"]:
+                        e.update(edge=round(0.9 - e["breakeven"], 6), clears=True)
+                    p["board"]["props"]["nothing_words"] = None
+
+                def rung_91c_with_a_pick(p):
+                    row = p["board"]["props"]["ladder"]["rows"][0]
+                    rung = next(r for r in row["rungs"] if r["line"] == 200.5)
+                    rung.update(pick=True, pick_words="Pick · 2-pick power",
+                                edge_words="edge +32.3")
+
+                first = _props_planted(conn, shipped, {
+                    "the 90% leg read at its 91c rung and called a pick": leg_at_91c,
+                    "the 91c rung in the Kalshi ladder view carrying a pick":
+                        rung_91c_with_a_pick,
+                }, "ruling C", missed)
+                _board._main_rung = lambda ladder: max(ladder or [], key=lambda r: r["price"],
+                                                       default=None)
+                surest = _views.week(conn, "nfl", 2026, 5)
+                _board._main_rung = real_main
+                t = _props_tile(surest, goff)
+                if not t.get("pick") or not [f for f in _props_faults(conn, surest) or []
+                                             if "where the main line" in f]:
+                    missed.append("the builder reading the leg at the venue's surest rung "
+                                  f"passed: {t.get('main_line')!r}, {t.get('pick_words')!r}")
+                # THE ENTRY RAIL (the prover of ruling C, 2026-10-06): the 90%
+                # question's own words -- its 91c rung's line -- put back as
+                # the words a taken leg is drawn under beside its chance at
+                # the main line, in the payload and in the rail's own row.
+                def rail_at_91c(p):
+                    t = _props_tile(p, goff)
+                    t["leg_words"] = t.get("question")
+
+                got = _props_planted(conn, shipped, {
+                    "the leg named off its tile by its 91c question's words": rail_at_91c,
+                }, "ruling C", missed)
+                first = first or got
+                scan = getattr(audit, "entry_rail_leg_faults", None)
+                anchor = "el('span', 'entry-leg-line', l.leg_words || '')"
+                js = (Path(_board.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+                if scan is None:
+                    missed.append("the gate does not read what the entry rail draws a taken "
+                                  "leg under")
+                elif anchor not in js:
+                    missed.append("the entry rail's leg row moved; the planting must follow it")
+                elif scan(js):
+                    missed.append(f"the shipped entry rail is named: {scan(js)[:1]}")
+                else:
+                    put_back = js.replace(anchor,
+                                          "el('span', 'entry-leg-line', l.line_words || '')")
+                    if not [f for f in scan(put_back) if "`line_words`" in f]:
+                        missed.append("the rail's row put back to the question's own words "
+                                      "passed the scan")
+                    try:
+                        audit.check_the_props_board_calls_no_rung_a_pick(conn, shipped,
+                                                                         app_js=put_back)
+                        missed.append("the rail's row put back to the question's own words: "
+                                      "the gate's check raised nothing")
+                    except audit.LawViolation:
+                        pass
+        finally:
+            if real is not None:
+                _board._venue_prop_ladders = real
+            if real_main is not None:
+                _board._main_rung = real_main
+            conn.close()
+    return _props_result(violation, missed, first)
+
+
+def plant_a_slate_with_nothing_clearing_drawn_with_picks() -> Result:
+    """B.2 and B.4 on the Props page (C.2, and reading (d)): a slate whose
+    legs' edges all fall under three points -- +1.3 and -2.7 against the
+    2-pick break-even, +0.5 and -3.5 against the 3-pick -- drawn with its
+    best leg filled in as a pick, without "Nothing worth taking today", and
+    with the bar put back to any edge above nothing -- each named. AND, FROM
+    ITS PROVER (2026-10-06): a leg at 2.99996 points called a pick on the
+    page, and the builder's bar put back to the six places it was read to as
+    built, which made that leg a pick the gate passed.
+
+    AS RELEASED (246014c): the tiles ranked by a cushion against the
+    declared 3x, the first at +1.3 points drawn first and nothing saying no
+    leg clears, and there was no check.
+    """
+    from gridiron import board as _board, config as _config, views as _views
+
+    violation = "a slate with nothing clearing drawn with picks"
+    missed: list[str] = []
+    first = None
+    rows = [("Jared Goff passing_yards", "passing_yards", 250.5, 0.59, "over", {}),
+            ("Jayden Reed receiving_yards", "receiving_yards", 50.5, 0.55, "over", {})]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, (goff, reed) = _props_world(Path(tmp) / "nothing.db", rows,
+                                          typed={2: "3", 3: "5"})
+        real = _hand_in_ladders(_board, {s: [(line, 0.5)] for s, _p, line, *_ in rows})
+        bar = getattr(_config, "PICK_MIN_EDGE", None)
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            props = shipped["board"]["props"]
+            said = ([t.get("pick") for t in props["tiles"]], props.get("nothing_words"))
+            if said != ([False, False], "Nothing worth taking today"):
+                missed.append(f"the shipped page draws {said!r}: "
+                              f"{[(t.get('line_words'), t.get('cushion_words')) for t in props['tiles']]}")
+            if _props_faults(conn, shipped) is None:
+                missed.append("the gate has no check that a slate with nothing clearing is "
+                              "drawn with no pick")
+            else:
+                def filled(p):
+                    _props_tile(p, goff).update(pick=True, signal="clears",
+                                                pick_words="Pick · 2-pick power")
+                    p["board"]["props"]["nothing_words"] = None
+
+                def unsaid(p):
+                    p["board"]["props"]["nothing_words"] = None
+
+                first = _props_planted(conn, shipped, {
+                    "the best leg filled in as a pick": filled,
+                    "\"Nothing worth taking today\" left off": unsaid,
+                }, "ruling C", missed)
+                _config.PICK_MIN_EDGE = 0.0
+                loose = _views.week(conn, "nfl", 2026, 5)
+                faults = _props_faults(conn, loose) or []
+                _config.PICK_MIN_EDGE = bar
+                if not _props_tile(loose, goff).get("pick") or not [
+                        f for f in faults if "not the three points ruled" in f] or not [
+                        f for f in faults if "with no edge of 3 points" in f]:
+                    missed.append("the bar put back to any edge above nothing passed: "
+                                  f"{faults[:2]}")
+                # A LEG A HAIR UNDER THE BAR (the prover of ruling C,
+                # 2026-10-06): 2.99996 points against a typed 3x. As built the
+                # edge was rounded to six places before the bar was read, so
+                # the leg was a pick on the page and the gate passed it.
+                got = _props_a_hair_under_the_bar(Path(tmp), missed)
+                first = first or got
+        finally:
+            if real is not None:
+                _board._venue_prop_ladders = real
+            if bar is not None:
+                _config.PICK_MIN_EDGE = bar
+            conn.close()
+    return _props_result(violation, missed, first)
+
+
+def _props_a_hair_under_the_bar(tmp: Path, missed: list) -> str | None:
+    """B.2's "3 percentage points or more", read on the edge as worked out:
+    a leg at 2.99996 points is drawn as a number, a page calling it a pick is
+    named, and the builder's bar put back to six places is named."""
+    from gridiron import board as _board, config as _config, views as _views
+
+    hconn, (hair,) = _props_world(
+        tmp / "hair.db",
+        [("Jared Goff passing_yards", "passing_yards", 250.5, 3 ** -0.5 + 0.0299996,
+          "over", {})], typed={2: "3", 3: "4"})
+    replaced = _hand_in_ladders(_board, {"Jared Goff passing_yards": [(250.5, 0.5)]})
+    real_bar = getattr(_board, "clears_the_pick_bar", None)
+    first = None
+    try:
+        page = _views.week(hconn, "nfl", 2026, 5)
+        tile = _props_tile(page, hair)
+        if tile.get("pick"):
+            missed.append(f"a leg at 2.99996 points is drawn as a pick: "
+                          f"{tile.get('pick_words')!r} at "
+                          f"{[e.get('edge') for e in tile.get('entries') or []]!r}")
+
+        def hair_filled(p):
+            t = _props_tile(p, hair)
+            t.update(pick=True, signal="clears", pick_words="Pick · 2-pick power")
+            t["entries"][0]["clears"] = True
+            p["board"]["props"]["nothing_words"] = None
+
+        first = _props_planted(hconn, page, {
+            "a leg at 2.99996 points called a pick": hair_filled,
+        }, "clears the bar of 3 points", missed)
+        if real_bar is not None:
+            _board.clears_the_pick_bar = (
+                lambda e: e is not None and round(float(e), 6) >= _config.PICK_MIN_EDGE)
+            rounded = _views.week(hconn, "nfl", 2026, 5)
+            _board.clears_the_pick_bar = real_bar
+            if not _props_tile(rounded, hair).get("pick") or not [
+                    f for f in _props_faults(hconn, rounded) or []
+                    if "clears the bar of 3 points" in f]:
+                missed.append("the builder's bar put back to six places passed: "
+                              f"{_props_tile(rounded, hair).get('pick_words')!r}")
+    finally:
+        if real_bar is not None:
+            _board.clears_the_pick_bar = real_bar
+        if replaced is not None:
+            _board._venue_prop_ladders = replaced
+        hconn.close()
+    return first
+
+
+def plant_a_breakeven_from_an_untyped_multiplier() -> Result:
+    """C.3: "The operator types each multiplier once (no payout hard-coded as
+    fact); until typed, the page asks for it and shows no break-even." With
+    nothing typed: the released 2-pick break-even of the declared 3x on a
+    leg, the payouts said typed with no row, and the builder's reader put
+    back to a declared 3x; with a 3x typed: a break-even drawn from 5x --
+    each named. AND, FROM ITS PROVER (2026-10-06): "nan" typed as a payout,
+    which the settings door took as built (a float to Python, inside both
+    bounds) -- refused; and the entry rail's payout filled in only where its
+    field was empty, which kept the 2-pick's 3x for a 3-leg entry -- named.
+
+    AS RELEASED (246014c): every tile read "57.7% to break even" and a
+    cushion from `config.PICKEM_TWO_PICK_MULTIPLE`, declared, never typed,
+    the entry rail filled with it, and there was no check.
+    """
+    from gridiron import board as _board, settings as _settings, views as _views
+
+    violation = "a break-even shown from an untyped multiplier"
+    missed: list[str] = []
+    first = None
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, (reed,) = _props_world(
+            Path(tmp) / "untyped.db",
+            [("Jayden Reed receiving_yards", "receiving_yards", 50.5, 0.71, "over", {})])
+        real_reader = getattr(_board, "typed_payouts", None)
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            tile = _props_tile(shipped, reed)
+            said = ([e.get("breakeven") for e in tile.get("entries") or []],
+                    bool(((shipped["board"]["props"].get("payouts") or {}).get("ask_words"))),
+                    tile.get("breakeven_words"))
+            if said != ([None, None], True, None):
+                missed.append(f"the shipped page draws {said!r} with nothing typed")
+            if _props_faults(conn, shipped) is None:
+                missed.append("the gate has no check that a break-even is a typed payout's")
+            else:
+                def declared(p):
+                    _props_tile(p, reed)["entries"][0].update(
+                        multiple=3.0, breakeven=round(3 ** -0.5, 6),
+                        breakeven_words="2-pick power 57.7%")
+
+                def said_typed(p):
+                    pay = p["board"]["props"]["payouts"]
+                    pay["entries"][0]["multiple"] = 3.0
+                    pay["ask_words"] = None
+
+                first = _props_planted(conn, shipped, {
+                    "the declared 3x's break-even on a leg, nothing typed": declared,
+                    "the payouts said typed with no row": said_typed,
+                }, "ruling C", missed)
+                # THE BUILDER'S READER PUT BACK TO THE DECLARED 3X
+                if real_reader is not None:
+                    def declared_reader(conn_):
+                        out = real_reader(conn_)
+                        out[0].update(multiple=3.0, typed_utc=None)
+                        return out
+
+                    _board.typed_payouts = declared_reader
+                    assumed = _views.week(conn, "nfl", 2026, 5)
+                    _board.typed_payouts = real_reader
+                    if not [f for f in _props_faults(conn, assumed) or []
+                            if "nobody typed" in f or "hard-coded" in f]:
+                        missed.append("the reader put back to a declared 3x passed")
+                # A PAYOUT THAT IS NOT A NUMBER (the prover of ruling C,
+                # 2026-10-06): "nan" passed both bounds of the settings door
+                # and was stored as the typed payout.
+                try:
+                    _settings.set_value(conn, "pickem_two_pick_power", "nan")
+                    missed.append("'nan' was taken as a typed payout: "
+                                  f"{_settings.typed(conn, 'pickem_two_pick_power')!r}")
+                except _settings.SettingRefused:
+                    pass
+                # THE ENTRY RAIL'S PAYOUT FILLED ONLY INTO AN EMPTY FIELD (the
+                # prover of ruling C, 2026-10-06): the 2-pick's typed payout
+                # stayed when a third leg was taken, and the verdict read a
+                # 3-leg entry at a payout nobody typed for it.
+                scan = getattr(audit, "entry_rail_leg_faults", None)
+                anchor = "if (!pays.value || pays.dataset.filled) {"
+                js = (Path(_board.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+                if scan is None or anchor not in js:
+                    missed.append("the entry rail keeps a payout it filled in for another "
+                                  "number of legs, and the gate does not read it")
+                else:
+                    put_back = js.replace(anchor, "if (!pays.value) {")
+                    if not [f for f in scan(put_back) if "only into an empty field" in f]:
+                        missed.append("the rail's payout filled only into an empty field "
+                                      "passed the scan")
+                    try:
+                        audit.check_the_props_board_calls_no_rung_a_pick(conn, shipped,
+                                                                         app_js=put_back)
+                        missed.append("the rail's payout filled only into an empty field: "
+                                      "the gate's check raised nothing")
+                    except audit.LawViolation:
+                        pass
+                # A TYPED 3X, AND A BREAK-EVEN DRAWN FROM 5X
+                _settings.set_value(conn, "pickem_two_pick_power", "3")
+                typed = _views.week(conn, "nfl", 2026, 5)
+
+                def from_5x(p):
+                    _props_tile(p, reed)["entries"][0].update(
+                        multiple=5.0, breakeven=round(5 ** -0.5, 6),
+                        breakeven_words="2-pick power 44.7%")
+
+                first = _props_planted(conn, typed, {
+                    "a break-even from 5x where 3x was typed": from_5x,
+                }, "ruling C", missed) or first
+        finally:
+            if real_reader is not None:
+                _board.typed_payouts = real_reader
+            conn.close()
+    return _props_result(violation, missed, first)
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -25569,6 +26127,14 @@ def main() -> int:
     # OPERATOR QUESTION 37 (ruled 2026-10-05): a recommendation headlines the
     # contract it buys, the model's own side named beside it.
     results.append(plant_a_recommendation_headlining_the_side_it_does_not_buy())
+    # OPERATOR RULING C (2026-10-05; built 2026-10-06): the Props board
+    # presents no venue ladder rung as a pick'em pick, calls a leg a pick only
+    # at three points of edge against a payout the operator typed, fills no
+    # slate with picks, and draws no break-even from a payout nobody typed.
+    results.append(plant_a_ladder_rung_presented_as_a_pick())
+    results.append(plant_a_90_percent_leg_at_91_cents_shown_as_a_pick())
+    results.append(plant_a_slate_with_nothing_clearing_drawn_with_picks())
+    results.append(plant_a_breakeven_from_an_untyped_multiplier())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

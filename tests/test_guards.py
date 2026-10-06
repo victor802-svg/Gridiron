@@ -767,6 +767,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         # OPERATOR QUESTION 37 (ruled 2026-10-05): a recommendation headlines
         # the contract it buys, the model's own side named beside it.
         "plant_a_recommendation_headlining_the_side_it_does_not_buy",
+        # OPERATOR RULING C (2026-10-05: "Plantings: a ladder rung presented
+        # as a pick; a 90% leg at 91c shown as a pick; a slate with nothing
+        # clearing drawn with picks; a break-even shown from an untyped
+        # multiplier").
+        "plant_a_ladder_rung_presented_as_a_pick",
+        "plant_a_90_percent_leg_at_91_cents_shown_as_a_pick",
+        "plant_a_slate_with_nothing_clearing_drawn_with_picks",
+        "plant_a_breakeven_from_an_untyped_multiplier",
         # THE ROSTER'S NUMBERS ARE DISPLAY ONLY (the operator's ruling of
         # 2026-09-29): nothing that forecasts, grades, fits or measures reads
         # them, and a scan refuses any such read.

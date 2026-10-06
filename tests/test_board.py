@@ -4,8 +4,11 @@ What the Games rows and the Props tiles promise, asserted on the browser
 suite's own world and in a real Chromium: a signal never renders without its
 badge; every word a reader meets, tooltips included, is scanned; a live row
 carries the score and the pregame figure and nothing that can be acted on;
-the props rank by cushion against a declared multiple and say the venue is
-not read; the jersey is drawn from the measured colours and nothing typed.
+each prop tile is one player and one stat, with no break-even until the
+operator types a payout and no main line while the venue's prop ladders are
+not read (operator ruling C, 2026-10-05; until then the props ranked by a
+cushion against a declared multiple); the jersey is drawn from the measured
+colours and nothing typed.
 """
 from __future__ import annotations
 
@@ -79,28 +82,48 @@ def test_a_live_row_carries_the_game_and_the_pregame_figure_only(world_copy):
     assert audit.live_tab_faults(payload) == []
 
 
-def test_props_rank_by_cushion_against_the_declared_multiple(world_copy):
+def test_props_are_legs_with_no_breakeven_until_a_payout_is_typed(world_copy):
+    """OPERATOR RULING C (2026-10-05; built 2026-10-06). Until this date the
+    tiles ranked by a cushion against the declared 3x
+    (`config.PICKEM_TWO_PICK_MULTIPLE`, gone) and every tile showed "57.7% to
+    break even". Now each upcoming tile is a leg: its projection, the venue's
+    main line (none while the venue's prop ladders are not read), the
+    break-even of each typed power payout (none typed in the fixture, so none
+    shown, and the page asks), no pick, and "Nothing worth taking today"."""
     payload = _payload(world_copy)
     props = payload["board"]["props"]
-    assert props["multiple"] == config.PICKEM_TWO_PICK_MULTIPLE
-    assert props["declared"] == config.PICKEM_TWO_PICK_DECLARED
-    assert abs(props["breakeven"] - config.PICKEM_TWO_PICK_MULTIPLE ** -0.5) < 1e-12
+    for gone in ("multiple", "declared", "breakeven", "legs", "alt_empty_words"):
+        assert gone not in props, gone
+    assert not hasattr(config, "PICKEM_TWO_PICK_MULTIPLE")
     tiles = props["tiles"]
     assert tiles, "the fixture slate has no prop tiles"
-    cushions = [t["cushion"] for t in tiles]
-    assert cushions == sorted(cushions, reverse=True), "tiles are not ranked by cushion"
+    assert props["payouts"]["typed"] is False
+    assert [e["multiple"] for e in props["payouts"]["entries"]] == [None, None]
+    assert "Type what a 2-pick power entry and a 3-pick power entry pay" in (
+        props["payouts"]["ask_words"])
+    assert props["nothing_words"] == "Nothing worth taking today"
+    assert props["ladder"]["rows"] == [] and props["ladder"]["empty_words"]
     for tile in tiles:
-        assert abs(tile["cushion"] - (tile["prob"] - props["breakeven"])) < 1e-9
-        # NO VENUE IS READ, and the tile says so in those words.
-        assert tile["venue_words"] == "not read yet"
-        assert "declared" in tile["tips"]["cushion"] and "not read" in tile["tips"]["cushion"]
-        # A PROP WEARS NO OUTLINE for a cushion (the conservative reading).
+        for gone in ("cushion", "cushion_words", "breakeven_words", "venue_words"):
+            assert gone not in tile, gone
         assert tile["signal"] in ("none", "won", "lost", "withdrawn")
+        assert tile["multiple_source"] == "untyped"
         assert tile["alt"] is False and (tile["number"] is None or isinstance(tile["number"], int))
+        if tile["state"] != "upcoming":
+            continue
+        assert tile["pick"] is False and tile["pick_words"] is None
+        assert tile["main_line"] is None and tile["main_chance"] is None
+        assert tile["main_words"] == "not listed by the venue"
+        assert [e["legs"] for e in tile["entries"]] == [2, 3]
+        for e in tile["entries"]:
+            assert e["breakeven"] is None and e["edge"] is None and not e["clears"]
+            assert e["breakeven_words"].endswith("payout not typed")
+        assert tile["own_question_words"].startswith("The model's own question: ")
     keys = [c["key"] for c in props["chips"]]
-    assert keys[:2] == ["", "alt"]
+    assert keys[:2] == ["", "ladder"]
     assert keys[2:] == list(config.SPORT_PROP_MARKETS["nfl"])
     assert any(c["n"] == 0 for c in props["chips"]), "no zero-count family in the fixture"
+    assert audit.props_board_faults(payload, typed=audit._typed_pickem_payouts(world_copy)) == []
 
 
 def test_an_alt_tile_carries_the_high_end_badge_and_the_scan_demands_it():
@@ -139,11 +162,18 @@ def test_the_expanded_row_holds_both_forecasters_and_never_merges_them(world_cop
             assert g["pick"]["forecaster"] == payload["forecaster"]
 
 
-def test_the_breakeven_is_declared_and_dated():
-    assert config.PICKEM_TWO_PICK_MULTIPLE > 1
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T00:00:00Z", config.PICKEM_TWO_PICK_DECLARED)
-    assert config.PICKEM_LEGS == 2
-    assert abs(board.breakeven() - 0.5773502691896257) < 1e-12
+def test_the_breakeven_is_a_typed_power_payouts():
+    """C.3 (2026-10-05) and reading (c): a leg of a power entry of N legs
+    paying M breaks even at M**(-1/N), of a payout the operator typed; the
+    bar is B.2's three points, dated."""
+    assert abs(board.breakeven(3, 2) - 0.5773502691896257) < 1e-12
+    assert abs(board.breakeven(6, 3) - 6 ** (-1 / 3)) < 1e-12
+    assert config.PICKEM_POWER_ENTRIES == ((2, "pickem_two_pick_power"),
+                                           (3, "pickem_three_pick_power"))
+    assert config.PICK_MIN_EDGE == audit.PICK_MIN_EDGE_AS_RULED == 0.03
+    assert config.PICK_MIN_EDGE_RULED == "2026-10-05"
+    for name in ("PICKEM_TWO_PICK_MULTIPLE", "PICKEM_TWO_PICK_DECLARED", "PICKEM_LEGS"):
+        assert not hasattr(config, name), name
 
 
 # --- the page ------------------------------------------------------------------
@@ -232,7 +262,9 @@ def test_the_entry_rail_reads_the_typed_multiple_and_nothing_is_placed(page):
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/props'")
     page.wait_for_selector("#props-tiles .prop", timeout=15000)
-    assert page.evaluate("document.getElementById('entry-pays').value") == str(config.PICKEM_TWO_PICK_MULTIPLE).rstrip("0").rstrip(".")
+    # NO PAYOUT IS FILLED IN THAT NOBODY TYPED (operator ruling C.3,
+    # 2026-10-05): the field held the declared 3x until 2026-10-06.
+    assert page.evaluate("document.getElementById('entry-pays').value") == ""
     assert page.evaluate("document.querySelectorAll('#entry-lines .entry-line').length") == 0, (
         "lines rendered with no legs")
     assert not page.evaluate("document.getElementById('entry-empty').hidden")
@@ -456,10 +488,30 @@ def test_a_priced_question_carries_its_price_in_words_and_as_a_number():
         assert not live.get(field), field
 
 
-def test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple(page):
-    """RULING c, 2026-09-25: a prop tile wears no outline; the entry rail's
-    verdict, from the multiple the operator typed, is where the colour is
-    earned -- and it never stands without a leg's record badge beside it."""
+def _ladder_at_each_own_line(conn, sport, cards):
+    """The venue's ladder HANDED IN, in the test server's process only (no
+    prop ladder is read on any record -- operator ruling C's measurement of
+    2026-10-06): the rung priced nearest an even chance at each prop
+    question's own line, so its leg's chance at the main line is the
+    model's own answer."""
+    out = {}
+    for c in cards:
+        if c.get("line_asked") is None:
+            continue
+        line = float(c["line_asked"])
+        out[board.ladder_key(c)] = [{"line": line - 10.0, "price": 0.74, "ticker": "lo"},
+                                    {"line": line, "price": 0.52, "ticker": "main"},
+                                    {"line": line + 10.0, "price": 0.27, "ticker": "hi"}]
+    return out, None
+
+
+def test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple(page, monkeypatch):
+    """RULING c, 2026-09-25: a prop tile wears no outline against an assumed
+    multiple; the entry rail's verdict, from the multiple the operator typed,
+    is where the colour is earned -- and it never stands without a leg's
+    record badge beside it. FROM RULING C (2026-10-05) a leg's chance is the
+    model's chance at its main line, so the venue's ladder is handed in."""
+    monkeypatch.setattr(board, "_venue_prop_ladders", _ladder_at_each_own_line)
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/props'")
     page.wait_for_selector("#props-tiles .prop[data-state='upcoming'] .chk", timeout=15000)
@@ -1017,10 +1069,17 @@ def test_my_day_counts_a_taken_prop_once(world_copy):
     both: one tap, two chips, "2 taken" (the merge's prover, 2026-09-29)."""
     from gridiron import db
 
+    # A PROP NOBODY HAS TAKEN YET (2026-10-06): the copy is of the shared
+    # world, where an earlier browser test taps the first prop tile, and from
+    # operator ruling C the tiles are ordered by edge and then by start, so
+    # that first tile is the lowest-numbered prop this read used to take.
     prop = world_copy.execute(
         "SELECT p.id FROM predictions p JOIN games g ON g.id = p.game_id"
         " WHERE g.status = 'scheduled' AND p.predictor = 'statistical'"
-        "   AND p.market_type = 'prop' ORDER BY p.id LIMIT 1").fetchone()[0]
+        "   AND p.market_type = 'prop'"
+        "   AND p.id NOT IN (SELECT prediction_id FROM picks_taken"
+        "                    WHERE prediction_id IS NOT NULL)"
+        " ORDER BY p.id LIMIT 1").fetchone()[0]
     world_copy.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
                        (prop, db.utcnow()))
     world_copy.commit()

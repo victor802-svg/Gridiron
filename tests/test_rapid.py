@@ -121,7 +121,9 @@ def test_two_chips_in_quick_succession_leave_the_second_one(page):
     _select(page, full)
     _open_props(page)
     keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
-    families = [k for k in keys if k and k != "alt"]
+    # FAMILY CHIPS: not the Kalshi ladder view, which took the empty "Alt
+    # lines" chip's place (operator ruling C, 2026-10-05).
+    families = [k for k in keys if k and k != "ladder"]
     assert len(families) >= 2, keys
     first, second = families[0], families[1]
     # BOTH RENDERS SEEN TO LAND, INSIDE THE PAGE (the board merge,
@@ -148,7 +150,7 @@ def test_a_double_clicked_chip_renders_each_tile_once(page):
     _select(page, full)
     _open_props(page)
     keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
-    family = next(k for k in keys if k and k != "alt")
+    family = next(k for k in keys if k and k != "ladder")
     # BOTH RENDERS A DOUBLE CLICK ASKS FOR, SEEN TO LAND (the board merge,
     # 2026-09-29): this waited 1.5s; the helper waits for two arrivals.
     with wait_for_the_redraw_it_starts(page, "props-tiles", count=2):
@@ -175,7 +177,7 @@ def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
     line = page.evaluate("window.Gridiron.state.meta.unreachable_line")
     assert line and "Failed to fetch" not in line
     keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
-    family = next(k for k in keys if k and k != "alt")
+    family = next(k for k in keys if k and k != "ladder")
     page.context.set_offline(True)
     try:
         page.evaluate("window.dispatchEvent(new Event('offline'))")

@@ -903,6 +903,21 @@ def step_2_guards() -> bool:
                       _slate_payload(sport, forecaster))
                   for sport in _config().SPORTS
                   for forecaster in ("statistical", "llm")] and None),
+        # OPERATOR RULING C (2026-10-05: "Never present a venue ladder rung as
+        # a pick'em pick ... only legs clearing B.2 get a pick badge ... until
+        # typed, the page asks for it and shows no break-even"; built
+        # 2026-10-06): each Props tile is one player and one stat, its main
+        # line the venue ladder's rung nearest an even chance, its chance the
+        # stored forecast's, its break-evens the payouts the operator typed
+        # (read off the record's own settings rows), a pick only at three
+        # points of edge or more, "Nothing worth taking today" where none
+        # clears, and the Kalshi ladder view carrying no pick. Every sport's
+        # slate, both forecasters, on the record's copy.
+        ("the Props board calls no venue rung a pick'em pick (ruling C)",
+         lambda: [audit.check_the_props_board_calls_no_rung_a_pick(
+                      _record_conn(), _slate_payload(sport, forecaster))
+                  for sport in _config().SPORTS
+                  for forecaster in ("statistical", "llm")] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

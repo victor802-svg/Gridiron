@@ -2,7 +2,17 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
-- **THE ORDER NOW (5 Oct, docs/briefs/2026-10-05-rulings.md; wins over
+- **THE ORDER NOW (6 Oct, second ruling, docs/briefs/2026-10-06-rulings-
+  second.md; wins over every order below):** C -> Q38 ((A): a game's start
+  is the earlier of its listed start and the first poll that sees it truly
+  under way -- a score or period recorded, MLB's warm-up "Live" before the
+  listed start not counting -- and no read at or after it is a close or a
+  claim; `recommend.for_predictions` refuses any game not still upcoming;
+  plantings: a finished game's pick priced, an in-play read used as a
+  close) -> recs 114/115 voids (with C's gate, the next one: the constant
+  rides it; dry run, then the write, after its release) -> B -> the entry
+  check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+- **THE ORDER (5 Oct, docs/briefs/2026-10-05-rulings.md; wins over
   every order below):** A -- the rest of Q36 (A.2: void the 54
   recommendations, "priced across two contracts, Q36"; recs 114 and 115
   listed for the operator's word; the stored two-contract claims left out
@@ -19,8 +29,7 @@
   **A.2 AND Q37 released as e9d4cf5 (2026-10-06 00:19Z; gate 4/4, 415/415;
   the first gate run was stopped at 30 minutes by the shell's new limit on
   background commands, mid step 2, nothing failed; the gate now runs
-  detached, `scratchpad
-un_gate.ps1`):** the stored two-contract claims
+  detached, `scratchpad\run_gate.ps1`):** the stored two-contract claims
   (275) are left out of every price comparison by a dated read rule and stay
   in the blind record; THE VOIDS written 00:19:25Z by
   `tools/void_two_contract_recommendations.py --write --live` after a dry
@@ -45,6 +54,79 @@ un_gate.ps1`):** the stored two-contract claims
   so): MLB run line's 'model ahead' before A.2 (-0.0527, interval clear of
   zero, 102 claims) came entirely from the 39 two-contract claims; with them
   out, 64 claims, -0.0069 (-0.0233, +0.0097), within noise. **Next: C.**
+  **C BUILT (2026-10-06, on 246014c; uncommitted for its prover; FOLLOWUPS
+  "The Props board, per player and stat"; CLAUDE.md row "THE PROPS BOARD
+  CALLS NO VENUE RUNG A PICK'EM PICK"):** the ruling, C.1-C.4 with B.2.
+  MEASURED FIRST on one verified copy (made 00:37:12Z, deleted 04:02:40Z): the
+  venue lists NO player prop -- no prop quote, no player column, no cached
+  prop series -- so no venue rung was ever drawn; every one of the 350 tiles
+  drawn on the 23 prop slates and the current slates (both forecasters, as
+  held and read as still to start) stood beside "57.7% to break even" from the declared 3x nobody
+  typed, ranked by a cushion that was the chance less that constant; the
+  model states a projection only for the counting stats (151 rows) and a
+  chance at a line only at its asked line or, for a counting stat, from its
+  stored rate. BUILT: each tile a leg -- projection or "none for <stat>",
+  the main line (the ladder's rung nearest an even chance, "about the app's
+  line, check the app") or "not listed by the venue", the model's chance
+  there or "the model has no chance at this line yet", the break-even of
+  each power payout TYPED (settings rows `pickem_two_pick_power`,
+  `pickem_three_pick_power`, shown with their day; the page asks until
+  typed; `config.PICKEM_TWO_PICK_MULTIPLE` gone), the edge, and a pick
+  (outline and "Pick · 2-pick power") only at 3 points (`config.
+  PICK_MIN_EDGE`); the model's own question said as its own; "Nothing worth
+  taking today"; the Kalshi ladder view (a chip, every rung under its own
+  contract, never a pick); ranked by edge, never by chance. THE READINGS
+  (a)-(e) as given, and: the leg's side is the side the model favours at the
+  main line; a pick names the entry it clears for. THE GATE:
+  `audit.check_the_props_board_calls_no_rung_a_pick` in step 2 (every sport,
+  both forecasters), every number worked out again; 0 faults on the copy's
+  10 current slates and 92 prop-slate payloads. Four plantings, each
+  escaping on 246014c and caught here (1.1s the four); 17 new tests and the
+  props tests of test_board rewritten to the ruling. WHAT MOVES: outside
+  the props block only the board's fixed labels; inside, the 350 declared
+  break-evens gone, and on the record today no leg has a main line, a chance
+  at it or a pick (C.2 can be met for no leg until the venue's prop series
+  are read -- a build no ruling names; FOLLOWUPS). Rendered (test world plain,
+  typed, and with a ladder handed in; the copy) at 1300 and 390 and read.
+  Nothing joins the queue (FOLLOWUPS: the venue's prop series unread; the
+  yardage stats' projection, M4's; a ladder far from an even chance; the
+  Games board's prop "Model's pick" and its sort by chance, B's; the word
+  scan never reading the reasoning pass's slates; the rail's verdict).
+  THE SUITE: 2,424 passed, 4 skipped and the planting harness killed by its
+  own 600-second limit, on a run and its one as-is rerun (no planting
+  escapes: plant.py whole 419/419, 577s alone and 609.7s timed; the two
+  orphan-scan plantings are 305s of it, and this build adds about 10s --
+  1.6s its four plantings, 3-7s each orphan scan): the gate's step 1 will
+  fail on the clock until the operator rules on the limit or the scan's
+  cost (FOLLOWUPS). **Next: its prover; then C's gate and release; then B.**
+  **C PROVED (2026-10-06, alone in the worktree on 91736d0; FOLLOWUPS
+  "THE PROVER" under "The Props board, per player and stat"):** on the
+  tiles as built nothing the hunt names was found -- no rung carries a
+  pick, no pick below three points or without a typed payout, no
+  break-even from an untyped one, no filling; on one verified copy (made
+  04:12:45Z) the check passes on every sport's current slate and on all 92
+  prop-slate payloads. FOUND OFF THE TILES AND FIXED, each with a test
+  failing on the change as handed and a planting form escaping on it and
+  caught here: THE ENTRY RAIL drew a taken leg under its own question's
+  words beside its chance at the main line, and kept the 2-pick's typed
+  payout for a 3-leg entry (`leg_words`; the page-filled value follows the
+  legs; `audit.entry_rail_leg_faults` in the gate's check); THE BAR was read
+  on the edge rounded to six places -- a leg at 2.99996 points was a pick,
+  and the gate named one at 2.99994 falsely (now float noise of a billionth
+  only, the gate on the forecast's own chance); "nan" was taken as a typed
+  payout. Also fixed: a taken pick lost its outline; the break-even tooltip
+  in plain words. Rendered (four test-world modes and the copy, 1300 and
+  390) and read; every tap target 44px or more in whole pixels. Gate step
+  2's rows on the copy: 112 run, none failing. FOUND, NOT BUILT
+  (FOLLOWUPS): the far-from-even ladder is concrete for MLB home runs (an
+  18c rung would be the main line, and "NO home run · 86%" a pick at +28
+  where the venue says 82%); two questions on one player and stat would be
+  two legs (none on the record); "edge +3.0" on a leg at 2.95-2.99999
+  points; a second copy of the record made by the prover's own step-2 dry
+  run through the gate's backup door, deleted at 04:42:57Z.
+  **Next: the harness's clock (the orphan scan's cost; ruled in the
+  operator's absence, below), then C's gate with the 114/115 constant,
+  its release and the two voids; then Q38; then B.**
   **Q36 (ii) BUILT (2026-10-05, on c829daa; uncommitted for its prover;
   FOLLOWUPS "A claim priced across two contracts is in no price
   comparison; the 54 voided by rule"; CLAUDE.md row of that name):**

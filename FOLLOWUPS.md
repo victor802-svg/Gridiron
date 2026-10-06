@@ -13939,3 +13939,405 @@ false or shows a wrong number on a pick)*:
 - **A taken recommendation's chip once its game starts** names the question
   (READINGS TAKEN above); the taken rail beside it keeps naming the contract
   bought.
+
+
+## The Props board, per player and stat: no venue rung is a pick'em pick -- built 2026-10-06 *(operator ruling C of 2026-10-05, docs/briefs/2026-10-05-rulings.md, with B.2 which it names; the order of 5 October, "... -> C -> B -> entry check steps 1-4 -> ..."; built on 246014c -- A.2 and Q37 released as e9d4cf5, A.5's close-out; uncommitted for its prover)*
+
+The ruling, whole: "C. The Props board (before entry check step 1). 1. Never
+present a venue ladder rung as a pick'em pick. Per player and stat: the
+model's projection and its chance at the market's main line (the rung nearest
+50c), labelled 'about the app's line, check the app'. The full ladder moves to
+its own 'Kalshi ladder' view. 2. Browse plus picks: every listed player shows
+projection, chance at the main line, and the break-evens; only legs clearing
+B.2 get a pick badge. 3. Default break-even when no entry is typed: 2-pick
+power and 3-pick power, both shown on each leg. The operator types each
+multiplier once (no payout hard-coded as fact); until typed, the page asks for
+it and shows no break-even. 4. Plantings: a ladder rung presented as a pick; a
+90% leg at 91c shown as a pick; a slate with nothing clearing drawn with
+picks; a break-even shown from an untyped multiplier." And B.2: "A leg is
+called a pick only if its edge after fees is 3 percentage points or more.
+Below that it is shown as a number, never as a pick."
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-10-06T00:37:12Z to 00:38:03Z: integrity ok, 64 tables, none mismatched; read only through `db.read_only`, except the test server's sign-in rows during the one render of it; scratchpad `c/measure.py` -> `measure.txt`, `c/props_now.py` -> `props_now_head.txt`, `props_head.json`)*
+
+- **What the model can state per player and stat.** 330 prop forecasts: NFL
+  170 (32 of week 1 with no prop type), MLB 160; all the statistical model's
+  but MLB's 8 reasoning-pass rows. A PROJECTION -- the model's own expected
+  count, written with its forecast (`expected_count`) -- on 151 rows: the
+  counting stats (NFL receptions, negative binomial, 24; passing touchdowns,
+  Poisson, 17; the MLB counts 110). The three NFL yardage stats (passing,
+  receiving, rushing yards; 81 rows) are a logistic answering yes or no at
+  the model's own line and state no projection; they carry the player's
+  recent average only as an input (`prop_mean_vs_line`). No prop row carries
+  a frozen distribution. A CHANCE AT A LINE: at the line the question asked,
+  and -- for a counting stat -- its stored rate read at any line in its
+  declared form (`model.counts`, the claim writer's RUNG_DIFFERS_COUNT shape
+  of 2026-09-07); for a yardage stat at no other line.
+- **What the venue lists for props: nothing.** `venue_quotes` holds 53,684
+  rows, none a prop (`kalshi.capture_for_games` reads spread, total and
+  moneyline only, and `parse_markets` refuses any other market); the table
+  has no column naming a player; the cache holds no fetch of the four NFL
+  prop series `kalshi.SERIES` declares (KXNFLPASSYDS, KXNFLRECYDS, KXNFLREC,
+  KXNFLPASSTDS). ESPN's book republishes MLB player props
+  (`market_prop_lines_raw`, 8,055 rows, the last 27 September); 317 prop
+  snapshots, of which 4 carry a line (MLB, DraftKings via ESPN) and every NFL
+  one says "no free prop line source".
+- **What the Props page drew** (the 23 slates carrying a prop question and
+  every sport's current slate, both forecasters, as held and with every game
+  read as still to start; 350 tiles over 112 payloads): every tile the question this record asked at its
+  own line, beside "57.7% to break even" and a cushion from the declared
+  `config.PICKEM_TWO_PICK_MULTIPLE` (3x, declared 2026-09-24, typed by
+  nobody) -- a break-even from an untyped multiplier on all 350 -- ranked by
+  that cushion, so by the model's chance; the entry rail's payout field
+  filled with the same 3x. NO VENUE RUNG WAS DRAWN, as a pick or otherwise
+  (none is read); no tile wore an outline (ruling c), only the won and lost
+  fills of settled ones. Today's NFL slate (week 4): 10 tiles, 2 on the game
+  still to start.
+
+### BUILT
+
+- **A tile is a leg** (`board._leg`), on a game still to start: the
+  PROJECTION ("about 6.6 receptions", or "none for passing yards"); the
+  venue's MAIN LINE -- the rung of its ladder priced nearest an even chance
+  (`board._main_rung`; a tie to the lower line, the distance read to six
+  places) -- labelled "about the app's line, check the app"
+  (`language.APP_LINE_WORDS`), or "not listed by the venue"; the model's
+  CHANCE there, for the side it favours, through the claim writer's own
+  rules (`priced.shape.claim_shape`, `at_the_line.claim_probability`) and
+  the correction door (`correction.shown_proposition`; none in force for any
+  prop), or "the model has no chance at this line yet"; the BREAK-EVEN of
+  each power payout the operator typed (`board.breakeven`, M^(-1/N)), or "2-
+  pick power: payout not typed"; the EDGE against each; and a PICK -- "Pick ·
+  2-pick power", "Pick · 2-pick and 3-pick power", with the green outline and
+  the record badge beside it -- only where an edge is three points or more
+  (`board.clears_the_pick_bar`, `config.PICK_MIN_EDGE`, ruled 2026-10-05).
+  The question the record asked stays on the tile, "The model's own
+  question: Bijan Robinson under 120.5 rushing yards · 82%", with no
+  break-even beside it. A live or settled tile carries no leg; a settled one
+  keeps its verdict's fill.
+- **The one place a venue ladder is read** (`board._venue_prop_ladders`)
+  answers none, with why ("The venue's player-prop ladders are not read, so
+  no main line is listed for any player yet.", drawn under the slate's
+  heading), until a read of the venue's prop series lands; the legs and the
+  view are built from what it answers.
+- **The Kalshi ladder view**: a chip where the empty "Alt lines" sat; per
+  player and stat every rung under its own contract and price ("Jared Goff
+  over 250.5 passing yards · 52c", step A's rule), the main line marked in
+  words, and nothing a pick carries. Empty on every slate today, saying why.
+- **The payouts, typed once** (`settings.EDITABLE`: `pickem_two_pick_power`,
+  `pickem_three_pick_power`, empty by default, refused at 1 or less and over
+  100 by `settings._a_power_payout`; `settings.typed` reads the latest row
+  and its day). The Props page's "What your app pays" panel asks for each
+  untyped one ("Type what a 2-pick power entry and a 3-pick power entry pay
+  in your app. Until you do, no break-even is shown for them, and no leg is
+  called a pick against them: nothing here assumes a payout."), shows each
+  typed one with its day ("typed Tuesday 6 October"), and posts through the
+  settings door; the Settings page lists both under "pick'em payouts".
+- **No filling**: "Nothing worth taking today" heads a slate with legs still
+  to start and none a pick.
+- **Ranked by edge, never by chance**: picks first by their best edge, then
+  every other leg to start by its start and player, then the games being
+  played, then the finished; the sort offers edge and start time ("cushion"
+  and "the model's chance" are gone).
+- **The entry rail** is filled with the typed payout for its number of legs,
+  or nothing, and reads each leg's chance at its main line; with a leg that
+  has none it says "A leg here has no chance from the model at the app's
+  line, so the entry is not read."
+- **Retired**: `config.PICKEM_TWO_PICK_MULTIPLE`, `PICKEM_TWO_PICK_DECLARED`
+  and `PICKEM_LEGS` (nothing else read them; their text kept in config); the
+  tile's `cushion`, `cushion_words`, `breakeven`, `breakeven_words` and
+  `venue_words`; the props block's `multiple`, `legs`, `declared`,
+  `breakeven` and `alt_empty_words`; the composers that wrote them; the
+  stylesheet's `.cush` and venue-line rules.
+- **Ruling c's outline rule** (`audit.board_signal_faults`) reads a TYPED
+  multiple as it reads a read one; declared, assumed and untyped are still
+  refused.
+
+### READINGS TAKEN *(the conservative default; the task's own, each recorded)*
+
+- **(a) The chance at the main line** is shown only where the model states
+  one there: the question asked at that line, or a counting stat's stored
+  rate read at it in its declared form -- the claim writer's two rules of
+  2026-09-07, the record's precedent for "a distribution it already
+  carries". A yardage stat off its own line has none and says so. M4 is not
+  built here.
+- **(a) The projection** is the model's own expected count where it wrote
+  one; for a yardage stat it is "none" -- the player's recent average, an
+  input to the forecast, is not the model's projection and is not drawn as
+  one.
+- **(b) The payouts** are in the settings store (append-only, each row dated,
+  the earlier value kept as `previous`), shown with the day typed; until
+  both are typed the page asks for the missing ones and draws no break-even,
+  edge or pick against them. A leg may be a pick against the one typed.
+- **(c) Break-even**: a power entry's M^(-1/N), for N = 2 and 3.
+- **(d)** "Nothing worth taking today" on a slate with a leg still to start
+  and no pick -- whether or not the payouts are typed (no leg clears without
+  one, and the panel above says why).
+- **(e)** The Kalshi ladder view lists every rung of a player's and stat's
+  ladder, each under its own contract, never a pick, no badge.
+- **The side**: a leg at the main line is the side the model favours there
+  (a pick'em leg is either side of the app's line; the venue's contracts are
+  "over" contracts).
+- **Which entry a pick clears for** is named on its badge ("Pick · 3-pick
+  power" where only the 3-pick break-even is cleared).
+- **The order** follows B.1 ("chance of hitting alone never ranks anything")
+  on this page now, ahead of B: the cushion was the chance less one constant.
+
+### WHAT MOVES *(246014c, `git archive`, against this tree, each in a process of its own on the one copy, the clock held at 00:37Z: the 23 prop slates and every sport's current slate, both forecasters, as held and with every game read as still to start -- 112 payloads; `c/moves.py`, `c/moves_diff.py` -> `moves_diff.txt`)*
+
+- Outside `board.props`: 1,352,825 values compared, 1,008 moved -- every one
+  a fixed label of the board (`main_line`, `projection`, `save`,
+  `sort_edge` added; `cushion`, `sort_cushion`, `needs`, `best`, `sorted`
+  gone). No row, card, recommendation, My day chip or count moved.
+- Inside it: the same 350 tiles on every payload, the same questions; the
+  350 break-evens from the declared 3x gone; 179 legs still to start in the
+  two readings, 0 with a break-even (nothing typed on the record), 0 with a
+  main line (no ladder read), 0 picks, 69 with a projection; 26 payloads say
+  "Nothing worth taking today".
+- So, ON THE RECORD TODAY, C.2's "chance at the main line" and its pick can
+  be met for NO leg: the venue's prop ladders are not read. Every leg shows
+  its projection where the model has one, "not listed by the venue", and the
+  break-evens once typed.
+
+### THE RENDER *(the browser suite's own world, built fresh in a scratch folder -- plain, the payouts typed, and the payouts typed with a ladder handed in around each question's own line in the server process only -- and the one verified copy; served by the test server on a free local port with this tree's app and a dummy, non-secret token, never the live app on 8848; Chromium at 1300px and 390px; arrivals waited for by opacity and every animation finished, no fixed wait; `c/render_props.py`, `c/render_copy.py` -> `c/render/*.png`, `*.json`)*
+
+- Read at both widths: the panel asks, then shows "3 · typed Tuesday 6
+  October"; each tile reads PROJECTION / MAIN LINE / BREAK-EVEN, then the
+  model's own question muted beneath; with the ladder handed in, the main
+  line "DAL Running Back over 40.5 rushing yards · 85% · about the app's
+  line, check the app", "2-pick power 57.7% edge +27.2 · 3-pick power 55.0%
+  edge +29.9", "PICK · 2-PICK AND 3-PICK POWER" and the outline; the Kalshi
+  ladder view's three rungs per player, "MAIN LINE" on the 52c one; on the
+  record copy, "NOTHING WORTH TAKING TODAY" over "The venue's player-prop
+  ladders are not read, ...", Chris Olave "about 6.6 receptions", Bijan
+  Robinson "none for rushing yards", the eight finished tiles in their fills
+  after the two to come.
+- Found by reading the first render and fixed: the payout field's label was
+  18px tall (it is tappable: 44px now); "--" drawn in sentences (an em dash
+  now); the break-evens wrapped two to a line at 1300 (one a line now); and
+  nothing on the page said why no leg had a main line (the server's
+  sentence is drawn under the heading now). Every tap target 44px or more in
+  whole pixels at both widths, links included; no horizontal scroll; no page
+  error.
+
+### THE CHECKS
+
+- `audit.props_board_faults` / `check_the_props_board_calls_no_rung_a_pick`
+  (gate step 2: every sport's slate, both forecasters, on the record's
+  copy), every number worked out again (CLAUDE.md, the row of this name).
+  On the copy: 0 faults on the 10 current slates and on all 92 prop-slate
+  payloads (`c/step2_rows.py` -> `step2_rows.txt`); the other nine board
+  rows of step 2 pass on every sport's current slate for the default
+  forecaster, as the gate reads them.
+- The four plantings each ESCAPE on 246014c (`git archive` with this
+  plant.py copied in, `c/run_plantings.py` -> `plant4_head.txt`: the shipped
+  tile "Jared Goff over 200.5 passing yards · 90%" beside "57.7% to break
+  even" and "+32.3 points"; the slate's first tile at "+1.3 points" with
+  nothing saying no leg clears; "57.7% to break even" with nothing typed; no
+  Kalshi ladder view, no check, no step-2 call) and are CAUGHT here
+  (`plant4_fix.txt`), 1.1 seconds the four.
+- **The full suite**, with a dummy non-secret `GRIDIRON_ACCESS_TOKEN` and TMP
+  and TEMP at their defaults, detached (`c/run_suite.ps1`). FIRST RUN
+  (01:39:54Z, 1,725s): four failures, two of them this build's own defects,
+  each fixed -- the composer of the ladder view's words was named after the
+  venue (`kalshi_ladder_words`, called from `board.py`), which
+  `audit.market_source_faults` refuses outside the market module (renamed
+  `language.venue_ladder_view_words`), and the
+  stylesheet's two arrival rules the arrival planting reads were rewritten to
+  carry the ladder rows (`plant_a_panel_holding_tap_targets_moving_as_it_
+  arrives` read "no longer written the way this planting expects"; the
+  rows' fade is in rules of its own now, the two left as they were). SECOND
+  RUN (02:20:21Z, 1,885s) and ITS ONE AS-IS RERUN (02:52:30Z, 1,863s):
+  2,424 passed, 4 skipped, 1 failed, both times the same one --
+  `test_guards.py::test_the_planted_violation_harness_catches_everything`,
+  plant.py killed by the test's own 600-second limit, no planting escaping.
+- **Diagnosed before any third run** (the operator's rerun rule): plant.py
+  whole alone, 419/419 caught in 577s (02:10:26Z, `plant1.txt`); the harness
+  test alone, killed at 600.5s (03:26:03Z); plant.py with every planting
+  timed (`c/time_plantings.py` -> `timed1.txt`), 419/419 in 609.7s, of which
+  the two orphan-scan plantings are 304.7s (`plant_a_decorated_function_
+  mistaken_for_an_orphan` 182.1s, `plant_an_orphan_guard` 122.6s) and ruling
+  C's four 1.58s; the orphan scan itself, twice each, 177.4s and 173.5s on
+  246014c, 180.3s and 181.1s here -- this build's own code makes every scan
+  3-7 seconds longer, and `views.week` no slower (20 builds of the test
+  world's slate: 1.98s and 1.95s on 246014c, 1.93s and 1.96s here). So this
+  build adds about ten seconds to plant.py whole, and plant.py, at 527-600+
+  seconds on the release before (Q36 (ii)'s prover) and 547s at Q37's, is now
+  over the harness's 600-second limit on every run: the gate's step 1 will
+  fail on the clock until the operator rules on it -- the limit, or the
+  orphan scan's cost (half of plant.py). Not widened here.
+- **The copy**: deleted at 2026-10-06T04:02:40Z with the four record-derived
+  payload dumps and the props dump (`c/copies_deleted.txt`). Nothing written
+  to the live record; no network; the main checkout, the held branches, the
+  live app on 8848, every scheduled task and `.env` untouched; nothing
+  committed or pushed.
+
+### FOUND, NOT BUILT *(none joins the queue: none breaks LAW 1 or LAW 3, makes a gate count false, or shows a wrong number on a pick)*
+
+- **The venue's player-prop series are not read**, so no leg has a main
+  line, a chance at it, an edge or a pick, and the Kalshi ladder view is
+  empty, on every slate. Reading them is a build of its own on the
+  new-market checklist (the series, the player matched to the record's, the
+  rung; `venue_quotes` names no player) that no ruling names, and it needs
+  the network to measure. Until then C.2 is met for no leg.
+- **The yardage stats state no projection and no chance at another line**
+  (3 of NFL's 5 prop markets): the entry check's M4 (step 2) is what gives
+  them one.
+- **A ladder whose nearest rung is far from an even chance** -- a ladder
+  listing only a 91c rung -- would stand for the app's line as the ruling's
+  words read, and a 90% leg there would clear a 57.7% break-even. No band is
+  declared (the ruling names none); none is on the record (no ladder is).
+  The operator's call if a read lands.
+- **The Games board calls a prop question "Model's pick"** on a game row when
+  it is the surest of the row's questions (49 rows on the held prop slates,
+  e.g. "Model's pick · won · Kevin McGonigle - NO home run · 86%"), with no
+  edge behind it, and Games sorts by the model's chance: B.1 and B.2 on
+  every page, which is B's build, next in the order.
+- **The board's word scan names 134 phrases on the reasoning pass's slates**
+  -- "plays", "value", "boost" in the reasoning tooltips of 20 of the 46 reasoning-pass
+  payloads of the prop slates (as held and read as still to start), the same on 246014c -- and gate step 2
+  reads the default forecaster's slate only, so it never sees them.
+- **The entry rail's verdict** says "Clears the bar" at an entry return above
+  nothing, not at B.2's three points per leg: the entry check (D) rebuilds
+  the rail.
+- **The jersey's surname wraps mid-word** in a three-across tile ("RECE /
+  IVER"), as before this build.
+
+### THE PROVER *(2026-10-06, alone in the worktree on 91736d0 -- 246014c's code and the briefs of 6 October; ONE verified copy of the record through `rebuild.verified_backup`, 04:12:45Z to 04:13:44Z, integrity ok, 64 tables, none mismatched, read through `db.read_only` and by the test server during the one render of it; scratchpad `c/prover/`)*
+
+Hunted: a rung drawn as a pick'em pick, a pick below three points or with no
+typed payout, a break-even from an untyped or declared payout, a slate filled
+with picks when nothing clears, a number on a leg under another contract's
+words, and a tap target under 44px or off whole pixels at 390. On the tiles
+as built none was found: no rung carries a pick anywhere, every number on a
+tile stands under its own contract's words (the chance at the main line under
+the main line's, the question's own chance under "The model's own question:
+...", the projection under "projection"), and on the copy the check passes on
+all 92 prop-slate payloads (23 slates, both forecasters, as held and read as
+still to start: 165 legs, 61 with a projection, none with a main line, a
+break-even or a pick; 23 say "Nothing worth taking today"). FOUND OFF THE
+TILES, AND FIXED -- each with a test that fails on the change as handed to the
+prover and passes here, and a form in one of the four plantings that escapes
+on the change as handed and is caught here:
+
+- **The entry rail drew a taken leg under the words of its own question
+  beside its chance at the main line** -- a number under another contract's
+  words. Rendered on the change as handed: "BUF Receiver over 55.5 receiving
+  yards" in the rail, beside the model's chance at 65.5, the main line its
+  tile drew. Each leg now carries `leg_words` -- the main line's contract, on
+  the side its chance is for, or with no main line the player and stat and no
+  line at all ("Jared Goff · passing yards", `language.prop_leg_words`) -- and
+  the rail draws them. `audit.props_board_faults` names a leg named off its
+  tile by anything else, and `audit.entry_rail_leg_faults` (called by the
+  gate's check, so step 2 makes the call) names `renderEntryRail` drawing
+  `line_words`, `prob_words` or `question`, or not drawing `leg_words`.
+  Tests: `test_the_props_board.py::test_the_entry_rail_names_a_leg_by_its_main_lines_contract`,
+  `::test_the_entry_rail_draws_a_taken_leg_under_its_main_lines_words` (in
+  Chromium). Planting: `plant_a_90_percent_leg_at_91_cents_shown_as_a_pick`
+  (the leg named off its tile by its 91c question's words, in the payload and
+  in the rail's own row).
+- **The rail's payout was filled in only where its field was empty**, so the
+  2-pick's typed 3x, filled in for two legs, stayed when a third leg was
+  taken, and the verdict read a 3-leg entry at a payout nobody typed for it.
+  A value the page filled in now follows the legs taken (the 3-pick's 6x for
+  three, nothing for one); one the operator types in the field stays his.
+  `audit.entry_rail_leg_faults` names the fill put back. Test:
+  `::test_the_entry_rails_filled_payout_follows_the_legs_taken` (Chromium;
+  "3" then "6" then "" then the operator's "5" kept). Planting:
+  `plant_a_breakeven_from_an_untyped_multiplier`.
+- **The bar was read on the edge rounded to six places**: a leg at 2.99996
+  points was called a pick ("3 percentage points or more", B.2), and the
+  gate, reading the page's rounded chance and rounding again, named a leg at
+  2.99994 that the builder had rightly left a number -- a false fault in step
+  2. Both now read the edge as worked out, less float noise of a billionth
+  (`board.PICK_BAR_FLOAT_NOISE`, `audit.PICK_BAR_FLOAT_NOISE_AS_HELD`), the
+  gate on the stored forecast's own chance where it has it. Test:
+  `::test_the_bar_reads_the_edge_as_worked_out_not_its_six_places`. Planting:
+  `plant_a_slate_with_nothing_clearing_drawn_with_picks` (a leg at 2.99996
+  points called a pick on the page, and the builder's bar put back to six
+  places).
+- **"nan" was taken as a typed payout**: a float to Python, inside both of
+  `settings._a_power_payout`'s bounds, so the Settings page said "nan" and
+  the Props page asked again. Refused now. Test:
+  `::test_a_payout_that_is_not_a_number_is_refused`. Planting:
+  `plant_a_breakeven_from_an_untyped_multiplier`.
+- **A taken pick lost its green outline**: `.q-taken`, one class later in the
+  stylesheet, replaced the box shadow on a prop tile (a question kept both).
+  `.prop.q-taken.sig-clears` and `.sig-costs` now keep both, as `.q` does;
+  the colour law passes. Test: the rail's payout test reads the outline on
+  the taken picks. Found by reading the render; no planting, since the
+  ruling does not name the outline (the pick's words stood).
+- **Plain words**: the break-even tooltip said "2 legs that likely all hit
+  together one time in 3"; it says "at that chance both legs hit together one
+  time in 3, and a payout of 3 times only gives back what the entries cost".
+  Test: `::test_the_breakeven_tip_says_how_often_every_leg_hits`.
+- `docs/FOLLOWUPS.md`'s two entries on the declared 3x and the outline are
+  marked settled by this ruling; `leg_words` joined `audit.BOARD_TEXT_KEYS`.
+
+Measured on the copy besides: no payload draws one player and stat twice on
+one game (92 payloads), and no player, stat and game was ever asked at more
+than one line by one forecaster -- so the legs are one per player and stat on
+the record (`c/prover/measure_dupes.txt`).
+
+THE RENDER *(the browser suite's own world in four modes -- nothing typed;
+3x and 6x typed; typed with ladders handed in in the server process only,
+two legs' main lines at their own question's line and one ten yards above,
+two legs then a third taken in the scratch world; typed with every main line
+ten yards above, so nothing clears -- and the verified copy; Chromium at
+1300px and 390px, the test server on a free loopback port, a dummy
+non-secret token, never 8848; arrivals waited for by opacity, no fixed wait;
+`c/prover/render.py` -> `c/prover/render/fix-*`)*: read, every picture. The
+picks: "PICK · 2-PICK AND 3-PICK POWER", the outline (and, once taken, the
+outline and the amber mark), the main line, "85%", "about the app's line,
+check the app", "2-pick power 57.7% edge +27.2"; the third leg "DAL Receiver
+over 50.5 receiving yards -- the model has no chance at this line yet" in the
+rail, the field following to 6, and "A leg here has no chance from the model
+at the app's line, so the entry is not read." No picks: "NOTHING WORTH TAKING
+TODAY" over three legs at their main lines with no chance there. Typed: each
+payout "typed Tuesday 6 October", and the Settings page's "pick'em payouts"
+at 390. The copy: Bijan Robinson "none for rushing yards", Chris Olave
+"about 6.6 receptions", "not listed by the venue", "payout not typed", the
+finished tiles in their fills. The Kalshi ladder view: three rungs a player,
+each its own contract and price, "MAIN LINE" on the 52c rung, nothing else.
+Every tap target, labels and links included, 44px or more in whole pixels at
+both widths in every mode, the ladder view and the Settings page included;
+no horizontal scroll; no page error.
+
+THE CHECKS: the four plantings escape on 91736d0 (`git archive`; its code is
+246014c's) and are caught here, in 1.7s together run alone
+(`c/prover/plant4_head.txt`, `plant4_fixed.txt`); on the change as handed
+they escaped by the new forms alone (`plant4_handed.txt`). Gate step 2's
+rows, as the gate writes them (read out of `verify.py`'s syntax tree), on the
+copy with GRIDIRON_VERIFYING set: 112 of 116 pass and none fails (the three
+schema rows and the scheduled-task row not run: no schema change, no task
+touched; `c/prover/step2_rows.txt`); `audit.prose_reaching_the_raw_side()`
+is empty.
+
+FOUND, NOT BUILT *(none joins the queue: none breaks LAW 1 or LAW 3, makes a
+gate count false -- the false fault above is fixed -- or shows a wrong number
+on a pick)*:
+
+- **A ladder's nearest rung far from an even chance is concrete for MLB home
+  runs**: a ladder of 18c at 0.5 and 3c at 1.5 makes the 18c rung the main
+  line, and the model's "Kevin McGonigle - NO home run · 86%" there a pick at
+  +28 points against 57.7% -- while the venue itself says 82% for no home run
+  (measured on a scratch world). The ruling names no band; the question
+  stands for the operator, before any venue read lands.
+- **Two questions on one player and stat in one game** (the final pass asked
+  at another rung than the early pass) would be two legs on one main line,
+  with two chances there (62% and 59% on a scratch world). None is on the
+  record.
+- **"edge +3.0" on a leg that does not clear** (2.95 to 2.99999 points) sits
+  beside the page's "a pick only where its edge is 3 points or more": the
+  words are the edge to one decimal, and the pick is right. B.3's display.
+- **The rail says "not recorded"** for an entry it does not read because a
+  leg has no chance at the main line; "not read" is what it means.
+- **At 390 on the record's copy the sport strip runs the counts into the next
+  sport's name** ("313-195MLB", "1011-427UFC"); the header is not touched by
+  this build.
+- **A second copy of the record was made by the prover's own dry run** of
+  step 2: the gate's helper `_at_the_line_payload` reached for the gate's own
+  copy, which `verify._gate_copy_path` made through the backup door
+  (read-only on the record) into the temp folder at about 04:41Z and
+  migrated there. It was deleted at 04:42:57Z; the dry run was then made to
+  patch the gate module's own globals, and no copy was made again.

@@ -1071,7 +1071,9 @@ const Gridiron = (function () {
   // Games: one scoreboard row per game, the model's pick the loudest thing on
   // it, a tap expanding the row IN PLACE to every question the record holds
   // for that game. Props: tiles three across, a jersey on each in the club's
-  // measured colours, ranked by cushion. NOTHING HERE COMPOSES A SENTENCE:
+  // measured colours, each one player and one stat, ranked by edge (ruling
+  // C, 2026-10-05), and the venue's ladder in a view of its own. NOTHING
+  // HERE COMPOSES A SENTENCE:
   // every word arrives from `gridiron.board` and `gridiron.language`, and the
   // tooltips are payload strings the same scans read.
   //
@@ -1823,7 +1825,10 @@ const Gridiron = (function () {
   function probBar(t, tickAt) {
     // THE BAR AND ITS TICK (mockup, 2026-09-25): the fill is the club's
     // colour where the question has one, the tick is white and sits at the
-    // price on a game question or at the break-even on a prop.
+    // price on a game question or at the break-even on a prop. FROM RULING
+    // C (2026-10-05) a prop's tick is a TYPED payout's break-even, handed in
+    // with its words, or none: the tile carries no declared one to fall
+    // back on.
     const bar = el('div', 'pbar');
     const fill = el('span', 'pbar-fill filling');
     const p = Math.max(0, Math.min(1, t.prob || 0));
@@ -1833,11 +1838,11 @@ const Gridiron = (function () {
     // the tree, and nothing sets it again -- `audit.live_update_faults`
     // refuses a live patch that reaches for it.
     requestAnimationFrame(() => requestAnimationFrame(() => fill.classList.remove('filling')));
-    const at = tickAt === undefined ? t.breakeven : tickAt;
+    const at = tickAt;
     if (at !== null && at !== undefined) {
       const tick = el('span', 'pbar-tick');
       tick.style.left = (Math.max(0, Math.min(1, at)) * 100).toFixed(1) + '%';
-      bar.appendChild(tip(tick, tickAt === undefined ? t.breakeven_words : ((t.tips || {}).price)));
+      bar.appendChild(tip(tick, (t.tips || {}).price));
     }
     return bar;
   }
@@ -1853,6 +1858,27 @@ const Gridiron = (function () {
     return 'var(--family-' + (found ? FAMILY_HUES[found] : 'other') + ')';
   }
 
+  // ONE ROW OF A LEG: a label and what it holds, each the server's words.
+  function legRow(label, words, tipWords) {
+    const row = el('div', 'leg-row');
+    row.appendChild(el('span', 'leg-label', label || ''));
+    const value = el('span', 'leg-value');
+    if (words) value.appendChild(tip(el('b', 'leg-words', words), tipWords));
+    row.appendChild(value);
+    return row;
+  }
+
+  // A PROP TILE IS ONE PLAYER AND ONE STAT (operator ruling C, 2026-10-05;
+  // built 2026-10-06): "Per player and stat: the model's projection and its
+  // chance at the market's main line (the rung nearest 50c), labelled 'about
+  // the app's line, check the app'." An upcoming tile draws its leg -- the
+  // projection, the venue's main line and the model's chance at it, the
+  // break-even of each payout the operator typed with the edge against it,
+  // and the pick only where the server called it one -- and the question the
+  // record asked at its own line, said as the model's own and never beside a
+  // break-even. Placed, never composed: every word is the server's, and the
+  // pick and the outline are the server's decision, held by
+  // `audit.props_board_faults`.
   function propTile(t, labels, after, seqId) {
     const node = el('article', 'prop ' + signalClass(t.signal) + (t.taken ? ' q-taken' : ''));
     node.dataset.id = t.prediction_id;
@@ -1878,49 +1904,66 @@ const Gridiron = (function () {
     top.appendChild(who);
     node.appendChild(top);
 
+    const tips = t.tips || {};
     const body = el('div', 'prop-body');
-    const line = el('div', 'prop-line');
-    const q = el('span', 'prop-q');
-    q.appendChild(tip(el('span', 'prop-q-words', t.line_words || ''), t.question));
-    if (t.alt && t.high_end_badge_words) {
-      q.appendChild(tip(el('span', 'tag tag-alt', labels.alt || ''), (t.tips || {}).high_end));
-    }
-    line.appendChild(q);
-    if (t.state === 'live') {
-      // A LIVE TILE: the pregame figure, its word, and nothing to act on.
-      line.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
+    if (t.state === 'upcoming') {
+      // THE PICK, only where the server called the leg one (B.2: an edge of
+      // three points or more against a typed payout).
+      if (t.pick_words) body.appendChild(tip(el('div', 'prop-pick', t.pick_words), tips.leg_pick));
+      const leg = el('div', 'leg');
+      leg.appendChild(legRow(labels.projection, t.projection_words, tips.leg_projection));
+      const main = legRow(labels.main_line, t.main_words, tips.leg_main);
+      const value = main.querySelector('.leg-value');
+      if (t.main_chance_words) {
+        value.appendChild(tip(el('b', t.main_chance === null || t.main_chance === undefined
+          ? 'leg-none' : 'leg-chance', t.main_chance_words), tips.leg_chance));
+      }
+      if (t.main_note_words) value.appendChild(el('small', 'leg-note', t.main_note_words));
+      leg.appendChild(main);
+      const be = legRow(labels.breakeven, '', null);
+      const holds = be.querySelector('.leg-value');
+      (t.entries || []).forEach(e => {
+        const one = el('span', 'leg-entry' + (e.clears ? ' leg-entry-clears' : ''));
+        one.appendChild(tip(el('span', 'leg-be', e.breakeven_words || ''), e.tip));
+        if (e.edge_words) one.appendChild(el('b', 'leg-edge', e.edge_words));
+        holds.appendChild(one);
+      });
+      leg.appendChild(be);
+      body.appendChild(leg);
+      // THE BAR IS THE CHANCE AT THE MAIN LINE, its tick the first typed
+      // break-even, and there is no bar where the model gives no chance there.
+      if (t.main_chance !== null && t.main_chance !== undefined) {
+        const typed = (t.entries || []).find(e => e.breakeven !== null && e.breakeven !== undefined);
+        body.appendChild(probBar({ prob: t.main_chance, tips: { price: typed ? typed.breakeven_words : null } },
+                                 typed ? typed.breakeven : null));
+      }
+      if (t.own_question_words) body.appendChild(tip(el('p', 'prop-own', t.own_question_words), tips.own));
     } else {
-      line.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), (t.tips || {}).prob));
-    }
-    body.appendChild(line);
-    if (t.state !== 'live') {
-      body.appendChild(probBar(t));
-      const cush = el('div', 'cush');
-      const needs = el('span', 'cush-needs');
-      needs.appendChild(el('span', 'cush-label', labels.needs || ''));
-      needs.appendChild(tip(el('b', 'cush-be', t.breakeven_words || ''), (t.tips || {}).cushion));
-      cush.appendChild(needs);
-      const c = el('span', 'cush-cushion');
-      c.appendChild(el('span', 'cush-label', labels.cushion || ''));
-      c.appendChild(tip(el('b', 'prop-cushion', t.cushion_words || ''), (t.tips || {}).cushion));
-      cush.appendChild(c);
-      body.appendChild(cush);
-    }
-    if (t.state === 'final' && t.settled_words) {
-      body.appendChild(el('div', 'q-settled', t.settled_words));
+      const line = el('div', 'prop-line');
+      const q = el('span', 'prop-q');
+      q.appendChild(tip(el('span', 'prop-q-words', t.line_words || ''), t.question));
+      if (t.alt && t.high_end_badge_words) {
+        q.appendChild(tip(el('span', 'tag tag-alt', labels.alt || ''), tips.high_end));
+      }
+      line.appendChild(q);
+      if (t.state === 'live') {
+        // A LIVE TILE: the pregame figure, its word, and nothing to act on.
+        line.appendChild(el('span', 'q-pregame', t.pregame_words || ''));
+      } else {
+        line.appendChild(tip(el('span', 'prop-prob', t.prob_words || ''), tips.prob));
+      }
+      body.appendChild(line);
+      if (t.state !== 'live') body.appendChild(probBar(t, null));
+      if (t.state === 'final' && t.settled_words) {
+        body.appendChild(el('div', 'q-settled', t.settled_words));
+      }
     }
     const foot = el('div', 'pfoot');
-    if (t.state !== 'live') {
-      const venue = el('span', 'prop-venue');
-      venue.appendChild(el('span', 'prop-venue-label', labels.best || ''));
-      venue.appendChild(tip(el('b', 'prop-venue-words', t.venue_words || ''), (t.tips || {}).venue));
-      foot.appendChild(venue);
-    }
     const badges = el('span', 'pfoot-badges');
     badges.appendChild(badge(t, labels));
     if (t.alt && t.high_end_badge_words) {
       badges.appendChild(tip(el('span', 'badge badge-high', t.high_end_badge_words),
-                             (t.tips || {}).high_end));
+                             tips.high_end));
     }
     foot.appendChild(badges);
     body.appendChild(foot);
@@ -1928,10 +1971,101 @@ const Gridiron = (function () {
     return node;
   }
 
+  // THE KALSHI LADDER VIEW (operator ruling C.1, 2026-10-05: "The full
+  // ladder moves to its own 'Kalshi ladder' view"): every rung the venue
+  // lists for a player and stat, under its own contract and price, the main
+  // line marked. A rung is a contract at the venue and never a pick'em pick:
+  // nothing here draws a break-even, an edge, a pick or an outline.
+  function ladderRow(row, ladder) {
+    const node = el('article', 'ladder');
+    node.dataset.id = row.prediction_id;
+    const head = el('div', 'ladder-head');
+    head.appendChild(el('b', 'ladder-player', row.player || ''));
+    const under = el('span', 'prop-club');
+    under.appendChild(el('span', 'prop-matchup', row.matchup || ''));
+    const fam = el('span', 'prop-family', row.family_words || '');
+    fam.style.setProperty('--family', familyHue(row.family || ''));
+    under.appendChild(fam);
+    head.appendChild(under);
+    node.appendChild(head);
+    const list = el('div', 'ladder-rungs');
+    (row.rungs || []).forEach(r => {
+      const rung = el('div', 'ladder-rung' + (r.main ? ' ladder-main' : ''));
+      rung.appendChild(el('span', 'ladder-contract', r.contract_words || ''));
+      if (r.main) rung.appendChild(tip(el('small', 'ladder-main-mark', ladder.main_words || ''), ladder.main_tip));
+      rung.appendChild(el('b', 'ladder-price', r.price_words || ''));
+      list.appendChild(rung);
+    });
+    node.appendChild(list);
+    return node;
+  }
+
+  // WHAT YOUR APP PAYS (operator ruling C.3, 2026-10-05: "The operator types
+  // each multiplier once (no payout hard-coded as fact); until typed, the
+  // page asks for it and shows no break-even"). Each field posts through the
+  // settings door, the same one the Settings page uses, and the page asks
+  // again for the slate; the words, the labels and every refusal are the
+  // server's.
+  function renderPayouts(props, labels) {
+    const host = document.getElementById('props-payouts');
+    if (!host) return;
+    const p = props.payouts || { entries: [] };
+    host.innerHTML = '';
+    host.appendChild(el('h3', 'payouts-head', p.heading || ''));
+    if (p.ask_words) host.appendChild(el('p', 'payouts-ask', p.ask_words));
+    const rows = el('div', 'payouts-rows');
+    (p.entries || []).forEach(e => {
+      const row = el('div', 'payout');
+      const id = 'payout-' + e.legs;
+      const label = el('label', 'payout-label', e.label || '');
+      label.htmlFor = id;
+      row.appendChild(label);
+      const field = el('input', 'payout-field');
+      field.id = id;
+      field.type = 'number';
+      field.inputMode = 'decimal';
+      field.min = '1';
+      field.step = '0.1';
+      field.autocomplete = 'off';
+      field.value = e.value || '';
+      row.appendChild(field);
+      const save = el('button', 'payout-save', labels.save || '');
+      save.type = 'button';
+      const said = el('small', 'payout-said', e.typed_words || '');
+      save.onclick = async () => {
+        save.disabled = true;
+        try {
+          const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json',
+                       'X-Gridiron-Form': csrfToken || '' },
+            body: JSON.stringify({ name: e.setting, value: field.value }),
+          });
+          const body = await res.json();
+          if (!res.ok) { said.textContent = body.detail || ''; return; }
+          await renderProps();
+        } catch (err) {
+          showError(err);
+        } finally {
+          save.disabled = false;
+        }
+      };
+      row.appendChild(save);
+      row.appendChild(said);
+      rows.appendChild(row);
+    });
+    host.appendChild(rows);
+    if (p.note) host.appendChild(el('p', 'footnote payouts-note', p.note));
+    host.hidden = false;
+  }
+
   // THE ENTRY RAIL. Legs are the props marked taken on this slate; the
   // operator types what the venue pays; three readings and the floor follow
   // from arithmetic on numbers the payload already carries. Labels are the
   // server's; the numbers are formatted here and nothing is composed.
+  // FROM RULING C (2026-10-05): a leg's chance is the model's chance at its
+  // main line -- about the app's line -- and never its own question's at
+  // another line; a leg with none leaves the entry unread.
   function entryLines(legs, pays, props, labels) {
     const host = document.getElementById('entry-lines');
     if (!host) return;
@@ -1944,13 +2078,14 @@ const Gridiron = (function () {
       host.appendChild(row);
     };
     const n = legs.length;
-    const probs = legs.map(l => l.prob || 0);
-    const product = probs.reduce((a, b) => a * b, 1);
     if (!n) return;
+    const known = legs.every(l => l.main_chance !== null && l.main_chance !== undefined);
+    const probs = known ? legs.map(l => l.main_chance) : [];
+    const product = known ? probs.reduce((a, b) => a * b, 1) : null;
     const perDollar = (x) => (x === null || x === undefined || !isFinite(x))
       ? ABSENT : signed(x, 2);
     const be = pays && pays > 1 ? Math.pow(pays, -1 / n) : null;
-    const modelLine = pays ? pays * product - 1 : null;
+    const modelLine = pays && known ? pays * product - 1 : null;
     // THE VERDICT (ruling c, 2026-09-25): the one place a prop earns its
     // colour, against the multiple the operator typed, with the thinnest
     // record among the legs beside it so the glow never stands alone.
@@ -1964,18 +2099,19 @@ const Gridiron = (function () {
       const thinnest = legs.slice().sort((a, b) => (a.badge_n || 0) - (b.badge_n || 0))[0];
       if (thinnest) verdict.appendChild(badge(thinnest, labels));
     } else {
-      verdict.appendChild(el('div', 'v-untyped', words.verdict_untyped || ''));
+      verdict.appendChild(el('div', 'v-untyped', known ? (words.verdict_untyped || '')
+                                                       : (words.verdict_no_chance || '')));
     }
     host.appendChild(verdict);
     line(labels.line_model, perDollar(modelLine));
     let half = null;
-    if (pays && be !== null) {
+    if (pays && be !== null && known) {
       const shrunk = probs.map(p => be + (p - be) / 2);
       half = pays * shrunk.reduce((a, b) => a * b, 1) - 1;
     }
     line(labels.line_half, perDollar(half));
     line(labels.line_kalshi, labels.not_listed || '', words.kalshi_absent);
-    line(labels.line_floor, product > 0 ? num(1 / product, 2) + 'x' : ABSENT);
+    line(labels.line_floor, product ? num(1 / product, 2) + 'x' : ABSENT);
   }
 
   function renderEntryRail(props, labels, after) {
@@ -1993,10 +2129,17 @@ const Gridiron = (function () {
     if (note) note.textContent = words.note || '';
     const legs = (props.tiles || []).filter(t => t.taken && t.state === 'upcoming');
     legsHost.innerHTML = '';
+    // A LEG IS NAMED BY ITS OWN WORDS (the prover of ruling C, 2026-10-06):
+    // the main line's contract, beside the chance at it. Until this date the
+    // row drew the words of the question the record asked at its own line
+    // beside the chance at the main line -- a number under another
+    // contract's words (`audit.entry_rail_leg_faults`).
     legs.forEach(l => {
       const row = el('div', 'entry-leg');
-      row.appendChild(el('span', 'entry-leg-line', l.line_words || ''));
-      row.appendChild(el('span', 'entry-leg-prob', l.prob_words || ''));
+      row.appendChild(el('span', 'entry-leg-line', l.leg_words || ''));
+      row.appendChild(el('span', 'entry-leg-prob',
+        (l.main_chance !== null && l.main_chance !== undefined)
+          ? (l.main_chance_words || '') : (l.main_chance_words || l.main_words || '')));
       legsHost.appendChild(row);
     });
     if (empty) {
@@ -2005,8 +2148,20 @@ const Gridiron = (function () {
     }
     const paint = () => entryLines(legs, parseFloat(pays && pays.value) || null, props, labels);
     if (pays) {
-      if (!pays.value) pays.value = String(props.multiple || '');
-      pays.oninput = paint;
+      // THE PAYOUT YOU TYPED FOR AN ENTRY OF THIS SIZE, or nothing (operator
+      // ruling C.3, 2026-10-05): until 2026-10-06 the field was filled with
+      // the declared 3x whatever was typed, which drew a verdict from a
+      // payout nobody typed. A VALUE THE PAGE FILLED IN FOLLOWS THE LEGS (the
+      // prover of ruling C, 2026-10-06): as built the 2-pick's payout, filled
+      // in for two legs, stayed in the field when a third was taken, and the
+      // verdict read a 3-leg entry at it. One the operator types stays his.
+      if (!pays.value || pays.dataset.filled) {
+        const typed = ((props.payouts || {}).entries || []).find(
+          e => e.legs === legs.length && e.multiple !== null && e.multiple !== undefined);
+        pays.value = typed ? String(typed.value || '') : '';
+        pays.dataset.filled = 'page';
+      }
+      pays.oninput = () => { delete pays.dataset.filled; paint(); };
     }
     paint();
     // DRAWN NOW THAT IT CAN ACT (2026-09-29): its field has its label and
@@ -2046,14 +2201,16 @@ const Gridiron = (function () {
     sportPill('props-sport', board);
     const note = document.getElementById('props-note');
     if (note) note.textContent = props.note || '';
+    renderPayouts(props, labels);
 
     chips.innerHTML = '';
-    const active = state.propFamily || '';
+    let active = state.propFamily || '';
+    if (active && !(props.chips || []).some(c => (c.key || '') === active)) active = '';
     (props.chips || []).forEach(c => {
       const b = el('button', 'chip-btn');
       b.type = 'button';
       b.dataset.key = c.key || '';
-      if (c.key && c.key !== 'alt') b.style.setProperty('--family', familyHue(c.key));
+      if (c.key && c.key !== 'ladder') b.style.setProperty('--family', familyHue(c.key));
       b.setAttribute('aria-pressed', String((c.key || '') === active));
       b.appendChild(el('span', 'chip-label', c.label));
       b.appendChild(el('span', 'chip-n', String(c.n)));
@@ -2066,29 +2223,61 @@ const Gridiron = (function () {
     const propsLoading = document.getElementById('props-loading');
     if (propsLoading) propsLoading.hidden = true;
     const sortSel = document.getElementById('props-sort');
-    const sortBy = prefGet('props.sort', 'cushion');
-    fillSelect(sortSel, [['cushion', labels.sort_cushion], ['prob', labels.sort_prob]], sortBy);
+    // BY EDGE OR BY START, NEVER BY CHANCE (ruling C with B.1, 2026-10-05):
+    // a choice kept from before -- "cushion", "the model's chance" -- falls
+    // back to the edge.
+    let sortBy = prefGet('props.sort', 'edge');
+    if (sortBy !== 'edge' && sortBy !== 'time') sortBy = 'edge';
+    fillSelect(sortSel, [['edge', labels.sort_edge], ['time', labels.sort_time]], sortBy);
     const sortLabel = document.getElementById('props-sort-label');
     if (sortLabel) sortLabel.textContent = labels.sort || '';
     if (sortSel) sortSel.onchange = () => { prefSet('props.sort', sortSel.value); renderProps().catch(showError); };
     // DRAWN NOW THAT IT CAN ACT (2026-09-29), as the Games bar.
     const propsBar = document.getElementById('props-controls');
-    if (propsBar) propsBar.hidden = false;
-    let tiles = props.tiles || [];
-    if (active === 'alt') tiles = tiles.filter(t => t.alt);
-    else if (active) tiles = tiles.filter(t => (t.family || '') === active);
-    if (sortBy === 'prob') tiles = tiles.slice().sort((a, b) => (b.prob || 0) - (a.prob || 0));
+    if (propsBar) propsBar.hidden = active === 'ladder';
+    const nothing = document.getElementById('props-nothing');
+    if (nothing) {
+      nothing.textContent = active === 'ladder' ? '' : (props.nothing_words || '');
+      nothing.hidden = active === 'ladder' || !props.nothing_words;
+    }
+    const unread = document.getElementById('props-ladders-words');
+    if (unread) {
+      unread.textContent = active === 'ladder' ? '' : (props.ladders_words || '');
+      unread.hidden = active === 'ladder' || !props.ladders_words;
+    }
     renderMyDay(board);
     arrive(host);
+    if (active === 'ladder') {
+      const ladder = props.ladder || { rows: [] };
+      (ladder.rows || []).forEach((row, i) => {
+        const node = ladderRow(row, ladder);
+        node.style.setProperty('--i', String(Math.min(i, 8)));
+        host.appendChild(node);
+      });
+      if (ladder.note) notes.appendChild(el('p', 'footnote ladder-note', ladder.note));
+      if (!(ladder.rows || []).length) notes.appendChild(el('div', 'empty', ladder.empty_words || ''));
+      renderEntryRail(props, labels, again);
+      return;
+    }
+    let tiles = props.tiles || [];
+    if (active) tiles = tiles.filter(t => (t.family || '') === active);
+    if (sortBy === 'time') {
+      // A START READ AS AN INSTANT, never compared as text (operator
+      // question 35's rule, 2026-09-30): one it cannot read goes last.
+      const at = s => { const v = Date.parse(s || ''); return isNaN(v) ? Infinity : v; };
+      tiles = tiles.slice().sort((a, b) => {
+        const x = at(a.kickoff_utc), y = at(b.kickoff_utc);
+        if (x !== y) return x < y ? -1 : 1;
+        return String(a.player || '').localeCompare(String(b.player || ''));
+      });
+    }
     tiles.forEach((t, i) => {
       const tile = propTile(t, labels, again, i);
       tile.style.setProperty('--i', String(Math.min(i, 8)));
       host.appendChild(tile);
     });
     if (!tiles.length) {
-      notes.appendChild(el('div', 'empty',
-        active === 'alt' ? (props.alt_empty_words || '')
-                         : (props.empty_words || data.forecaster_message || data.message || '')));
+      notes.appendChild(el('div', 'empty', props.empty_words || data.forecaster_message || data.message || ''));
     }
     renderEntryRail(props, labels, again);
   }

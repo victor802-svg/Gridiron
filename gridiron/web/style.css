@@ -2708,9 +2708,7 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 .sig-won .q-settled, .sig-lost .q-settled, .sig-won .q-size, .sig-lost .q-size,
 .sig-won .q-method, .sig-lost .q-method, .sig-won .q-foot, .sig-lost .q-foot,
 .sig-won .badge, .sig-lost .badge, .sig-won .q-signal, .sig-lost .q-signal,
-.sig-won .prop-prob, .sig-lost .prop-prob, .sig-won .prop-q-words, .sig-lost .prop-q-words,
-.sig-won .cush, .sig-lost .cush, .sig-won .cush b, .sig-lost .cush b,
-.sig-won .prop-venue, .sig-lost .prop-venue, .sig-won .prop-venue-words, .sig-lost .prop-venue-words
+.sig-won .prop-prob, .sig-lost .prop-prob, .sig-won .prop-q-words, .sig-lost .prop-q-words
   { color: var(--ink); border-color: var(--ink); }
 .sig-won .q-signal, .sig-lost .q-signal, .sig-won .badge, .sig-lost .badge { background: transparent; opacity: .85; }
 
@@ -2849,8 +2847,12 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .q-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .q { background: var(--card-2); border-radius: 12px; padding: 12px 14px; position: relative; border: 1px solid transparent; min-width: 0; }
 .q-taken { box-shadow: inset 3px 0 0 var(--yours); }
-.q.q-taken.sig-clears { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--win), 0 0 22px color-mix(in srgb, var(--win) 28%, transparent); }
-.q.q-taken.sig-costs { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--loss), 0 0 22px color-mix(in srgb, var(--loss) 24%, transparent); }
+/* A TAKEN PICK KEEPS ITS OUTLINE, on a prop tile as on a question (the prover
+   of ruling C, 2026-10-06): from ruling C a leg that clears the bar is a pick
+   and wears the outline, and `.q-taken`, one class later in this sheet, took
+   the outline off a prop tile once it was taken. */
+.q.q-taken.sig-clears, .prop.q-taken.sig-clears { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--win), 0 0 22px color-mix(in srgb, var(--win) 28%, transparent); }
+.q.q-taken.sig-costs, .prop.q-taken.sig-costs { box-shadow: inset 3px 0 0 var(--yours), 0 0 0 1.5px var(--loss), 0 0 22px color-mix(in srgb, var(--loss) 24%, transparent); }
 .q .chk { position: absolute; top: 2px; right: 2px; }
 .q .chk .take-mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
 .q-head { font: 600 11px/1 var(--body); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; display: flex; gap: 8px; padding-right: 30px; }
@@ -2898,10 +2900,12 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 
 /* --- props ----------------------------------------------------------------- */
 /* `.pchips`, `.propsgrid`, `.tiles`, `.ptile`, `.ptop`, `.jsvg`, `.pwho`,
-   `.pbody`, `.pline`, `.cush`, `.pfoot`, `.tag`, `.rail` from the mockup.
-   Adapted where a law requires: the pressed chip is chrome, not green; the
-   cushion's sign is ink, not a colour; and a tile wears no outline at all
-   until a real multiplier exists for its line (ruling c, 2026-09-25). */
+   `.pbody`, `.pline`, `.pfoot`, `.tag`, `.rail` from the mockup.
+   Adapted where a law requires: the pressed chip is chrome, not green; an
+   edge's sign is ink, not a colour; and a tile wears no outline at all until
+   a real multiplier exists for its line (ruling c, 2026-09-25) -- from ruling
+   C (2026-10-05) a payout the operator typed, and only on a leg that is a
+   pick. The mockup's `.cush` and venue line went with the declared 3x. */
 .chips { display: flex; gap: 8px; align-items: center; margin: -4px 0 16px; flex-wrap: wrap; }
 .chip-btn {
   font: 700 14px/1 var(--cond); letter-spacing: 0.06em; text-transform: uppercase;
@@ -2942,12 +2946,69 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
   margin-left: 6px; vertical-align: 4px;
 }
 .tag-alt { background: color-mix(in srgb, var(--state-live) 16%, transparent); color: var(--state-live); }
-.cush { display: flex; gap: 10px; align-items: baseline; font-size: 12px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
-.cush b { font: 800 16px/1 var(--cond); color: var(--chrome); margin-left: 4px; }
 .pfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
-.prop-venue { font-size: 12px; color: var(--muted); }
-.prop-venue b { color: var(--chrome); margin-left: 4px; font-weight: 600; }
 .pfoot-badges { display: flex; gap: 6px; margin-left: auto; }
+
+/* THE LEG (operator ruling C, 2026-10-05; built 2026-10-06): one player and
+   one stat -- the projection, the venue's main line and the model's chance
+   at it, the break-even of each payout typed with the edge against it, the
+   pick where there is one, and the model's own question beneath, muted. Ink
+   only: an edge's sign and a pick are words, never a value colour (the
+   colour law); the outline is the tile's, and only a pick wears it. */
+.leg { display: grid; gap: 6px; }
+.leg-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; align-items: baseline; font-size: 12px; line-height: 16px; color: var(--muted); }
+.leg-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; line-height: 16px; }
+.leg-value { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+.leg-words { font: 700 15px/18px var(--cond); color: var(--chrome); letter-spacing: 0.02em; overflow-wrap: anywhere; }
+.leg-chance { font: 800 22px/22px var(--cond); color: var(--chrome); }
+.leg-none { font: 600 12px/16px var(--body); color: var(--muted); }
+.leg-note { flex-basis: 100%; font-size: 11px; line-height: 14px; color: var(--muted); }
+.leg-entry { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 0 6px; align-items: baseline; }
+.leg-be { font: 700 14px/18px var(--cond); color: var(--chrome); letter-spacing: 0.02em; }
+.leg-edge { font: 800 14px/18px var(--cond); color: var(--chrome); }
+.leg-entry-clears .leg-edge { text-decoration: underline; text-underline-offset: 3px; }
+.prop-pick { display: inline-block; margin-bottom: 8px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--chrome); color: var(--chrome); font: 800 12px/16px var(--cond); letter-spacing: 0.08em; text-transform: uppercase; }
+.prop-own { margin: 10px 0 0; font-size: 12px; line-height: 16px; color: var(--muted); }
+.props-nothing { margin: 0 0 12px; font: 800 20px/24px var(--cond); letter-spacing: 0.04em; text-transform: uppercase; color: var(--chrome); }
+.props-ladders { margin: -6px 0 14px; font-size: 12px; line-height: 16px; color: var(--muted); }
+
+/* WHAT YOUR APP PAYS (operator ruling C.3, 2026-10-05): the two power
+   payouts the operator types once. Every field and button a thumb taps is
+   44px tall in whole pixels, as every tap target on the board is. */
+.payouts { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 12px 16px; margin: 0 0 16px; }
+.payouts-head { font: 800 16px/20px var(--cond); letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 6px; }
+.payouts-ask { margin: 0 0 10px; font-size: 13px; line-height: 18px; color: var(--chrome); }
+.payouts-rows { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.payout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+/* THE LABEL IS TAPPABLE TOO -- it puts the cursor in its field -- so it
+   stands 44px tall in whole pixels like the field beside it. */
+.payout-label { display: inline-flex; align-items: center; height: 44px; font-size: 13px; line-height: 18px; color: var(--muted); }
+.payout-field {
+  box-sizing: border-box; width: 88px; height: 44px; min-height: 44px; background: var(--card-3);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--chrome);
+  font: 800 18px/1 var(--cond); text-align: right;
+}
+.payout-save {
+  box-sizing: border-box; height: 44px; min-height: 44px; min-width: 64px; padding: 0 14px; border-radius: 8px;
+  border: 1px solid var(--line-lit); background: transparent; color: var(--chrome);
+  font: 700 14px/1 var(--cond); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+}
+.payout-said { flex-basis: 100%; font-size: 11px; line-height: 14px; color: var(--muted); }
+.payouts-note { margin: 8px 0 0; font-size: 11px; line-height: 16px; color: var(--muted); }
+
+/* THE KALSHI LADDER VIEW (ruling C.1): every rung under its own contract and
+   price, the main line marked in words. Nothing here is a pick: no outline,
+   no badge, no break-even. */
+.ladder { background: var(--card-2); border-radius: 16px; padding: 12px 14px; min-width: 0; }
+.ladder-head { display: grid; gap: 4px; margin-bottom: 8px; }
+.ladder-player { font: 800 20px/22px var(--cond); text-transform: uppercase; color: var(--chrome); overflow-wrap: anywhere; }
+.ladder .prop-club { color: var(--muted); }
+.ladder-rungs { display: grid; }
+.ladder-rung { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 18px; color: var(--chrome); }
+.ladder-contract { overflow-wrap: anywhere; }
+.ladder-main .ladder-contract { font-weight: 700; }
+.ladder-main-mark { font-size: 10px; line-height: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.ladder-price { font: 800 16px/18px var(--cond); }
 .entry-rail {
   position: sticky; top: 130px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
   display: grid; gap: 4px;
@@ -3082,6 +3143,11 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
    neutral line colour (an interactive selector wears no value colour). */
 .game, .prop { transition: opacity 200ms ease-out; transition-delay: calc(var(--i, 0) * 30ms); }
 #games-rows.arriving .game, #props-tiles.arriving .prop { opacity: 0; transition: none; }
+/* THE KALSHI LADDER VIEW'S ROWS ARRIVE THE SAME WAY (ruling C, 2026-10-05):
+   by their fade, in place, on the tiles' panel -- in rules of their own, so
+   the two above stay as the arrival planting reads them. */
+.ladder { transition: opacity 200ms ease-out; transition-delay: calc(var(--i, 0) * 30ms); }
+#props-tiles.arriving .ladder { opacity: 0; transition: none; }
 .game:hover { border-color: var(--line-lit); }
 .game-more { transition: opacity 200ms ease-out; }
 .game-more.arriving { opacity: 0; transition: none; }

@@ -78,7 +78,9 @@ def test_a_chip_switch_arrives_through_the_motion_block(page):
         }
     }""")
     keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
-    target = next((k for k in keys if k and k != 'alt'), keys[0])
+    # A FAMILY CHIP: not the Kalshi ladder view, which took the empty "Alt
+    # lines" chip's place (operator ruling C, 2026-10-05).
+    target = next((k for k in keys if k and k != 'ladder'), keys[0])
     # AND THE FADE ACTUALLY RUNS: a sampler started by the same observer reads
     # the grid's opacity every frame until the arrival has ended -- the class
     # gone and no transition left running on the tiles, read inside the page

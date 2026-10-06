@@ -94,12 +94,19 @@ entries below are kept as they were written, for the record.
   permanently empty. `docs/PRIZEPICKS_FEASIBILITY.md` says why. **What would
   settle it:** a venue whose public lines this app may read without an
   account, measured before anything is built, on the new-market checklist.
+  **SETTLED BY OPERATOR RULING C (2026-10-05; built 2026-10-06, the root
+  FOLLOWUPS.md "The Props board, per player and stat"):** the declared 3x and
+  the cushion are gone; the operator types each power payout, and the Alt
+  lines chip became the Kalshi ladder view.
 - **A prop tile wears no outline.** Reading A (built): an edge needs a
   RECORDED price (LAW 5), and a declared multiple is not one, so a cushion
   never lights a tile. Reading B: the cushion is expected-value arithmetic,
   which LAW 5 permits, and a positive one above the gate could wear the green
   outline. **What would settle it:** an operator ruling; one line in
-  `board.build` changes it.
+  `board.build` changes it. **SETTLED BY OPERATOR RULING C (2026-10-05;
+  built 2026-10-06):** a leg is a pick, and wears the outline, only where its
+  edge at the venue's main line clears three points against a payout the
+  operator typed (B.2).
 - **The form streak's colours.** The amended colour law's "nothing else uses
   those colours" retired the ruling of 2026-09-09 (W green, L red). If the
   amendment meant to leave that ruling standing, it is one stylesheet rule

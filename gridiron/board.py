@@ -15,16 +15,27 @@ settled row is filled with its verdict and nothing else changes colour. A
 signal never renders without the record badge beside it
 (`audit.board_signal_faults`).
 
-THE CUSHION ON A PROP TILE IS ARITHMETIC, NOT AN EDGE. No pick'em venue is
-read (docs/PRIZEPICKS_FEASIBILITY.md), so the break-even is the declared
-`config.PICKEM_TWO_PICK_MULTIPLE` and every tile says "not read yet" for its
-venue line. A tile wears no outline for it: LAW 5 permits an edge against a
-RECORDED price, and a declared constant is not one. Both readings of that are
-in the close-out; this is the conservative one.
+A PROP TILE IS ONE PLAYER AND ONE STAT (operator ruling C, 2026-10-05;
+built 2026-10-06): "Never present a venue ladder rung as a pick'em pick. Per
+player and stat: the model's projection and its chance at the market's main
+line (the rung nearest 50c), labelled 'about the app's line, check the app'.
+The full ladder moves to its own 'Kalshi ladder' view." Until then the tile
+was the question this record asked at its own line, ranked by a CUSHION
+against a declared 3x (`config.PICKEM_TWO_PICK_MULTIPLE`, gone): a break-even
+from a multiplier nobody typed, on every tile. Now each upcoming tile carries
+the projection (`_leg`), the chance at the venue's main line where the model
+states one, the break-even of each power payout the operator TYPED (C.3;
+none until typed, and the page asks), and a pick only where an edge clears
+the bar (B.2). The question the record asked stays on the tile, said as the
+model's own question, with no break-even beside it. The venue's ladders are
+read through one place (`_venue_prop_ladders`) -- none is read today -- and
+the Kalshi ladder view lists them, every rung under its own contract and
+never a pick.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from . import bet, calibration, config, language
@@ -35,9 +46,39 @@ from .data import teams
 FORECASTERS = tuple(config.FORECASTER_LABELS)
 
 
-def breakeven() -> float:
-    """A leg's break-even in a standard two-pick entry: both must hit."""
-    return config.PICKEM_TWO_PICK_MULTIPLE ** (-1.0 / config.PICKEM_LEGS)
+def breakeven(multiple: float, legs: int) -> float:
+    """A leg's break-even in a POWER entry of `legs` legs paying `multiple`
+    times its stake: every leg must hit, so M * p**N = 1 and p = M**(-1/N)
+    (operator ruling C.3, 2026-10-05; the reading of 2026-10-06 recorded in
+    docs/REPAIR_STATE.md). 57.7% for 2 legs at 3x, 55.0% for 3 at 6x. Of a
+    payout the operator TYPED, never of a declared one."""
+    return float(multiple) ** (-1.0 / int(legs))
+
+
+def typed_payouts(conn: sqlite3.Connection) -> list[dict]:
+    """The pick'em power payouts the operator TYPED, each with when (C.3,
+    reading (b): stored in the settings store, append-only, shown with when
+    they were typed). One entry per `config.PICKEM_POWER_ENTRIES`, its
+    `multiple` None where nothing was typed -- and then no break-even, no
+    edge and no pick is drawn against it. A stored value that is not a
+    payout (written round `settings.set_value`'s check) is read as not
+    typed, never repaired into one."""
+    from . import settings
+
+    out = []
+    for legs, name in config.PICKEM_POWER_ENTRIES:
+        got = settings.typed(conn, name)
+        multiple = None
+        if got is not None:
+            try:
+                multiple = float(got["value"])
+            except (TypeError, ValueError):
+                multiple = None
+            if multiple is not None and not 1.0 < multiple <= 100.0:
+                multiple = None
+        out.append({"legs": legs, "name": name, "multiple": multiple,
+                    "typed_utc": got["typed_utc"] if multiple is not None else None})
+    return out
 
 
 def _state_of(card: dict) -> str:
@@ -722,6 +763,242 @@ def _secondary(colours: dict) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# THE PROPS BOARD (operator ruling C, 2026-10-05; built 2026-10-06)
+# ---------------------------------------------------------------------------
+
+def ladder_key(card: dict) -> tuple:
+    """One player and one stat on one game: the key a venue ladder is held
+    under, and the leg it stands beside."""
+    family = card.get("prop_type") or card.get("market")
+    return (card.get("game_id"), family,
+            language.strip_market_suffix(card.get("subject"), family))
+
+
+def _venue_prop_ladders(conn: sqlite3.Connection, sport: str,
+                        cards: list[dict]) -> tuple[dict, str | None]:
+    """The venue's ladder for each player and stat on these cards, keyed by
+    `ladder_key`, each a list of rungs -- {"line", "price", "ticker"}: the
+    venue's contract "over <line>" at its yes price -- and why there are none.
+
+    THE ONE PLACE THE PROPS BOARD READS A VENUE LADDER, AND NONE IS READ
+    (measured 2026-10-06 on a verified copy of the record): the capture
+    (`kalshi.capture_for_games`) reads spread, total and moneyline ladders
+    only, `venue_quotes` holds no prop quote and has no column naming a
+    player, and the cache holds no fetch of the four NFL prop series
+    `kalshi.SERIES` declares. So every card is answered with no ladder, and
+    the words say why. Reading the venue's player-prop series is a build of
+    its own -- the series, the player matched, the rung, on the new-market
+    checklist -- that no ruling names; the legs and the Kalshi ladder view are
+    built from what this answers, so the day a read lands they change by
+    nothing but this function."""
+    return {}, language.props_ladders_not_read_words()
+
+
+def _main_rung(ladder: list[dict]) -> dict | None:
+    """The venue's main line out of one ladder: the rung priced nearest an
+    even chance (ruling C.1: "the market's main line (the rung nearest 50c)",
+    the rule `at_the_line.rung_for` has read since 2026-09-06). A tie goes to
+    the lower line, said here rather than left to the order of the list."""
+    best = None
+    for rung in ladder or []:
+        price = rung.get("price")
+        if rung.get("line") is None or price is None or not 0.0 < float(price) < 1.0:
+            continue
+        # TO SIX PLACES: 45c and 55c are one distance from an even chance,
+        # which floats would tell apart by their last bit.
+        key = (round(abs(float(price) - 0.5), 6), float(rung["line"]))
+        if best is None or key < best[0]:
+            best = (key, rung)
+    return None if best is None else best[1]
+
+
+def _chance_at(conn: sqlite3.Connection, forecast: dict, game: dict, line: float,
+               *, sport: str) -> tuple[float | None, bool, str]:
+    """The model's chance that the stat goes OVER `line`, where the record can
+    state one: (the chance, whether `line` is the line it was asked at, why).
+
+    THROUGH THE CLAIM WRITER'S OWN RULES, never a rule of the page's own
+    (reading (a) of ruling C, 2026-10-06: "shown only where the model states
+    a chance at that line (a question asked at that line, or a distribution
+    it already carries)"): `priced.shape.claim_shape` and
+    `at_the_line.claim_probability` -- the question's own answer where `line`
+    is the line it was asked, and a counting stat's blind rate, written with
+    its forecast, read at `line` in its declared form (AT_THE_PRICE,
+    2026-09-07). A yardage stat at another line has none (None), and no
+    chance is guessed. The chance is the number a reader is shown: corrected
+    by the correction in force now where one is (`correction.shown_proposition`,
+    item 3's door; none is in force for any prop on 2026-10-06)."""
+    from . import correction
+    from .market import at_the_line
+    from .priced import shape as shapes
+
+    got = shapes.claim_shape(forecast, line, quantity="count")
+    if got.get("shape") is None:
+        return None, False, got.get("why") or ""
+    said = at_the_line.claim_probability(
+        forecast, game, {"quantity": "count"}, got["shape"], float(line), None)
+    prob = said.get("prob")
+    if prob is None:
+        return None, False, said.get("why") or ""
+    shown, _version = correction.shown_proposition(
+        conn, sport=sport, market_type="prop", forecaster=forecast["predictor"],
+        proposition=float(prob))
+    return float(shown), got["shape"] == shapes.RUNG_MATCHED, said.get("why") or ""
+
+
+def _projection_of(forecast: dict | None) -> float | None:
+    """The model's own expected count for the player and stat, written with
+    its forecast (`expected_count`, a counting stat's rate); None where it
+    stated none -- a yardage stat, answered as a yes-or-no question at its
+    own line, or a row written before the rate model."""
+    if not forecast:
+        return None
+    try:
+        payload = json.loads(forecast.get("factors_json") or "{}") or {}
+    except ValueError:
+        return None
+    rate = payload.get("expected_count")
+    try:
+        return None if rate is None else float(rate)
+    except (TypeError, ValueError):
+        return None
+
+
+#: FLOAT NOISE, NOT A MARGIN (the prover of ruling C, 2026-10-06). An edge of
+#: exactly three points can be worked out as 0.029999999999999985, and that is
+#: still three points; nothing a model states is finer than a billionth.
+PICK_BAR_FLOAT_NOISE = 1e-9
+
+
+def clears_the_pick_bar(edge: float | None) -> bool:
+    """B.2 (2026-10-05): a leg is called a pick only if its edge after fees is
+    three points or more -- read on the edge AS WORKED OUT, less float noise
+    only. Until 2026-10-06 (the prover of ruling C) the edge was rounded to
+    six places first, so a leg at 2.99995 points was called a pick, and the
+    gate, reading the page's rounded chance, disagreed with the builder about
+    a leg at 2.99994: B.2 says "3 percentage points or more"."""
+    return edge is not None and float(edge) >= config.PICK_MIN_EDGE - PICK_BAR_FLOAT_NOISE
+
+
+def _leg(conn: sqlite3.Connection, card: dict, block: dict, forecast: dict | None,
+         game: dict | None, ladder: list[dict] | None, payouts: list[dict],
+         *, sport: str) -> dict:
+    """One upcoming player and stat, as the Props board shows it (C.1-C.3):
+    the projection, the venue's main line and the model's chance at it, the
+    break-even of each typed payout, the edge against each, and a pick only
+    where an edge clears the bar. Nothing here reads the question's own line
+    as the app's: that line stays the model's own question."""
+    family = card.get("prop_type") or card.get("market")
+    family_words = language.market_words(sport, family) if family else ""
+    projection = _projection_of(forecast)
+    out = {
+        "projection": projection,
+        "projection_words": language.prop_projection_words(projection, family_words),
+        "main_line": None, "main_side": None, "main_price": None,
+        "main_words": language.prop_main_absent_words(),
+        "main_note_words": None,
+        "main_chance": None, "main_chance_words": "",
+        # THE WORDS THE LEG IS NAMED BY OFF ITS TILE -- the entry rail (the
+        # prover of ruling C, 2026-10-06). As built the rail drew a taken
+        # leg under its own question's words ("over 200.5 passing yards")
+        # beside its chance at the MAIN line, a number under another
+        # contract's words. With a main line they are the main line's own
+        # contract, on the side the chance is for; without one, the player
+        # and the stat and no line at all, because no line is the app's.
+        "leg_words": language.prop_leg_words(
+            language.strip_market_suffix(card.get("subject"), family), family_words),
+        "entries": [], "pick": False, "pick_words": None,
+    }
+    tips = {"projection": language.prop_projection_tip(projection, family_words),
+            "main": language.prop_main_absent_tip()}
+    rung = _main_rung(ladder or [])
+    chance = None
+    if rung is not None and forecast is not None and game is not None:
+        line = float(rung["line"])
+        over, asked_here, _why = _chance_at(conn, forecast, game, line, sport=sport)
+        out["main_line"] = line
+        out["main_price"] = float(rung["price"])
+        out["main_note_words"] = language.APP_LINE_WORDS
+        tips["main"] = language.prop_main_line_tip(out["main_price"])
+        if over is None:
+            out["main_words"] = language.phrase(dict(card, line_asked=line,
+                                                     model_side="over"))
+            out["main_chance_words"] = language.prop_no_chance_words()
+            tips["chance"] = language.prop_no_chance_tip(family_words)
+        else:
+            # THE SIDE THE MODEL FAVOURS AT THE MAIN LINE: a pick'em leg can
+            # be either side of the app's line, and the model's chance is
+            # stated for the side it gives at least half.
+            side = "over" if over >= 0.5 else "under"
+            chance = over if side == "over" else 1.0 - over
+            out["main_side"] = side
+            out["main_chance"] = round(chance, 6)
+            out["main_words"] = language.phrase(dict(card, line_asked=line, model_side=side))
+            out["main_chance_words"] = language.prop_chance_words(chance)
+            tips["chance"] = language.prop_chance_tip(
+                out["main_words"], chance,
+                language.prop_chance_how_words(asked_here, projection, family_words))
+        out["leg_words"] = out["main_words"]
+    cleared: list[int] = []
+    for p in payouts:
+        legs, multiple = p["legs"], p["multiple"]
+        be = None if multiple is None else breakeven(multiple, legs)
+        # THE BAR READS THE EDGE AS WORKED OUT, the page its six places (the
+        # prover of ruling C, 2026-10-06; `clears_the_pick_bar`).
+        worked = None if (be is None or chance is None) else chance - be
+        edge = None if worked is None else round(worked, 6)
+        clears = clears_the_pick_bar(worked)
+        if clears:
+            cleared.append(legs)
+        out["entries"].append({
+            "legs": legs, "kind": "power", "multiple": multiple,
+            "breakeven": None if be is None else round(be, 6),
+            "breakeven_words": language.pickem_breakeven_words(legs, be),
+            "edge": edge, "edge_words": language.prop_edge_words(edge),
+            "clears": clears,
+            "tip": language.pickem_breakeven_tip(legs, multiple, be, p["typed_utc"]),
+        })
+    if cleared:
+        out["pick"] = True
+        out["pick_words"] = language.prop_pick_words(cleared)
+        tips["pick"] = language.prop_pick_tip(config.PICK_MIN_EDGE)
+    out["tips"] = tips
+    return out
+
+
+def _ladder_rows(tiles: list[dict], cards_by_id: dict, ladders: dict) -> list[dict]:
+    """THE KALSHI LADDER VIEW (C.1, reading (e)): the venue's full ladder for
+    each player and stat on the slate, every rung under its own contract and
+    price -- step A's rule, a number named by the contract it belongs to --
+    the main line marked, and nothing a pick'em pick carries: no break-even,
+    no edge, no pick and no signal on any rung."""
+    rows = []
+    for tile in tiles:
+        card = cards_by_id.get(tile["prediction_id"])
+        if card is None:
+            continue
+        ladder = ladders.get(ladder_key(card)) or []
+        if not ladder:
+            continue
+        main = _main_rung(ladder)
+        rungs = []
+        for rung in sorted(ladder, key=lambda r: float(r["line"])):
+            rungs.append({
+                "line": float(rung["line"]),
+                "price": rung.get("price"),
+                "contract_words": language.phrase(dict(card, line_asked=float(rung["line"]),
+                                                       model_side="over")),
+                "price_words": language.ladder_rung_price_words(rung.get("price")),
+                "main": rung is main,
+            })
+        rows.append({"prediction_id": tile["prediction_id"], "player": tile["player"],
+                     "family": tile["family"], "family_words": tile["family_words"],
+                     "matchup": tile.get("matchup") or "", "club": tile.get("club"),
+                     "rungs": rungs})
+    return rows
+
+
 def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
           cards: list[dict], today: dict | None, chosen: str,
           unit_dollars: float | None = None) -> dict:
@@ -832,33 +1109,55 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
     games.sort(key=lambda g: (_start_order(g["kickoff_utc"]), g["game_id"]))
 
     # --- the prop tiles -----------------------------------------------------
+    # ONE PLAYER AND ONE STAT EACH (operator ruling C, 2026-10-05; built
+    # 2026-10-06; the module docstring): an upcoming tile is a LEG -- the
+    # projection, the venue's main line and the model's chance at it, the
+    # break-even of each payout the operator typed, an edge against each and
+    # a pick only where one clears the bar -- and the question the record
+    # asked at its own line is said as the model's own, with no break-even
+    # beside it. A live tile carries the pregame figure and nothing that can
+    # be acted on; a settled one its verdict. The CUSHION against a declared
+    # 3x, and the break-even it was drawn from, are gone.
     families = config.SPORT_PROP_MARKETS.get(sport, ())
-    be = breakeven()
+    payouts = typed_payouts(conn)
+    prop_cards = [c for c in cards
+                  if c.get("market_type") == "prop" or c.get("prop_type") in families]
+    ladders, ladders_why = _venue_prop_ladders(conn, sport, prop_cards)
+    # THE FORECAST AND THE GAME BEHIND EACH LEG, read once: the claim
+    # writer's rules read the stored row (its line, side, number and rate),
+    # never the card's words.
+    forecasts: dict[int, dict] = {}
+    ids = [c["prediction_id"] for c in prop_cards]
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        for r in conn.execute(
+                "SELECT id, game_id, market_type, prop_type, subject, line_asked,"
+                "       model_prob, model_side, predictor, factors_json"
+                f"  FROM predictions WHERE id IN ({marks})", ids):
+            forecasts[r["id"]] = dict(r)
+    cards_by_id = {c["prediction_id"]: c for c in prop_cards}
     tiles = []
-    for card in cards:
-        family = card.get("prop_type")
-        if card.get("market_type") != "prop" and family not in families:
-            continue
-        family = family or card.get("market")
+    for card in prop_cards:
+        family = card.get("prop_type") or card.get("market")
         block = block_for(card, chosen)
         block.pop("_place", None)
         block.pop("_edge", None)
         state = block["state"]
-        # A PROP WEARS NO OUTLINE (see the module docstring): the cushion is
-        # arithmetic against a declared multiple, not an edge against a read
-        # price. A settled tile keeps its fill.
+        # NO SIGNAL BUT A PICK'S OR A VERDICT'S. A settled tile keeps its
+        # fill; an upcoming one wears the green outline only where its leg is
+        # a pick (B.2), against a payout the operator TYPED -- ruling c of
+        # 2026-09-25 ("a prop tile wears no outline until a multiplier is
+        # read or typed"), held by `audit.board_signal_faults` -- and with the
+        # record badge beside it, as every signal on the board.
         if state != "final":
             block["signal"] = "none"
             block["tips"].pop("signal", None)
         player = language.strip_market_suffix(card.get("subject"), family)
-        game = conn.execute("SELECT home, away FROM games WHERE id = ?",
+        game = conn.execute("SELECT home, away, kickoff_utc FROM games WHERE id = ?",
                             (card["game_id"],)).fetchone()
         home, away = (game["home"], game["away"]) if game else (None, None)
         club_code = _player_club(conn, sport, player, home, away)
         colours = team_colours(sport, club_code)
-        # A live tile carries no chance (LIVE TAB, above), so none is read.
-        shown = block.get("prob")
-        cushion = None if shown is None else shown - be
         block.update({
             "player": player,
             "surname": language.surname(player),
@@ -876,27 +1175,40 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             },
             "family": family,
             "family_words": language.market_words(sport, family),
-            "breakeven": be,
-            "breakeven_words": language.breakeven_words(be),
-            # WHERE THE MULTIPLE CAME FROM (ruling c, 2026-09-25): declared
-            # until a venue is read, and `audit.board_signal_faults` refuses
-            # an outline on a tile whose multiple was not read.
-            "multiple_source": "declared",
-            "cushion": cushion,
-            "cushion_words": language.cushion_words(cushion),
-            "venue_words": language.board_labels()["not_read"],
+            # WHERE A BREAK-EVEN COMES FROM (ruling c, 2026-09-25; ruling
+            # C.3, 2026-10-05): "typed" once the operator has typed a payout
+            # a leg can be read against, "untyped" before -- never "declared"
+            # again. A leg is a pick only against a payout that was typed, and
+            # `audit.board_signal_faults` refuses an outline on a tile whose
+            # multiple was neither read nor typed.
+            "multiple_source": ("typed" if any(p["multiple"] is not None for p in payouts)
+                                else "untyped"),
             # NO ALT LINES UNTIL A VENUE IS READ. An alt tile carries the
             # second badge and its tooltip; the composers exist and the scan
             # demands them, and nothing sets `alt` tonight.
             "alt": False,
             "high_end_badge_words": None,
             "game_id": card["game_id"],
+            "kickoff_utc": game["kickoff_utc"] if game else None,
             "matchup": card.get("matchup") or "",
+            "pick": False,
         })
-        block["tips"]["cushion"] = language.cushion_tip(
-            shown, be, config.PICKEM_TWO_PICK_MULTIPLE, config.PICKEM_LEGS,
-            config.PICKEM_TWO_PICK_DECLARED)
-        block["tips"]["venue"] = language.venue_line_tip()
+        # THE MODEL'S OWN QUESTION, said as its own (C.1): the record's
+        # forecast at the line it asked, never the app's line, with no
+        # break-even beside it.
+        if state == "upcoming":
+            block["own_question_words"] = language.prop_own_question_words(
+                block.get("question") or "", block.get("prob_words") or "")
+            block["tips"]["own"] = language.prop_own_question_tip()
+            leg = _leg(conn, card, block, forecasts.get(card["prediction_id"]),
+                       {"home": home, "away": away} if game else None,
+                       ladders.get(ladder_key(card)), payouts, sport=sport)
+            leg_tips = leg.pop("tips")
+            block.update(leg)
+            block["tips"].update({f"leg_{k}": v for k, v in leg_tips.items()})
+            if block["pick"]:
+                block["signal"] = "clears"
+                block["tips"]["signal"] = leg_tips.get("pick")
         block["tips"]["number"] = language.number_tip(block["number"])
         if block["alt"]:
             high = _settled_n(conn, settled_cache, sport=sport,
@@ -906,25 +1218,32 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
                 high, config.MIN_SAMPLE_FOR_EDGE_CLAIM)
             block["tips"]["high_end"] = language.high_end_badge_tip(
                 high, config.MIN_SAMPLE_FOR_EDGE_CLAIM)
-        if state == "live":
-            # NOTHING ON A LIVE TILE CAN BE ACTED ON, the cushion and the
-            # venue line included: `audit.live_card_faults` names the venue
-            # line by its field, and a cushion beside a game being played is
-            # the same adverse selection with a different label.
-            for field in ("venue_words", "cushion_words", "breakeven_words"):
-                block.pop(field, None)
-            block["cushion"] = None
-            block["tips"].pop("cushion", None)
-            block["tips"].pop("venue", None)
         tiles.append(block)
-    tiles.sort(key=lambda t: (-(t["cushion"] if t["cushion"] is not None else -9),
+    # BY EDGE, NEVER BY CHANCE (ruling C with B.1, 2026-10-05: "chance of
+    # hitting alone never ranks anything"): the picks first, by their best
+    # edge; then every other leg still to start, by its start and its player;
+    # then the games being played and the finished ones. The cushion this
+    # replaced was the chance less one declared number.
+    def best_edge(t):
+        edges = [e["edge"] for e in t.get("entries") or [] if e.get("edge") is not None]
+        return max(edges) if edges else None
+
+    state_rank = {"upcoming": 0, "live": 1, "final": 2}
+    tiles.sort(key=lambda t: (state_rank.get(t["state"], 3), not t.get("pick"),
+                              -(best_edge(t) or 0.0) if t.get("pick") else 0.0,
+                              _start_order(t.get("kickoff_utc")), t.get("player") or "",
                               t["prediction_id"]))
+    ladder_words = language.venue_ladder_view_words()
+    ladder_rows = _ladder_rows(tiles, cards_by_id, ladders)
     chips = [{"key": "", "label": language.board_labels()["all"], "n": len(tiles)},
-             {"key": "alt", "label": language.board_labels()["alt"],
-              "n": sum(1 for t in tiles if t["alt"])}]
+             # THE KALSHI LADDER, IN A VIEW OF ITS OWN (C.1): where the "Alt
+             # lines" chip sat, empty since the board was built.
+             {"key": "ladder", "label": ladder_words["chip"], "n": len(ladder_rows)}]
     for family in families:
         chips.append({"key": family, "label": language.market_words(sport, family),
                       "n": sum(1 for t in tiles if t["family"] == family)})
+    upcoming_legs = [t for t in tiles if t["state"] == "upcoming"]
+    missing = [p["legs"] for p in payouts if p["multiple"] is None]
 
     labels = language.board_labels()
     # THE QUESTIONS RESULTS SHOWS AS SETTLED, BY ID (the prover of the board
@@ -957,13 +1276,45 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             "n": len(tiles),
             "tiles": tiles,
             "chips": chips,
-            "breakeven": be,
-            "multiple": config.PICKEM_TWO_PICK_MULTIPLE,
-            "legs": config.PICKEM_LEGS,
-            "declared": config.PICKEM_TWO_PICK_DECLARED,
-            "note": language.props_not_read_words(),
+            # WHAT THE OPERATOR TYPED, AND WHEN (C.3, reading (b)): each power
+            # payout a leg's break-even is read from, the day it was typed,
+            # and -- until both are typed -- the page asking for them.
+            "payouts": {
+                "heading": language.pickem_payouts_heading(),
+                "entries": [{
+                    # THE SETTING IT IS TYPED INTO, for the page's form to post
+                    # to; never drawn.
+                    "legs": p["legs"], "setting": p["name"],
+                    "label": language.pickem_payout_label(p["legs"]),
+                    "multiple": p["multiple"],
+                    "value": "" if p["multiple"] is None else f"{p['multiple']:g}",
+                    "typed_utc": p["typed_utc"],
+                    "typed_words": (language.pickem_typed_words(p["typed_utc"])
+                                    if p["multiple"] is not None else None),
+                } for p in payouts],
+                "typed": not missing,
+                "ask_words": language.pickem_payouts_ask_words(missing),
+                "note": language.pickem_payouts_note(),
+            },
+            # NO FILLING (B.4's words, on this page from ruling C): a slate
+            # with legs still to start and none of them a pick says so, and
+            # nothing is drawn to look like one.
+            "nothing_words": (language.props_nothing_worth_taking_words()
+                              if upcoming_legs and not any(t["pick"] for t in upcoming_legs)
+                              else None),
+            "ladders_words": ladders_why if not ladders else None,
+            "ladder": {
+                "heading": ladder_words["heading"],
+                "note": ladder_words["note"],
+                "main_words": ladder_words["main"],
+                "main_tip": ladder_words["main_tip"],
+                "rows": ladder_rows,
+                "empty_words": ladder_words["empty"] if not ladder_rows else None,
+            },
+            "app_line_words": language.APP_LINE_WORDS,
+            "pick_bar": config.PICK_MIN_EDGE,
+            "note": language.props_board_note(),
             "empty_words": language.props_empty_words(sport_label) if not tiles else None,
-            "alt_empty_words": language.alt_lines_empty_words(),
             "entry": language.entry_words(),
         },
     }

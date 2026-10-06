@@ -1648,22 +1648,37 @@ COMBO_RECORD_WITHDRAWN = "2026-09-09"
 # THE BOARD (GRIDIRON_BOARD, operator ruling 2026-09-24)
 # ---------------------------------------------------------------------------
 
-#: WHAT A TWO-PICK STANDARD PICK'EM ENTRY PAYS, and the date it was declared.
+#: NO PAYOUT IS DECLARED HERE ANY MORE (2026-10-06; operator ruling C.3 of
+#: 2026-10-05: "The operator types each multiplier once (no payout hard-coded
+#: as fact); until typed, the page asks for it and shows no break-even").
+#: From 2026-09-24 this block held `PICKEM_TWO_PICK_MULTIPLE = 3.0` (declared
+#: 2026-09-24T00:00:00Z) and `PICKEM_LEGS = 2`, and every prop tile showed
+#: "57.7% to break even" and a cushion from that declared 3x -- a break-even
+#: from a multiplier nobody typed, on every tile of all 23 slates that carry a
+#: prop question (measured 2026-10-06 on a verified copy of the record).
+#: Nothing else read the constants, so they are gone rather than kept unused,
+#: and the text they carried is kept here because a constant that quietly
+#: vanished is one nobody can audit.
 #:
-#: DECLARED, NOT READ. No pick'em venue is read: `docs/PRIZEPICKS_FEASIBILITY.md`
-#: recorded on 2026-09-02 that the projections feed sits behind bot detection
-#: and nothing was built, and the record holds no line with a multiplier of
-#: its own. The Props page ranks by CUSHION -- the model's chance minus the
-#: break-even for a leg of a two-pick entry -- and until a venue is read the
-#: only multiplier it can use is this one, stated on every tile as declared.
-#: The per-leg break-even follows: both legs must hit, so a leg breaks even at
-#: the square root of one over the multiple, 57.7% at 3x.
-#:
-#: A multiplier the record READS replaces this per line on the day a venue is
-#: read; this constant is then the standard entry and nothing else.
-PICKEM_TWO_PICK_MULTIPLE = 3.0
-PICKEM_TWO_PICK_DECLARED = "2026-09-24T00:00:00Z"
-PICKEM_LEGS = 2
+#: THE ENTRIES WHOSE BREAK-EVEN EVERY LEG SHOWS when no entry is typed (C.3):
+#: a 2-pick and a 3-pick POWER entry, each paying what the operator TYPED in
+#: the settings store (`settings.EDITABLE`, the name beside each; append-only
+#: rows, so each is shown with when it was typed). Every leg of a power entry
+#: must hit, so a leg breaks even at M^(-1/N) for a typed M and N legs (the
+#: reading recorded in docs/REPAIR_STATE.md, 2026-10-06).
+PICKEM_POWER_ENTRIES: tuple[tuple[int, str], ...] = (
+    (2, "pickem_two_pick_power"),
+    (3, "pickem_three_pick_power"),
+)
+
+#: A LEG IS CALLED A PICK ONLY IF ITS EDGE AFTER FEES IS THREE POINTS OR MORE
+#: (operator ruling B.2, 2026-10-05: "A leg is called a pick only if its edge
+#: after fees is 3 percentage points or more. Below that it is shown as a
+#: number, never as a pick."). The Props board (ruling C.2) is its first
+#: reader: a pick'em leg's edge is the model's chance at the venue's main line
+#: minus the break-even of a typed payout (B.1), and nothing else.
+PICK_MIN_EDGE = 0.03
+PICK_MIN_EDGE_RULED = "2026-10-05"
 
 #: JERSEY NUMBERS ARE A DECLARED, DATED DATA ADDITION (operator ruling a,
 #: 2026-09-25): nflverse's roster file, the provider already used under the

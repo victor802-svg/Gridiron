@@ -401,15 +401,23 @@
     <p class="footnote slate-footer" id="games-footer"></p>
   </section>
 
-  <!-- PROPS (GRIDIRON_BOARD, 2026-09-24). Tiles, three across on a desk,
-       ranked by cushion; a jersey on every tile drawn from the club's
-       measured colours and nothing else; the entry rail on the right. -->
+  <!-- PROPS (GRIDIRON_BOARD, 2026-09-24). Tiles, three across on a desk; a
+       jersey on every tile drawn from the club's measured colours and
+       nothing else; the entry rail on the right. FROM RULING C (2026-10-05)
+       each tile is one player and one stat, ranked by edge, and the venue's
+       full ladder is a view of its own. -->
   <section id="view-props" class="view" hidden>
     <div class="day-head">
       <span class="sport-pill" id="props-sport"></span>
       <h1 id="props-headline" class="slate-headline"></h1>
     </div>
     <p class="footnote" id="props-note"></p>
+    <!-- WHAT YOUR APP PAYS (operator ruling C.3, 2026-10-05; built
+         2026-10-06): the 2-pick and 3-pick power payouts the operator types
+         once, each with the day it was typed, and the page asking until both
+         are. NOT DRAWN UNTIL IT CAN ACT: `renderProps` fills its labels and
+         fields from the first answer and shows it. -->
+    <section id="props-payouts" class="payouts" hidden></section>
     <nav id="props-chips" class="chips" aria-label="Stat family"></nav>
     <!-- NOT DRAWN UNTIL IT CAN ACT (2026-09-29), as the Games bar above:
          shown by `renderProps` once its options and label are in. -->
@@ -422,6 +430,12 @@
       <div>
         <p class="loading-words" id="props-loading">Loading today's props</p>
         <p class="updating-label" id="props-updating" hidden></p>
+        <!-- NO FILLING (operator ruling C, with B.4's words, 2026-10-05):
+             "Nothing worth taking today" when no leg on the slate clears. -->
+        <p class="props-nothing" id="props-nothing" hidden></p>
+        <!-- AND WHY NO LEG HAS A MAIN LINE, while the venue's player-prop
+             ladders are not read (ruling C, 2026-10-05): the server's words. -->
+        <p class="footnote props-ladders" id="props-ladders-words" hidden></p>
         <div id="props-tiles" class="props-grid"></div>
         <div id="props-notes" class="slate-notes"></div>
       </div>
