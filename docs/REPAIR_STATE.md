@@ -12,6 +12,20 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q38 RELEASED as 1b5e7f6 (2026-10-06 23:20Z; serving 1b5e7f676b67)** --
+  a game starts at the earlier of its listed start and the first poll
+  that sees it truly under way (`live_first_under_way`, written by the
+  live poll once per game; reached the record through db.init with its
+  three rules, 0 rows at the release); no read at or after it is a close
+  or a claim; `recommend.for_predictions` gives no entry for a game not
+  still upcoming (finished games' Today cards lose their price); two
+  plantings and two gate checks. THE GATE: the first run failed step 1 on
+  one test, `test_prompt_disclosure.py::test_results_shows_each_reasoning_
+  row_the_prompt_it_carries[390-844]` (the prompt box not open in 10 s) --
+  the Results table's redraw race FOLLOWUPS holds for Q5 ("For Q5, not
+  this item"), untouched by Q38, passing 3 of 3 alone; steps 2-4 passed,
+  421/421. Its one as-is rerun: 4/4, 421/421 (23:20:06Z). **Next: B
+  (scratchpad wf_b.js).**
   **C RELEASED as 6c54ed1 (2026-10-06 18:40Z; gate 4/4, 419/419; serving
   6c54ed1ea134)** -- C (ba27ba3), the orphan scan read once so the
   planting harness fits its 600 s (49ccb8a; ruled in the operator's
