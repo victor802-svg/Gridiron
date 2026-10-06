@@ -16,6 +16,22 @@
   order: A.1 (4b1facb), A.3 and A.4 (48c4ddd), item 1 (e159be2), Q35
   (3508c7f). The queue rule: LAW 1, LAW 3, a false gate count, or a wrong
   number on a pick.
+  **A.2 AND Q37 released as e9d4cf5 (2026-10-06 00:19Z; gate 4/4, 415/415;
+  the first gate run was stopped at 30 minutes by the shell's new limit on
+  background commands, mid step 2, nothing failed; the gate now runs
+  detached, `scratchpadun_gate.ps1`):** the stored two-contract claims
+  (275) are left out of every price comparison by a dated read rule and stay
+  in the blind record; THE VOIDS written 00:19:25Z by
+  `tools/void_two_contract_recommendations.py --write --live` after a dry
+  run: 51 recommendations ('priced across two contracts, Q36'); 62, 63, 66
+  already withdrawn under ruling 1, left; 114 and 115 selected by the rule
+  and NOT written, waiting for the operator's word. Q37: a recommendation
+  headlines the contract it buys, the model's own side named beside it. THE
+  MOVED NUMBERS (FOLLOWUPS; the numbers step): statistical point spread at
+  the venue's line MLB 102 'past the 100' -> 64 of 100, gate cannot clear
+  this season; NFL 29 -> 23; NCAAF 91 -> 71; market/model Brier MLB
+  0.2611/0.2085 -> 0.2301/0.2232; the closing line's window MLB 15 -> 3,
+  NFL 15 -> 6, NCAAF 14 -> 11. **Next: A.5** (the spread edge re-run).
   **Q36 (ii) BUILT (2026-10-05, on c829daa; uncommitted for its prover;
   FOLLOWUPS "A claim priced across two contracts is in no price
   comparison; the 54 voided by rule"; CLAUDE.md row of that name):**
