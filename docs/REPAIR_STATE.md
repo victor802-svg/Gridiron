@@ -12,6 +12,18 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **THE ENTRY CHECK, STEP 1 -- STOPPED MID-BUILD (2026-10-07 ~03:03Z; the
+  session ended; found 18:40Z):** workflow wf_9563edd2-3ab (scratchpad
+  wf_entry1.js), its builder partway: `gridiron/entry_math.py` and
+  `gridiron/entry_check.py` new, and api, audit, board, language,
+  schema.sql, app.js, index.html, style.css, plant.py, test_guards.py and
+  verify.py changed, UNCOMMITTED in the worktree; its three plantings
+  caught on the build and escaping on HEAD (its own run); NOT YET: its
+  tests module, the browser views, the db.init rehearsal of the schema
+  change, CLAUDE.md, FOLLOWUPS, renders, the full suite, plant.py whole,
+  the prover. RESUMED from there (the weekly-limit rule: no finished step
+  restarted): a new builder told to read and continue the partial build,
+  then the prover.
   **B RELEASED as 5383e63 (2026-10-07 02:22Z; gate 4/4 on its first run,
   426/426; serving 5383e63972cb)** -- B (07fd849): picks ranked by edge,
   never by chance, on every page; a pick only at three points after fees
