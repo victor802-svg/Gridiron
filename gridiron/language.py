@@ -6386,52 +6386,455 @@ def ladder_rung_price_words(price: float | None) -> str:
     return "no price" if price is None else f"{price * 100:.0f}¢"
 
 
-def entry_words() -> dict:
-    """The entry rail's fixed sentences."""
+# ---------------------------------------------------------------------------
+# CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK, step 1, the arithmetic; the brief of
+# 2026-09-30 with ruling D of 2026-10-05; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# Every word the Props page's entry check draws is composed here; the
+# renderer places them. Until 2026-10-07 the entry rail read the model's
+# chance at each leg's MAIN line -- the venue's, never the app's line the
+# operator types -- and `entry_words` held its sentences; the rail is the
+# entry check now (`entry_check`, reading (f)).
+#
+# THE WORDS KEEP TO THE PLAIN-WORDS RULE AND ITS BANNED LIST (2026-09-08:
+# "parlay", "same game", "boost", "builder", "add leg" and "slip" stay
+# banned; `audit.pressure_word_faults`) AND TO THE ADVICE LIST ("value",
+# "play", "bet", "worth it" ...): the brief's boost is said "a promo" -- "the
+# app raised the payout", "a share of the winnings added" -- its value "what
+# the promo adds", and its same-game flag "legs in one game", with the brief's
+# own sentence beside it: "these legs move together; the math assumes they
+# don't". Reading (i), recorded in docs/REPAIR_STATE.md.
+
+def entry_check_panel_words() -> dict:
+    """The entry check's fixed words: its labels, its notes and its asks."""
     return {
-        "heading": "Entry",
-        "empty": ("Tap a tile to mark it taken; taken props are the legs "
-                  "here."),
-        # THE RAIL READS THE CHANCE AT THE APP'S LINE (operator ruling C,
-        # 2026-10-05): the model's chance at the venue's main line, never its
-        # own question's at another line, and the payout you typed, never a
-        # declared one.
-        "note": ("Three readings of the same entry: the model's chance at "
-                 "each leg's main line (about the app's line, check the "
-                 "app), the same chance with half its distance from the "
-                 "break-even taken away, and Kalshi's price where one is "
-                 "listed. The floor is what the entry would have to pay for "
-                 "the model to break even. Nothing here is a balance and "
-                 "nothing is placed."),
-        "kalshi_absent": "Kalshi lists no player props, so there is nothing to price this against.",
-        # THE VERDICT (ruling c, 2026-09-25): the one place a prop earns a
-        # colour, against the multiple the operator typed. "Worth it" is an
-        # advice word and stays out; the bar is the same bar the rows use.
-        # AND ONLY OF PICKS (operator ruling B, 2026-10-05; built 2026-10-07:
-        # the brief's "leave its arithmetic, but it may not say 'pick' below
-        # B.2"). "Clears the bar" and its green outline said it of any entry
-        # returning more than a dollar per dollar at the model's chances,
-        # whatever each leg's edge; they need every leg three points or more
-        # over this entry's break-even now, and an entry that returns more
-        # without that says so in other words and wears no outline.
-        "verdict_clears": "Clears the bar at",
-        "verdict_returns": "Returns more than it costs at",
-        "verdict_not_every_leg": ("Not every leg is a pick at this payout: a "
-                                  "leg is one only 3 points or more over the "
-                                  "entry's break-even, after fees. From the "
-                                  "multiple you typed and the model's chances "
-                                  "at each leg's main line, the entry returns "
-                                  "more than a dollar per dollar. About the "
-                                  "app's line, check the app."),
-        "verdict_short": "Falls short at",
-        "verdict_untyped": "Type what the venue pays to read a verdict.",
-        "verdict_no_chance": ("A leg here has no chance from the model at the "
-                              "app's line, so the entry is not read."),
-        "verdict_tip": ("From the multiple you typed and the model's chances at "
-                        "each leg's main line: the entry returns more than a "
-                        "dollar per dollar at those chances, or it does not. "
-                        "About the app's line, check the app."),
+        "heading": "Check an entry",
+        "closed": ("Checking an entry is for NFL player props: this first "
+                   "version of the check reads no other sport."),
+        "intro": ("Type the entry as the app shows it: each leg, and what the "
+                  "app pays for the whole entry."),
+        "app": "App",
+        # NO APP IS CHOSEN FOR HIM (2026-10-07, resumed build): the payout
+        # last typed is kept and offered by app, so an app the page chose
+        # would file what he confirms under an app he never named.
+        "app_none": "Choose the app",
+        "entry": "Entry",
+        "type_power": "Power",
+        "type_flex": "Flex",
+        "legs_heading": "Legs",
+        "leg": "Leg",
+        "player": "Player",
+        "club": "Club",
+        "club_none": "Choose a club",
+        "stat": "Stat, as the app shows it",
+        "line": "Line",
+        "side": "Over or under",
+        "side_over": "Over",
+        "side_under": "Under",
+        "kind": "Kind",
+        "kind_standard": "Standard",
+        "kind_goblin": "Goblin",
+        "kind_demon": "Demon",
+        "original": "Line before a discount",
+        "original_tip": ("Only where the app discounted this leg's line: the "
+                         "line it had before. Leave it empty otherwise."),
+        "remove": "Take this leg off",
+        "more": "One more leg",
+        "marked_heading": "Props you marked",
+        "marked_note": ("Tap one to put its player, club and stat in the "
+                        "entry; type its line as the app shows it."),
+        "payout_heading": "What the app pays for this entry",
+        "payout_power": "Pays, as a multiple of the entry",
+        "payout_flex_note": "Leave a row empty where the app pays nothing for it.",
+        "confirm": "This is what the app shows for this entry",
+        "promo_heading": "A promo on this entry",
+        "promo": "Promo",
+        "promo_none": "No promo",
+        "promo_raised": "The app raised the payout",
+        "promo_profit": "A share of the winnings added",
+        "raised_power": "With the promo it pays",
+        "raised_flex_note": "With the promo, as the app shows it",
+        "percent": "Share of the winnings added, per cent",
+        "cap": "The most it adds, in units",
+        "cap_note": "Leave it empty where the promo has no cap.",
+        "entry_units": "The entry, in units",
+        "entry_units_note": "Needed only where the promo has a cap.",
+        "check": "Check this entry",
+        "changed": "Changed since the last check. Check it again.",
+        "line_breakeven": "Break-even per leg",
+        "line_return": "At coin flips, per unit",
+        "line_promo_breakeven": "Break-even per leg with the promo",
+        "line_promo_return": "At coin flips with the promo",
+        "line_promo_adds": "What the promo adds, per unit",
+        "line_gap": "An even chance on each leg is",
+        "line_promo_gap": "With the promo, an even chance on each leg is",
+        "return_tip": ("What the entry returns per unit it costs, less that "
+                       "unit, with every leg an even chance: below zero it "
+                       "costs, above zero it returns more than it costs."),
+        "adds_tip": ("The return per unit at coin flips with the promo, less "
+                     "the return without it."),
+        "gap_tip": ("How far an even chance sits from the chance each leg "
+                    "needs: 3 points or more over it clears the bar."),
+        "one_game_heading": "Legs in one game",
+        "confirm_first": ("Confirm what the app pays for this entry: nothing is "
+                          "worked out from a payout until you do."),
+        "entry_units_first": ("Type the entry in units: the promo's cap is in "
+                              "units, so nothing is worked out until it is "
+                              "there."),
+        "note": ("Arithmetic only: every leg is put at an even chance. No model "
+                 "and no record is behind these numbers, and nothing is read "
+                 "from any app. Every number comes from the payout you typed "
+                 "for this entry — a goblin or demon leg changes what the app "
+                 "pays, and a discounted line counts like any other here. Units "
+                 "only, never dollars. Nothing is placed, and nothing about the "
+                 "entry is kept but the payout you confirm, offered next time "
+                 "for its app and size, to confirm again."),
     }
+
+
+#: What a field is called in a refusal.
+_ENTRY_PAYOUT_WHAT = {"payout": "The payout", "raised": "The raised payout"}
+
+
+def entry_check_refused_words(code: str, **d) -> str:
+    """Why the entry check cannot read the form, in words: the field and what
+    it needs."""
+    what = _ENTRY_PAYOUT_WHAT.get(d.get("what") or "payout", "The payout")
+    leg = f"Leg {d.get('leg')}: " if d.get("leg") is not None else ""
+    got = d.get("got")
+    words = {
+        "not_a_form": ("The page sent something that is not an entry. Reload "
+                       "it and try again."),
+        "app": "Choose the app: PrizePicks, Underdog or Chalkboard.",
+        "entry_type": "Choose power or flex.",
+        "legs_count": (f"An entry here has 2 to 8 legs; this one has "
+                       f"{d.get('n', 0)}."),
+        "leg_player": f"{leg}type the player.",
+        "leg_stat": f"{leg}type the stat, as the app shows it.",
+        "leg_line": (f"{leg}the line {d.get('raw')!r} is not a number. Type it "
+                     f"as the app shows it, like 250.5."),
+        "leg_line_missing": f"{leg}type the line, as the app shows it.",
+        "leg_line_bounds": (f"{leg}a line of {got:g} is not one a stat has."
+                            if got is not None else f"{leg}that line is not one a stat has."),
+        "leg_side": f"{leg}choose over or under.",
+        "leg_kind": f"{leg}choose standard, goblin or demon.",
+        "leg_original": (f"{leg}the line before a discount, {d.get('raw')!r}, "
+                         f"is not a number. Leave it empty where the line was "
+                         f"not discounted."),
+        "leg_original_bounds": (f"{leg}a line of {got:g} before a discount is "
+                                f"not one a stat has." if got is not None else
+                                f"{leg}that line before a discount is not one a stat has."),
+        "leg_original_same": (f"{leg}the line before a discount is the line "
+                              f"itself. Leave it empty where the line was not "
+                              f"discounted."),
+        "payout_missing": "Type what the app pays for this entry.",
+        "payout_number": (f"{what} {d.get('raw')!r} is not a payout. Type it as "
+                          f"a multiple of the entry, like 3."),
+        "payout_low": (f"{what} of {got:g}x returns no more than the entry "
+                       f"costs, so no leg could break even on it."
+                       if got is not None else f"{what} is too low."),
+        "payout_high": (f"{what} of {got:g}x is more than this page reads (at "
+                        f"most {d.get('most', 0):g}x). Check what the app shows."
+                        if got is not None else f"{what} is too high."),
+        "flex_number": (f"{what}: {d.get('right')} of {d.get('legs')} right, "
+                        f"{d.get('raw')!r} is not a payout. Type it as a "
+                        f"multiple of the entry, or leave it empty where the "
+                        f"app pays nothing."),
+        "flex_bounds": (f"{what}: {d.get('right')} of {d.get('legs')} right "
+                        f"cannot pay {got:g}x (from 0 to {d.get('most', 0):g}x)."
+                        if got is not None else f"{what}: a row is out of bounds."),
+        "flex_less_for_more": (f"{what} pays less for more legs right somewhere "
+                               f"in its table, so it has no single break-even. "
+                               f"Check what you typed against the app."),
+        "flex_top": (f"{what}: with all {d.get('legs')} legs right it returns "
+                     f"no more than the entry costs, so no leg could break even "
+                     f"on it."),
+        "promo_kind": "Choose a promo, or no promo.",
+        "raised_missing": "Type what the app pays with the promo.",
+        "raised_not_higher": (f"The raised payout, {got:g}x, is not higher than "
+                              f"the payout, {d.get('base', 0):g}x. A promo here "
+                              f"raises the payout; check what the app shows."
+                              if got is not None else "The raised payout is not higher."),
+        "raised_flex_lower": (f"With the promo, {d.get('right')} of "
+                              f"{d.get('legs')} right pays less than without "
+                              f"it. A promo here raises the payout; check what "
+                              f"the app shows."),
+        "raised_not_higher_flex": ("With the promo the table pays no more "
+                                   "anywhere. Type the raised table as the app "
+                                   "shows it, or choose no promo."),
+        "percent": ("Type the share of the winnings the promo adds, as a per "
+                    "cent above 0 and at most 1000, like 20."),
+        "cap": ("Type the most the promo adds as a number of units above 0, or "
+                "leave it empty where there is no cap."),
+        "entry_units": "Type the entry as a number of units above 0.",
+    }
+    return words.get(code) or "The entry cannot be read as typed."
+
+
+def entry_check_club_words(code: str | None, names: dict | None) -> str:
+    """A club by its full name from the record's `teams` rows, or its code
+    where the record holds none -- never a guessed name."""
+    if not code:
+        return ""
+    return (names or {}).get(code) or code
+
+
+def entry_check_game_words(away: str, home: str, day: str | None) -> str:
+    """"Green Bay Packers at Detroit Lions, Sunday 12 October": the game a leg
+    was placed in, by the record's schedule."""
+    when = date_words_from_iso(day) if day else None
+    return f"{away} at {home}" + (f", {when}" if when else "")
+
+
+def entry_check_unplaced_words(code: str, **d) -> str:
+    """Why a leg was not placed in a game (reading (d): never guessed)."""
+    tail = ", so this leg was not placed in a game."
+    player, club = d.get("player") or "", d.get("club") or ""
+    if code == "no_club":
+        return "No club was chosen" + tail
+    if code == "no_game":
+        return f"The record has no {club} game still to come" + tail
+    if code == "two_players":
+        return f"The record has more than one {club} player called {player}" + tail
+    if code == "other_club":
+        others = " and ".join(d.get("others") or [])
+        return (f"The record has {player} playing for {others} by his latest "
+                f"game this season, not {club}" + tail)
+    # WHERE THE CLUB'S NEXT GAME IS NOT CERTAIN (the prover, 2026-10-07): a
+    # game past its listed start that the record does not yet have as over,
+    # or one with no start time that could come first -- the leg may be in
+    # it or the next, and the check never guesses which (reading (d)).
+    if code in ("under_way", "undated"):
+        when = date_words_from_iso(d["day"]) if d.get("day") else None
+        game = (f"the {d.get('away')} at {d.get('home')} game"
+                + (f" of {when}" if when else ""))
+        unsure = (", so it cannot tell whether this leg is in that game or the "
+                  "next one; this leg was not placed in a game.")
+        if code == "under_way":
+            return (f"The record does not yet have {game} as over, though it is "
+                    f"past its listed start" + unsure)
+        return f"The record has no start time yet for {game}" + unsure
+    return (f"No player called {player} is in the record's game stats this "
+            f"season ({d.get('season')})" + tail)
+
+
+def entry_check_leg_words(player: str, side: str, line: float, stat: str) -> str:
+    """"Josh Allen over 250.5 passing yards": a leg as typed."""
+    return f"{player} {side} {line:g} {stat}"
+
+
+def entry_check_leg_detail_words(kind: str, original_line: float | None) -> str:
+    """"goblin · discounted from 260.5": the leg's kind, and its discount."""
+    out = kind
+    if original_line is not None:
+        out += f" · discounted from {original_line:g}"
+    return out
+
+
+def entry_check_size_words(app_words: str, entry_type: str, legs: int) -> str:
+    """"PrizePicks 3-pick power": the key a payout is remembered under."""
+    return f"{app_words} {int(legs)}-pick {entry_type}"
+
+
+def entry_check_leg_label(n: int) -> str:
+    """"Leg 2": a leg's place in the entry, over its fields."""
+    return f"Leg {int(n)}"
+
+
+def entry_check_flex_row_words(right: int, legs: int) -> str:
+    """"4 of 5 right pays": one row of a flex table."""
+    return f"{int(right)} of {int(legs)} right pays"
+
+
+def entry_check_payout_words(payout: dict, legs: int) -> str:
+    """"3x", or "5 of 5 right pays 10x, 4 of 5 right pays 2x, 3 of 5 right pays
+    0.4x, fewer pays nothing"."""
+    if payout.get("table") is None:
+        return f"{float(payout['multiplier']):g}x"
+    rows = [f"{entry_check_flex_row_words(k, legs)} {float(v):g}x"
+            for k, v in sorted(payout["table"].items(), reverse=True) if float(v) > 0]
+    lowest = min((k for k, v in payout["table"].items() if float(v) > 0), default=None)
+    if lowest is not None and lowest > 1:
+        rows.append("fewer pays nothing")
+    return ", ".join(rows)
+
+
+def entry_check_remembered_words(size: str, payout_words: str,
+                                 typed_utc: str | None) -> str:
+    """The last payout typed for an app, entry type and size, offered and not
+    confirmed (reading (e))."""
+    when = date_words_from_iso((typed_utc or "")[:10]) if typed_utc else None
+    return (f"Last typed for {size}" + (f", {when}" if when else "")
+            + f": {payout_words}. Confirm it is what the app shows for this "
+              f"entry, or type what it shows.")
+
+
+def entry_check_remembered_now_words(size: str, payout_words: str) -> str:
+    return (f"Remembered for {size}: {payout_words}. It is offered next time, "
+            f"to confirm again.")
+
+
+def entry_check_breakeven_words(breakeven: float) -> str:
+    """"57.74%": the chance each leg needs, to a hundredth of a point."""
+    return f"{breakeven * 100:.2f}%"
+
+
+def entry_check_breakeven_tip(payout: dict, legs: int) -> str:
+    """How the break-even per leg was worked out, from the payout typed."""
+    if payout.get("table") is None:
+        return (f"The chance each leg needs for the entry to return what it "
+                f"costs: {float(payout['multiplier']):g}x to the power of minus "
+                f"1/{int(legs)}. From the payout alone, whatever each leg's "
+                f"kind.")
+    return ("The chance each leg needs, the legs independent, for the table "
+            "typed to return what the entry costs: solved step by step to well "
+            "under a hundredth of a point. From the table alone, whatever each "
+            "leg's kind.")
+
+
+def _entry_number(x: float) -> str:
+    """A return per unit to five places, trailing zeros dropped past two:
+    "-0.25", "+0.125", "+0.03125"."""
+    text = f"{x:+.5f}"
+    while text.endswith("0") and len(text.split(".")[1]) > 2:
+        text = text[:-1]
+    return "+0.00" if text in ("-0.00", "+0.00") else text
+
+
+def entry_check_return_words(expected: float) -> str:
+    """"-0.25 per unit": what the entry returns per unit, less the unit."""
+    return f"{_entry_number(expected)} per unit"
+
+
+#: AN EVEN CHANCE EXACTLY AT THE BREAK-EVEN, in points (the prover,
+#: 2026-10-07): float noise only -- 4x on two legs is exactly one half, and
+#: 8x on three a hair past it in floating point.
+_ENTRY_EXACT_POINTS = 1e-7
+
+
+def entry_check_gap_words(points: float, *, raw: float | None = None) -> str:
+    """"2.86 points over its break-even": an even chance against the chance
+    each leg needs. "Exactly" ONLY WHERE IT IS (the prover, 2026-10-07): as
+    handed, 3.9999x on two legs -- red, "-0.00003 per unit" -- was "exactly at
+    its break-even" because its gap rounds to 0.00; `raw`, the gap unrounded,
+    says which side of the break-even a gap under a hundredth sits."""
+    if abs(points) < 0.005:
+        if raw is None or abs(raw) < _ENTRY_EXACT_POINTS:
+            return "exactly at its break-even"
+        side = "over" if raw > 0 else "under"
+        return f"less than a hundredth of a point {side} its break-even"
+    side = "over" if points > 0 else "under"
+    return f"{abs(points):.2f} points {side} its break-even"
+
+
+def entry_check_promo_words(kind: str, typed: dict, offered: dict, legs: int, *,
+                            percent: float | None = None,
+                            cap_units: float | None = None,
+                            entry_units: float | None = None) -> str:
+    """THE PROMO, CONVERTED AND SHOWN (the brief: "converted and shown"): the
+    payout the entry has with it, beside the payout typed."""
+    was = entry_check_payout_words(typed, legs)
+    now = entry_check_payout_words(offered, legs)
+    table = typed.get("table") is not None
+    if kind == "raised":
+        if table:
+            return f"With the promo: {now}. Without it: {was}."
+        return f"With the promo the app pays {now}, from {was}."
+    share = f"A {percent:g}% share of the winnings added"
+    if cap_units is not None:
+        # "1 unit", never "1 units" (the prover, 2026-10-07).
+        units = "unit" if cap_units == 1 else "units"
+        share += f", at most {cap_units:g} {units} on a {entry_units:g}-unit entry,"
+    if table:
+        out = f"{share} makes the table {now}. Without it: {was}."
+    else:
+        out = f"{share} makes the entry pay {now}, from {was}."
+    if cap_units is not None:
+        from . import entry_math as _entry_math
+        uncapped = _entry_math.with_a_profit_promo(typed, percent=percent)
+        if entry_check_payout_words(uncapped, legs) != now:
+            out += (f" The cap holds it there: without the cap it would pay "
+                    f"{entry_check_payout_words(uncapped, legs)}.")
+    return out
+
+
+def entry_check_verdict_words(signal: str, points: float, *, promo: bool = False,
+                              raw: float | None = None) -> str:
+    """Reading (h)'s verdict in words, beside its outline (or none). ON THE
+    ENTRY AS OFFERED: with a promo, the verdict and its gap are the promo's,
+    and the words say so (the render of 2026-10-07: "5.28 points over each
+    leg's break-even" stood under a break-even line of 57.74%, the one
+    without the promo)."""
+    bar = f"{_config.PICK_MIN_EDGE * 100:g}"
+    with_it = " with the promo" if promo else ""
+    if signal == "clears":
+        return (f"Clears the bar at coin flips{with_it}: an even chance is "
+                f"{points:.2f} points over each leg's break-even{with_it}, {bar} "
+                f"or more.")
+    if signal == "costs":
+        return (f"Costs at coin flips{with_it}: with every leg an even chance, "
+                f"the entry returns less than it costs.")
+    if points == 0 and raw is not None and abs(raw) >= _ENTRY_EXACT_POINTS:
+        # WITHIN A HUNDREDTH, NOT EXACTLY (the prover, 2026-10-07): as handed,
+        # 4.0001x on two legs, "+0.00002 per unit", was said to return
+        # "exactly what it costs".
+        side = "over" if raw > 0 else "under"
+        return (f"No outline: at coin flips{with_it} an even chance is less than "
+                f"a hundredth of a point {side} each leg's break-even, and the bar "
+                f"needs it {bar} points or more over.")
+    if points == 0:
+        # AN ENTRY THAT RETURNS EXACTLY ITS COST (2026-10-07, resumed build):
+        # "0.00 points over" said of a break-even of exactly one half.
+        return (f"No outline: at coin flips{with_it} the entry returns exactly "
+                f"what it costs. Each leg's break-even is an even chance, and the "
+                f"bar needs it {bar} points or more under one.")
+    return (f"No outline: at coin flips{with_it} the entry returns at least what "
+            f"it costs, but an even chance is {points:.2f} points over each leg's "
+            f"break-even, under the {bar} the bar needs.")
+
+
+def entry_check_verdict_tip(bar: float) -> str:
+    return (f"The colour law read at coin flips, with no model: a green outline "
+            f"where every leg's break-even is {bar * 100:g} points or more under "
+            f"an even chance, a red one where the entry returns less than it "
+            f"costs with every leg an even chance, and none between.")
+
+
+def _entry_leg_list(indices: list[int]) -> str:
+    names = [str(i + 1) for i in indices]
+    if len(names) == 1:
+        return f"Leg {names[0]}"
+    return "Legs " + ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def entry_check_one_game_words(groups: list[tuple[list[int], str | None]],
+                               unchecked: list[int], n_legs: int) -> list[str]:
+    """THE ONE-GAME FLAG (the brief: "a same-game flag on legs from one game
+    ('these legs move together; the math assumes they don't'), no correlation
+    estimate (LAW 2)"): one sentence for each game holding two legs or more,
+    and one for the legs that could not be placed and so were not checked
+    (reading (d))."""
+    out = []
+    for legs, game in groups:
+        where = f", {game}" if game else ""
+        out.append(f"{_entry_leg_list(legs)} are in one game{where}: these legs "
+                   f"move together; the math assumes they don't.")
+    placed = n_legs - len(unchecked)
+    if not groups:
+        if not unchecked:
+            out.append("No two legs are in one game.")
+        elif placed >= 2:
+            out.append("No two of the legs placed are in one game.")
+    if unchecked and len(unchecked) == n_legs:
+        out.append("No leg could be placed in a game, so none was checked "
+                   "against the others for a game they share.")
+    elif unchecked:
+        one = len(unchecked) == 1
+        out.append(f"{_entry_leg_list(unchecked)} could not be placed in a game, "
+                   f"so {'it was' if one else 'they were'} not checked against "
+                   f"the others for a game they share.")
+    return out
 
 
 # ---------------------------------------------------------------------------

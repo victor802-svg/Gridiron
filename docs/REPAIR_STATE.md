@@ -12,6 +12,96 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **THE ENTRY CHECK, STEP 1 PROVED (2026-10-07 ~20:00-21:45Z; ONE LOCAL
+  COMMIT on `repair` holding exactly the step's files, not pushed, for its
+  gate; FOLLOWUPS "Check an entry, step 1", THE PROVER):** the arithmetic
+  held -- worked again with `Decimal` at 60 digits on 39 edge cases (1, 6
+  and 8 legs, flex tables with a zero row, payouts below and at 1x, a raise
+  lower than the payout, caps that bind, do not and bind exactly, a
+  discounted line), every number within 6e-7 and every outline reading
+  (h)'s. FOUND AND FIXED, each failing first on the change as handed: A
+  LEG TYPED WHILE ITS CLUB'S GAME WAS BEING PLAYED WAS PUT IN THE CLUB'S
+  NEXT GAME (an NFL game stays 'scheduled' on the record until a refresh
+  writes its result), so two legs of one game in play were put in two games
+  of the next week and said to share none -- the brief's planting; likewise
+  past a game with no start time yet. Such a leg is not placed now, and
+  says why (reading (d), "never guessed": a ruling taken in your absence,
+  below). And "exactly at its break-even" said of a gap under a hundredth
+  that was not zero; a payout offered back to six figures; "1 units".
+  MEASURED on ONE verified copy (20:21:22Z to 20:22:17Z, integrity ok, 65
+  tables, none mismatched; deleted 20:23:02Z): no club in that state now,
+  and an hour into TB at DAL (9 October 00:15Z) exactly its two clubs; the
+  Rams and Washington offered by their codes (LA, WAS), the board's known
+  case, FOLLOWUPS. RENDERED at 1300 and 390 (eight states, the game in
+  play among them) and read; every tap target 44px or more, whole pixels,
+  at 390. Plantings: the five and C's two moved forms ESCAPE on 535c253 and
+  are CAUGHT here, a fifth form of the same-game planting added; plant.py
+  whole 431/431 caught in 341 s; the full suite (detached) 2,549 passed, 4
+  skipped, 0 failed, in 1,292 s. Step 2's 71 argument-free checks and its
+  18 slate rows (on a scratch world) pass; `prose_reaching_the_raw_side()`
+  is []. **Next: the step's gate (`tools/verify.py`, detached), then its
+  release.**
+  **THE ENTRY CHECK, STEP 1 BUILT (dated 2026-10-07 in the code; resumed
+  18:40Z from the partial build on 535c253 and finished ~20:30Z; uncommitted
+  for its prover; FOLLOWUPS "Check an entry, step 1"; CLAUDE.md row "CHECK
+  AN ENTRY, STEP 1" and the colour law's "READ AT COIN FLIPS"):** the brief's
+  step 1 (docs/briefs/2026-09-30-entry-check.md) with ruling D's amendments.
+  KEPT FROM THE PARTIAL BUILD, read as an adversary and checked against the
+  brief and the readings below: `gridiron/entry_math.py` (the arithmetic,
+  stdlib only), `gridiron/entry_check.py` (the form, the legs' games, the
+  payouts typed, the panel), `POST /api/entry-check`, the table
+  `pickem_payouts_typed` (append-only, three rules), the words, the rail
+  grown into the form (ONE calculator: the rail's model readings at the
+  venue's main line and its verdict are gone), the two gate checks
+  (`audit.check_the_entry_check_is_its_own_arithmetic`,
+  `check_the_entry_check_reaches_no_app`, step 2) and the five plantings.
+  FOUND AND FIXED ON RESUMING, each in the render or by the tests the
+  partial build had not yet run: at 1300 the payout's field was one column
+  of six (its label five lines over a 36px field) and a club, "Standard" and
+  "Choose the app" were cut; the settled card's `.verdict` rule (12px,
+  centred, letter-spaced) reached the rail's verdict sentence; the page
+  chose PrizePicks for him, so a payout he confirmed would be kept under an
+  app he never named (no app is chosen now); any redraw of the Props page
+  unticked the box he had ticked for an offered payout (the same offer keeps
+  his tick; any other comes unticked); 8x on three legs drew "-0.00" and
+  "0.00 points over" (an entry returning exactly its cost says so); a word
+  in the entry-in-units field refused a promo with no cap (not read without
+  a cap, reading (c)); with a promo the verdict's gap stood under the
+  break-even line without it (the verdict and the gap say "with the
+  promo"); seven tests held the rail's old form, the first-load test waited
+  for its old field, and the write-route test had no sixth POST argued --
+  each held to the rail as the check, saying so. MEASURED on ONE verified
+  copy of the record (rebuild.verified_backup, 2026-10-07T19:02:24Z to
+  19:03:37Z, integrity ok, 65 tables, none mismatched; read through
+  `db.read_only`; deleted 2026-10-07T19:16:49Z): 208 NFL games still to come (the
+  2026 season; the first, TB at DAL, 9 October 00:15Z), all 32 clubs named
+  in `teams`, `player_week_stats` holding 2026 weeks 1-4 (1,519 players;
+  two folded names held by two players each, none on one club); a sample
+  entry of three Dallas and Tampa Bay players placed in one game and flagged,
+  a fourth leg unplaced and said so. DB.INIT REHEARSED on the copy: exactly
+  the table, its index and its three rules added, nothing removed or
+  changed, no table's checksum moved, 0 rows, and 0 differences from a fresh
+  build of this tree (9 cosmetic) -- the gate's comparison with its empty
+  register. RENDERED from the suite's world (scratch, a dummy token, never
+  8848) at 1300 and 390 -- the form as it opens, a 4.5x entry (no outline),
+  3x raised to 5x (green), 5x with a capped 20% share (red), a 5-leg flex
+  with a goblin and an unplaced leg (red), the payout offered next visit --
+  and read. THE PLANTINGS: plant_a_wrong_breakeven,
+  plant_a_boost_applied_twice, plant_an_unflagged_same_game_pair (the
+  brief's three), plant_an_entry_outlined_where_reading_h_gives_none and
+  plant_a_pickem_app_reached_from_the_entry_check, each ESCAPING on 535c253
+  (`git archive`, this plant.py) and CAUGHT here; C's two rail forms moved
+  to the check. THE SUITE AND plant.py
+  (detached, `entry1\run_detached.ps1`, a dummy token): plant.py whole
+  431/431 caught in 343 s; the full suite 2,545 passed, 4 skipped, 0 failed,
+  in 1,302 s, the planting harness inside its 600 s -- on its second run: the
+  first (2,544 passed, 1 failed) found the count of append-only tables (25)
+  in `test_no_replacing_write.py`, 26 with the payouts typed. Nothing new
+  joins the queue (FOLLOWUPS, "FOUND, NOT BUILT"). Several splices were made
+  by short scripts rather than the Edit tool (FOLLOWUPS says which; one
+  escape collapsed -- this entry's own path to the runner -- and was
+  repaired when it was read back). **Next: its prover; then the step's
+  gate and release.**
   **THE ENTRY CHECK, STEP 1 -- STOPPED MID-BUILD (2026-10-07 ~03:03Z; the
   session ended; found 18:40Z):** workflow wf_9563edd2-3ab (scratchpad
   wf_entry1.js), its builder partway: `gridiron/entry_math.py` and
@@ -2565,6 +2655,136 @@ depend on the answer.
       no fill.
     Default until ruled: (A), as built -- nothing new is drawn in reliance
     on it; B released with it.
+
+## Rulings taken in your absence (2026-10-07, the entry check's step 1)
+
+The brief's step 1 (docs/briefs/2026-09-30-entry-check.md) with ruling D's
+amendments (docs/briefs/2026-10-05-rulings.md). Each the conservative
+reading, recorded here and in FOLLOWUPS ("Check an entry, step 1"); each
+reversible in a line or two. None stretches the brief or a law's words, so
+no question is put.
+
+- **(a) and (h) The colour.** Step 1 has no model, so the colour law is read
+  at an even chance on every leg of the entry AS OFFERED (its promo in --
+  the brief's reason for the check is that a promo can make an entry clear
+  by arithmetic alone): CLEARS, the green outline, only where B.2 holds for
+  every leg -- each leg's break-even three points or more under 50%, through
+  B's one door (`picks.clears_the_pick_bar`, its float noise and no other
+  margin) -- and COSTS, the red outline, where the return per unit at coin
+  flips is below zero (less a float noise of a billionth, so an entry that
+  returns exactly its cost does not cost); between, the numbers and no
+  outline. A power entry's legs share one break-even, and so do a flex
+  table's, so "every leg" is the entry's one break-even. The gap is drawn
+  to a hundredth of a point and never at the bar when under it (2.996 as
+  2.99: B.2's rule, `picks.drawn_edge`, at this page's hundredths). With a
+  promo the verdict and the gap say "with the promo". Said in CLAUDE.md
+  beside the colour law, dated.
+- **(b) Flex.** The typed table is what k of N legs right returns per unit
+  (a row left empty pays nothing; none right pays nothing). At coin flips the
+  return is the sum over k of C(N, k) / 2^N times the payout for k, less one;
+  the break-even per leg is the p at which the return with the legs
+  independent at p is zero, solved by bisection until the interval is a
+  trillionth wide, drawn to a hundredth of a point. A table that pays less
+  for more legs right has no single break-even and is refused in words, as
+  is one whose every-leg-right payout returns no more than the unit. Power:
+  M^(-1/N) and M / 2^N - 1.
+- **(c) A promo.** Either the app's raised payout (a multiplier, or a table
+  row by row), which takes the typed payout's place, or a share of the
+  winnings added: each payout that returns more than the unit gains that
+  share of its profit, at most the cap over the entry per unit where there
+  is a cap -- the entry in units asked only then (units only, never
+  dollars; without a cap the field is not read at all) -- shown converted
+  ("makes the entry pay 5.5x, from 5x", with what the cap held it from).
+  Applied ONCE, to the payout typed, never to one already raised (the
+  planting); what it adds is the return at coin flips with it less without
+  it. A deposit match is step 4's and is not offered.
+- **(d) Same game.** A leg is placed in its typed club's next game still to
+  come on the record's schedule (status 'scheduled' and its listed start, an
+  instant, after now -- the live poll follows no NFL game, so the listed
+  start is an NFL game's start, question 38), and only where exactly one
+  player of the typed name -- folded by accents, case and punctuation alone,
+  the measured rule of `market.crosswalk.normalise`, never a nickname,
+  initial, suffix or near miss -- played his latest game this season for
+  that club, read from the record's own game stats (`player_week_stats`).
+  The record's roster (`player_numbers`) is display only by the operator's
+  ruling of 2026-09-29 and is not read. A leg that cannot be placed says why
+  (no club chosen; no game to come; two players of the name on the club; the
+  record has him with another club; no such player this season), and the
+  flag says it could not check those legs. Two or more placed legs in one
+  game are flagged in the brief's words and nothing is estimated (LAW 2):
+  the arithmetic of a flagged entry is the arithmetic of the same payout
+  with its legs in different games.
+- **(e) The payout last typed.** Kept in a table of its own,
+  `pickem_payouts_typed`, not the settings store: `settings` is a closed list
+  of named knobs the Settings page draws one value each, and a payout per
+  app, entry type and size -- a flex table among them -- would add dozens of
+  names and a table as one value. A plain insert (the frozen register), one
+  row each time the operator CONFIRMS a payout that differs from the last
+  one kept for its app, entry type and number of legs ("per app and entry
+  size", read with the entry type, since a 5-pick flex and a 5-pick power
+  pay differently), the typed payout and never a promo's; append-only (no
+  edit, delete or replacing insert); offered back filled in and unticked,
+  and nothing is worked out until he ticks the box saying it is what the app
+  shows for this entry. A change of app, type or size asks again; a redraw
+  of the same offer keeps his tick. The one write the step makes anywhere.
+- **(f) One calculator.** The Props page's entry rail is grown into the
+  brief's form, not a second calculator beside it: its three readings at the
+  model's chance on each leg's MAIN line (the venue's, never the app's line
+  the operator types), its floor and its verdict are gone -- they would be
+  numbers under another contract's words beside a typed leg (step A's rule),
+  none ever drew a number on the record (no main line is read while the
+  venue's prop series are unread, question 39), and the model at the typed
+  line is step 2's. A prop he marks on its tile is offered in the rail under
+  its player and stat and put in with its player, club and stat, its line
+  left for him to type. The two power payouts of ruling C (the settings rows)
+  stay what the TILES' break-evens read, apart from the check.
+- **(g) Ruling D.** Each leg carries its kind (standard, goblin, demon) and
+  its line as typed (and the line before a discount, where there was one);
+  the payout is the one the app shows for THIS entry, typed or offered and
+  confirmed; every break-even and return is from that payout alone -- never
+  from a leg's kind, line, side or discount, a table, or a default not
+  confirmed (`test_entry_check.py::test_a_goblin_and_a_demon_leg_move_no_number`).
+- **(i) Words.** The plain-words rule and its banned list ("parlay", "same
+  game", "boost", "builder", "add leg", "slip") and the advice list hold:
+  the brief's boost is "a promo" -- "the app raised the payout", "a share of
+  the winnings added" -- its value "what the promo adds", its same-game flag
+  "legs in one game" with the brief's own sentence beside it ("these legs
+  move together; the math assumes they don't"). "Goblin" and "demon" are the
+  app's own words for a leg's kind.
+- **(j) No app is chosen for him.** The form opens with "Choose the app": a
+  payout he confirms is kept and offered by app, and an app the page chose
+  would file it under one he never named.
+- **(k) No record badge beside the verdict.** The rail's old verdict, read
+  at the model's chance, stood beside the thinnest leg's record badge (LAW
+  4's sample size). The check's verdict is the typed payout's arithmetic at
+  an even chance, which no record stands behind; its note says so ("No model
+  and no record is behind these numbers"). LAW 4 binds a figure drawn from
+  the record; step 2's model numbers will carry theirs.
+- **(l) NFL player props only (scope v1).** Another sport's Props page says
+  the check reads no other sport; the form's clubs are those with an NFL game
+  still to come, by their names in `teams`; the stat is typed as the app
+  shows it, with the record's prop stats offered.
+- **(m) Bounds on the form, not facts about any app.** 2 to 8 legs; a payout
+  above 1x and at most 1000x; a line from 0 to 10,000; a share up to 1000%;
+  units up to 100,000; 80 letters a name. Each is a mistyped key's bound,
+  named as such in the code; no payout or table is held anywhere.
+- **(d), FROM ITS PROVER (2026-10-07): a leg is placed only where its club's
+  next game is certain.** "Never guessed" read as written: a club whose
+  LATEST game past its listed start is not recorded as over -- no poll
+  follows an NFL game, so the record keeps one 'scheduled' until a refresh
+  writes its result -- or that has a game not over with no start time yet,
+  on or before its next dated game's day (and not before a game it has
+  since played), places no leg, and the leg says which game and why: the
+  record cannot tell whether a leg typed then is in that game or the next.
+  As handed such a leg was put in the next dated game, and two legs of one
+  game in two later games, unflagged -- the brief's planting. The latest
+  begun game and not every one, so a game never marked over that the club
+  has played past says nothing. Reversal: `_games_begun_or_undated` handed
+  back empty (`begun=({}, {})`), which is the planting's own form.
+- **(i), FROM ITS PROVER: "exactly" only where it is.** A gap under a
+  hundredth of a point is "less than a hundredth of a point over (or under)
+  its break-even", and "exactly at its break-even" / "returns exactly what
+  it costs" only within float noise (4x on two legs; 8x on three).
 
 ## Rulings taken in your absence (2026-10-07, ruling B's builder)
 

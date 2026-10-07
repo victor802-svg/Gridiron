@@ -3972,3 +3972,87 @@ BEGIN
     SELECT RAISE(ABORT,
         'GRIDIRON LAW 1: a package cannot be taken before it was read');
 END;
+
+-- ---------------------------------------------------------------------------
+-- WHAT A PICK'EM APP PAYS, AS THE OPERATOR TYPED IT (GRIDIRON_ENTRY_CHECK,
+-- step 1; the brief of 2026-09-30 and ruling D of 2026-10-05; built
+-- 2026-10-07)
+-- ---------------------------------------------------------------------------
+--
+-- The brief: "No payout table hard-coded as fact: the operator types the
+-- multiplier or flex table shown in the app; the last one typed per app and
+-- entry size is offered as a default and must be confirmed." ONE ROW PER
+-- PAYOUT TYPED AND CONFIRMED in the entry check -- the app, the entry type,
+-- the number of legs, and the power multiplier or the flex table (what k of
+-- the legs right returns per unit, k from 1 to the legs; a row left empty
+-- pays nothing) -- stamped when it was written, and written only where it
+-- differs from the last one typed for its app, entry type and size. The last
+-- row of a key is what the check offers next time, filled in and NOT
+-- confirmed: nothing is worked out from it until the operator confirms it
+-- (`entry_check.remembered`, `entry_check.remember`).
+--
+-- WHY A TABLE OF ITS OWN AND NOT THE SETTINGS STORE (reading (e), recorded in
+-- docs/REPAIR_STATE.md): `settings` is a closed list of named knobs the
+-- Settings page draws one value each; a payout per app, entry type and size,
+-- and a flex table per size, would add dozens of names to that page and a
+-- table of numbers as one setting's value. Here each typed payout is kept as
+-- typed, with its key and its day.
+--
+-- NOT AN ENTRY AND NOT A LEDGER (LAW 5): no leg, no player, no stake, no
+-- result and nothing about money is ever written here -- a multiplier is what
+-- the app offers per unit, typed off its screen, and the entry check writes
+-- no other row anywhere (`audit.check_the_entry_check_reaches_no_app`). The
+-- prediction path may not name it (`audit.FORBIDDEN_IDENTIFIERS`): it is a
+-- price.
+--
+-- APPEND-ONLY, LIKE `settings`: a later payout is a new row and an earlier
+-- one is never edited, deleted or written over, so when a payout changed and
+-- from what stays on the record. A plain insert, never an upsert (the frozen
+-- register, operator question 15).
+CREATE TABLE IF NOT EXISTS pickem_payouts_typed (
+    id          INTEGER PRIMARY KEY,
+    -- an instant, to the second, as `db.utcnow` stamps it
+    typed_utc   TEXT    NOT NULL CHECK (julianday(typed_utc) IS NOT NULL
+                                        AND length(typed_utc) = 20),
+    app         TEXT    NOT NULL CHECK (app IN ('prizepicks', 'underdog',
+                                                'chalkboard')),
+    entry_type  TEXT    NOT NULL CHECK (entry_type IN ('power', 'flex')),
+    legs        INTEGER NOT NULL CHECK (typeof(legs) = 'integer'
+                                        AND legs BETWEEN 2 AND 8),
+    -- a power entry's payout per unit; NULL for a flex entry
+    multiplier  REAL    CHECK (multiplier IS NULL
+                               OR (typeof(multiplier) = 'real'
+                                   AND multiplier > 1 AND multiplier <= 1000)),
+    -- a flex entry's table, {"k": payout per unit}; NULL for a power entry
+    flex_table  TEXT    CHECK (flex_table IS NULL OR json_valid(flex_table)),
+    CHECK ((entry_type = 'power') = (multiplier IS NOT NULL)),
+    CHECK ((entry_type = 'flex') = (flex_table IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS pickem_payouts_typed_key
+    ON pickem_payouts_typed (app, entry_type, legs, id);
+
+CREATE TRIGGER IF NOT EXISTS pickem_payouts_typed_never_replaced
+BEFORE INSERT ON pickem_payouts_typed
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM pickem_payouts_typed t WHERE t.id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a payout the operator typed is append-only; a later one is '
+        || 'a new row, and a row already written is never written over');
+END;
+
+CREATE TRIGGER IF NOT EXISTS pickem_payouts_typed_no_update
+BEFORE UPDATE ON pickem_payouts_typed
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a payout the operator typed is append-only; a later one is '
+        || 'a new row, and the earlier one stays');
+END;
+
+CREATE TRIGGER IF NOT EXISTS pickem_payouts_typed_no_delete
+BEFORE DELETE ON pickem_payouts_typed
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON: a payout the operator typed is append-only and is never '
+        || 'deleted');
+END;

@@ -423,19 +423,43 @@ def test_the_props_tiles_that_are_no_pick_are_ordered_by_start_then_market(conn)
     assert [t["prediction_id"] for t in tiles] == [zach, aaron]
 
 
-def test_the_entry_rail_says_clears_only_of_an_entry_whose_every_leg_is_a_pick():
+def test_the_entry_rail_says_clears_only_of_an_entry_whose_every_leg_is_a_pick(conn):
     """The rail's verdict keeps its arithmetic (the brief: "leave its
     arithmetic, but it may not say 'pick' below B.2"): "Clears the bar" and
     its outline only where every leg is three points or more over the
     entry's break-even, and other words otherwise. Fails on 4274f1d, which
-    said it of any entry returning more than a dollar per dollar."""
-    words = language.entry_words()
-    assert words["verdict_returns"] == "Returns more than it costs at"
+    said it of any entry returning more than a dollar per dollar.
+
+    FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; reading (h)) THE RAIL IS THE
+    ENTRY CHECK, at an even chance on every leg (step 1 has no model): "Clears
+    the bar" and the green outline only where each leg's break-even is three
+    points or more under an even chance -- B.2's bar, through its one door,
+    `picks.clears_the_pick_bar` -- and an entry that returns more than it
+    costs short of that says "No outline" and wears none. The outline is the
+    server's verdict, which the page draws by `signalClass` alone. Until that
+    date this test read the rail's verdict at the model's chance on each
+    leg's main line, in the page's own arithmetic (`entryLines`, gone)."""
+    from gridiron import entry_check
+
+    def check(multiple):
+        leg = {"player": "A Player", "club": "", "stat": "passing yards", "line": "250.5",
+               "side": "over", "kind": "standard", "original_line": ""}
+        return entry_check.check(conn, {"app": "prizepicks", "entry_type": "power",
+                                        "legs": [leg, dict(leg)],
+                                        "payout": {"multiplier": str(multiple)},
+                                        "payout_confirmed": True, "promo": {"kind": "none"}},
+                                 now="2099-10-01T00:00:00Z", remember_it=False)
+
+    short = check(4.5)
+    assert short["numbers"]["expected"] > 0, "4.5x on two legs returns more than it costs"
+    assert short["signal"] == "none" and short["verdict_words"].startswith("No outline")
+    assert "Clears" not in short["verdict_words"] and "pick" not in short["verdict_words"]
+    clears = check(5)
+    assert clears["signal"] == "clears" and clears["verdict_words"].startswith("Clears the bar")
     js = (ROOT / "gridiron" / "web" / "app.js").read_text(encoding="utf-8")
-    body = js[js.index("function entryLines("):js.index("function renderEntryRail(")]
-    assert "props.pick_bar" in body and "everyLegAPick" in body
-    assert re.search(r"modelLine > 0 && everyLegAPick\)\s*\{\s*verdict\.classList\.add"
-                     r"\('sig-clears'\)", body)
+    body = js[js.index("function paintEntryResult("):js.index("function renderEntryRail(")]
+    assert "el('div', 'verdict ' + signalClass(r.signal))" in body
+    assert "sig-clears" not in body and "sig-costs" not in body
 
 
 # --- THE PROVER OF RULING B (2026-10-07) -------------------------------------

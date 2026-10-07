@@ -263,16 +263,23 @@ def test_the_entry_rail_reads_the_typed_multiple_and_nothing_is_placed(page):
     page.evaluate("location.hash = '#/props'")
     page.wait_for_selector("#props-tiles .prop", timeout=15000)
     # NO PAYOUT IS FILLED IN THAT NOBODY TYPED (operator ruling C.3,
-    # 2026-10-05): the field held the declared 3x until 2026-10-06.
-    assert page.evaluate("document.getElementById('entry-pays').value") == ""
-    assert page.evaluate("document.querySelectorAll('#entry-lines .entry-line').length") == 0, (
-        "lines rendered with no legs")
-    assert not page.evaluate("document.getElementById('entry-empty').hidden")
+    # 2026-10-05): the field held the declared 3x until 2026-10-06. FROM THE
+    # ENTRY CHECK'S STEP 1 (2026-10-07; readings (e) and (f)) the rail is
+    # "Check an entry": no app is chosen for him, so nothing is filled; no box
+    # is ticked; and nothing is answered before he asks.
+    page.wait_for_selector("#entry-payout .entry-pays-rows input", timeout=15000)
+    assert page.input_value("#entry-payout .entry-pays-rows input") == ""
+    assert not page.is_checked("#entry-payout .entry-confirm input")
+    assert page.evaluate("document.getElementById('entry-lines').children.length") == 0, (
+        "an answer drawn before the entry was checked")
     text = page.text_content("#entry-rail")
-    for word in ("placed", "balance"):
+    # "placed" stays: nothing is placed. "balance" went with the rail's old
+    # note (2026-10-07), whose readings at the model's chance are gone; the
+    # entry check's note says units only, never dollars.
+    for word in ("placed", "Units only"):
         assert word in text
     assert audit.pressure_word_faults(text) == []
-    assert not re.search(r"\bslip\b|\bparlay\b", text, re.I)
+    assert not re.search(r"\bslip\b|\bparlay\b|\bboost|\bsame[- ]game\b", text, re.I)
 
 
 def test_the_row_expands_in_place_to_every_question_on_the_game(page):
@@ -508,38 +515,65 @@ def _ladder_at_each_own_line(conn, sport, cards):
 def test_the_rail_verdict_wears_the_colour_a_prop_earns_from_the_typed_multiple(page, monkeypatch):
     """RULING c, 2026-09-25: a prop tile wears no outline against an assumed
     multiple; the entry rail's verdict, from the multiple the operator typed,
-    is where the colour is earned -- and it never stands without a leg's
-    record badge beside it. FROM RULING C (2026-10-05) a leg's chance is the
-    model's chance at its main line, so the venue's ladder is handed in."""
+    is where the colour is earned. FROM RULING C (2026-10-05) a leg's chance
+    was the model's chance at its main line, so the venue's ladder is handed
+    in.
+
+    FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; reading (h)) THE RAIL IS THE
+    ENTRY CHECK and has no model: its verdict wears the colour reading (h)
+    gives the payout he typed and confirmed for the entry, at an even chance
+    on every leg -- green where each leg's break-even is three points or more
+    under an even chance, red where the entry returns less than it costs,
+    none between -- and the outline is the server's. Until that date the
+    verdict read the model's chance on each leg's main line beside the
+    thinnest leg's record badge; the verdict now rests on no record (its
+    note says so, "No model and no record is behind these numbers"), so no
+    record badge stands beside it. The payout he confirms is not kept here
+    (`entry_check.remember` answers that nothing was written), so the shared
+    world is not written."""
+    from gridiron import entry_check
+
     monkeypatch.setattr(board, "_venue_prop_ladders", _ladder_at_each_own_line)
+    monkeypatch.setattr(entry_check, "remember", lambda conn, form: False)
     page.set_viewport_size(WIDE)
     page.evaluate("location.hash = '#/props'")
     page.wait_for_selector("#props-tiles .prop[data-state='upcoming'] .chk", timeout=15000)
     assert page.evaluate(
         "[...document.querySelectorAll('#props-tiles .prop')].every(p => !p.classList.contains('sig-clears') && !p.classList.contains('sig-costs'))"), \
         "a prop tile wears an outline"
-    with page.expect_response(lambda r: "/api/taken/" in r.url, timeout=20000):
-        page.click("#props-tiles .prop[data-state='upcoming'] .chk")
     page.wait_for_selector("#entry-legs .entry-leg", timeout=15000)
-    def verdict(multiple):
-        page.fill("#entry-pays", str(multiple))
-        # THE VERDICT FOR THIS MULTIPLE, read when the rail says it (the board
-        # merge, 2026-09-29): this waited 200ms after typing. The rail's
-        # verdict names the multiple it was read at, so the page says when.
+    page.select_option("#entry-form .entry-head-row select >> nth=0", "underdog")
+    for i in range(2):
+        leg = f"#entry-legs .entry-leg >> nth={i} >> input"
+        page.fill(f"{leg} >> nth=0", f"A Player {i + 1}")
+        page.fill(f"{leg} >> nth=1", "passing yards")
+        page.fill(f"{leg} >> nth=2", "250.5")
+
+    def verdict(multiple, breakeven):
+        page.fill("#entry-payout .entry-pays-rows input", str(multiple))
+        page.check("#entry-payout .entry-confirm input")
+        page.click("#entry-check")
+        # THE ANSWER FOR THIS PAYOUT, read when the rail says it: its
+        # break-even per leg is drawn beside it.
         page.wait_for_function(
-            "(m) => { const v = document.querySelector('#entry-lines .verdict');"
-            " return !!v && v.textContent.includes(m); }",
-            arg=str(multiple), timeout=10000)
+            "(b) => { const v = document.querySelector('#entry-lines .verdict');"
+            " return !!v && document.getElementById('entry-lines').textContent.includes(b); }",
+            arg=breakeven, timeout=10000)
         return page.evaluate("""() => { const v = document.querySelector('#entry-lines .verdict');
-            return { cls: v ? v.className : null, words: v ? v.textContent : '',
-                     badge: v ? !!v.querySelector('.badge') : false }; }""")
-    high = verdict(9)
-    assert "sig-clears" in high["cls"] and high["badge"], high
-    assert "Clears the bar" in high["words"] and "9" in high["words"]
-    low = verdict(1.1)
-    assert "sig-costs" in low["cls"] and low["badge"], low
-    assert "Falls short" in low["words"]
-    assert "worth" not in (high["words"] + low["words"]).lower()
+            return { cls: v.className, words: v.textContent,
+                     badge: !!document.querySelector('#entry-lines .badge') }; }""")
+
+    clears = verdict(5, "44.72%")
+    assert "sig-clears" in clears["cls"] and not clears["badge"], clears
+    assert clears["words"].startswith("Clears the bar at coin flips")
+    between = verdict(4.5, "47.14%")
+    assert "sig-clears" not in between["cls"] and "sig-costs" not in between["cls"], between
+    assert between["words"].startswith("No outline")
+    costs = verdict(3, "57.74%")
+    assert "sig-costs" in costs["cls"], costs
+    assert costs["words"].startswith("Costs at coin flips")
+    assert "worth" not in (clears["words"] + between["words"] + costs["words"]).lower()
+    assert not page.page_errors, page.page_errors
 
 
 # --- 3a, 3b, 3c (visual pass, 2026-09-25) --------------------------------------

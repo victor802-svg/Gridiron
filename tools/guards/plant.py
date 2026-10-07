@@ -12679,8 +12679,13 @@ def plant_a_90_percent_leg_at_91_cents_shown_as_a_pick() -> Result:
                     "the leg named off its tile by its 91c question's words": rail_at_91c,
                 }, "ruling C", missed)
                 first = first or got
+                # FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; reading (f)) THE
+                # RAIL IS THE ENTRY CHECK, and a prop the operator marked is
+                # put in the entry under its player-and-stat words with no
+                # line: the same defect is the marked prop's button drawn
+                # under its 91c question's own line instead.
                 scan = getattr(audit, "entry_rail_leg_faults", None)
-                anchor = "el('span', 'entry-leg-line', l.leg_words || '')"
+                anchor = "const put = el('button', 'entry-put', m.words || '');"
                 js = (Path(_board.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
                 if scan is None:
                     missed.append("the gate does not read what the entry rail draws a taken "
@@ -12690,8 +12695,8 @@ def plant_a_90_percent_leg_at_91_cents_shown_as_a_pick() -> Result:
                 elif scan(js):
                     missed.append(f"the shipped entry rail is named: {scan(js)[:1]}")
                 else:
-                    put_back = js.replace(anchor,
-                                          "el('span', 'entry-leg-line', l.line_words || '')")
+                    put_back = js.replace(
+                        anchor, "const put = el('button', 'entry-put', m.line_words || '');")
                     if not [f for f in scan(put_back) if "`line_words`" in f]:
                         missed.append("the rail's row put back to the question's own words "
                                       "passed the scan")
@@ -12908,15 +12913,19 @@ def plant_a_breakeven_from_an_untyped_multiplier() -> Result:
                 # THE ENTRY RAIL'S PAYOUT FILLED ONLY INTO AN EMPTY FIELD (the
                 # prover of ruling C, 2026-10-06): the 2-pick's typed payout
                 # stayed when a third leg was taken, and the verdict read a
-                # 3-leg entry at a payout nobody typed for it.
+                # 3-leg entry at a payout nobody typed for it. FROM THE ENTRY
+                # CHECK'S STEP 1 (2026-10-07; readings (e) and (f)) the rail is
+                # the entry check and fills the payout last typed for the
+                # entry's app, type and size, offered and never confirmed: the
+                # same defect is its fill put back to an empty field only.
                 scan = getattr(audit, "entry_rail_leg_faults", None)
-                anchor = "if (!pays.value || pays.dataset.filled) {"
+                anchor = "if (!entryPayoutEmpty() && !entry.filled) return;"
                 js = (Path(_board.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
                 if scan is None or anchor not in js:
                     missed.append("the entry rail keeps a payout it filled in for another "
                                   "number of legs, and the gate does not read it")
                 else:
-                    put_back = js.replace(anchor, "if (!pays.value) {")
+                    put_back = js.replace(anchor, "if (!entryPayoutEmpty()) return;")
                     if not [f for f in scan(put_back) if "only into an empty field" in f]:
                         missed.append("the rail's payout filled only into an empty field "
                                       "passed the scan")
@@ -13808,6 +13817,407 @@ def plant_an_ungated_game_market_drawn_as_a_pick() -> Result:
             _coverage.priceable = saved
             conn.close()
     return _b_result(violation, missed, first)
+
+
+# ---------------------------------------------------------------------------
+# THE ENTRY CHECK, STEP 1 (GRIDIRON_ENTRY_CHECK; the brief of 2026-09-30 with
+# ruling D of 2026-10-05; built 2026-10-07): "Plantings: a wrong break-even, a
+# boost applied twice, an unflagged same-game pair" -- step 1's three -- and
+# the colour reading (h) gives, and LAW 5's forbidden half in the check's own
+# code: "Gridiron never logs in to, reads, scrapes or calls any pick'em app,
+# holds no credential for one, never places or edits an entry."
+# ---------------------------------------------------------------------------
+
+LAW_ENTRY_CHECK = "THE ENTRY CHECK, STEP 1: THE ARITHMETIC OF AN ENTRY THE OPERATOR TYPED"
+_EC_CHECK = "check_the_entry_check_is_its_own_arithmetic"
+_EC_GUARD = "audit.entry_check_arithmetic_faults"
+_EC_REACH_CHECK = "check_the_entry_check_reaches_no_app"
+
+
+def _ec_modules():
+    """`gridiron.entry_check` and `gridiron.entry_math`, or (None, None) on a
+    release that has no entry check (5b71887 and every one before it)."""
+    try:
+        from gridiron import entry_check, entry_math
+    except ImportError:
+        return None, None
+    return entry_check, entry_math
+
+
+def _ec_swap(module, name: str, value):
+    """Put `value` in `module.name` and hand back what puts it back."""
+    real = getattr(module, name)
+    setattr(module, name, value)
+    return lambda: setattr(module, name, real)
+
+
+def _ec_shipped_clean(missed: list) -> bool:
+    """The shipped entry check exists, the gate has its check, and the
+    shipped code passes it -- or the planting says which is missing."""
+    ec, em = _ec_modules()
+    if ec is None:
+        missed.append("there is no entry check on this release: nothing works out an "
+                      "entry's break-even, its return at coin flips, a promo or the legs "
+                      "in one game from what the operator typed")
+        return False
+    scan = getattr(audit, "entry_check_arithmetic_faults", None)
+    if scan is None:
+        missed.append("the gate has no check of the entry check's arithmetic")
+        return False
+    faults = scan()
+    if faults:
+        missed.append(f"the shipped entry check is named: {faults[:2]}")
+        return False
+    return True
+
+
+def _ec_planted(forms: dict, want: str, missed: list) -> str | None:
+    """Each form plants (handing back its undo); the gate's check of the
+    arithmetic must name it in a fault holding `want`."""
+    first = None
+    for what, plant in forms.items():
+        undo = plant()
+        try:
+            faults = audit.entry_check_arithmetic_faults()
+        finally:
+            undo()
+        hit = [f for f in faults if want in f]
+        if not hit:
+            missed.append(f"{what} passed the check: {faults[:2]}")
+        else:
+            first = first or f"{what}: {hit[0]}"
+    return first
+
+
+def _ec_result(violation: str, missed: list, first, *, check: str = _EC_CHECK,
+               guard: str = _EC_GUARD) -> Result:
+    if not _step_2_calls(check):
+        missed.append(f"the gate's step 2 does not call `audit.{check}`")
+    if missed:
+        return Result(LAW_ENTRY_CHECK, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_ENTRY_CHECK, violation, guard, True, first or "")
+
+
+def plant_a_wrong_breakeven() -> Result:
+    """THE BRIEF'S FIRST PLANTING: "a wrong break-even". Break-even per leg is
+    M^(-1/N) for a power entry and, for flex, the chance at which the typed
+    table returns its cost with the legs independent -- from the payout the
+    operator typed alone (ruling D: "break-even comes from that payout only")
+    and only once he has confirmed it (reading (e)). Planted four ways on the
+    shipped check: the power break-even read as one over the payout, the flex
+    table solved as if it were a power entry at its top payout, a payout the
+    operator did not confirm worked out anyway, and a goblin leg cutting the
+    payout the break-even is read from -- each named by the gate's check of
+    the worked examples (a 2-leg power entry at 3x is 57.74% a leg, a 5-leg
+    flex table paying 10x, 2x and 0.4x is 54.25%), and step 2 making the call.
+
+    AS RELEASED (5b71887): there is no entry check -- the entry rail read each
+    taken leg at the model's chance on the venue's main line against a power
+    payout, and nothing worked out a flex table, a typed entry or its
+    confirmation -- and no check.
+    """
+    violation = "a wrong break-even"
+    missed: list[str] = []
+    first = None
+    if _ec_shipped_clean(missed):
+        ec, em = _ec_modules()
+        real_read = ec.read_form
+
+        def confirmed_anyway(body):
+            return dict(real_read(body), confirmed=True)
+
+        def goblin_cuts_the_payout(body):
+            form = real_read(body)
+            if any(leg["kind"] == "goblin" for leg in form["legs"]) and form["payout"].get(
+                    "multiplier") is not None:
+                form = dict(form, payout={"multiplier": form["payout"]["multiplier"] * 0.8})
+            return form
+
+        first = _ec_planted({
+            "the power break-even read as one over the payout":
+                lambda: _ec_swap(em, "power_breakeven", lambda m, n: 1.0 / float(m)),
+            "the flex table solved as a power entry at its top payout":
+                lambda: _ec_swap(em, "flex_breakeven",
+                                 lambda t, n: max(float(v) for v in t.values()) ** (-1.0 / n)),
+            "a goblin leg cutting the payout the break-even is read from":
+                lambda: _ec_swap(ec, "read_form", goblin_cuts_the_payout),
+        }, "break-even per leg", missed)
+        first = _ec_planted({
+            "a payout the operator did not confirm worked out anyway":
+                lambda: _ec_swap(ec, "read_form", confirmed_anyway),
+        }, "did not confirm", missed) or first
+    return _ec_result(violation, missed, first)
+
+
+def plant_a_boost_applied_twice() -> Result:
+    """THE BRIEF'S SECOND PLANTING: "a boost applied twice". A promo -- the
+    app's raised payout, or a share of the winnings added with or without a
+    cap -- is applied ONCE, to the payout the operator typed, and what it adds
+    is the return at coin flips with it less the return without it. Planted
+    two ways: the profit share added to the payout it had already raised (the
+    20% promo on 5x capped at 5 units on a 10-unit entry makes 5.5x, and
+    applied twice 6x), and the app's raised payout raised again by its own
+    rise (3x to 3.5x read as 4x) -- each named by the gate's check of the
+    worked examples, and step 2 making the call.
+
+    AS RELEASED (5b71887): no promo is read anywhere, and there is no check.
+    """
+    violation = "a boost applied twice"
+    missed: list[str] = []
+    first = None
+    if _ec_shipped_clean(missed):
+        ec, em = _ec_modules()
+        real_promo, real_read = em.with_a_profit_promo, ec.read_form
+
+        def twice(payout, **kw):
+            return real_promo(real_promo(payout, **kw), **kw)
+
+        def raised_by_its_rise_again(body):
+            form = real_read(body)
+            promo = form["promo"]
+            if promo["kind"] == "raised" and form["payout"].get("multiplier") is not None:
+                rise = promo["payout"]["multiplier"] - form["payout"]["multiplier"]
+                form = dict(form, promo=dict(promo, payout={
+                    "multiplier": promo["payout"]["multiplier"] + rise}))
+            return form
+
+        first = _ec_planted({
+            "the profit share added to the payout it had already raised":
+                lambda: _ec_swap(em, "with_a_profit_promo", twice),
+            "the app's raised payout raised again by its own rise":
+                lambda: _ec_swap(ec, "read_form", raised_by_its_rise_again),
+        }, "with the promo", missed)
+    return _ec_result(violation, missed, first)
+
+
+def plant_an_unflagged_same_game_pair() -> Result:
+    """THE BRIEF'S THIRD PLANTING: "an unflagged same-game pair". Two legs on
+    players in one NFL game are flagged ("these legs move together; the math
+    assumes they don't"), placed from the record's own schedule and game
+    stats when the typed player and club can be matched -- never guessed; a
+    leg the record cannot place says so, and the flag says it could not check
+    it (reading (d)). Planted four ways: the flag never raised, two clubs of
+    one game told apart (a Green Bay leg and a Detroit leg), a traded player
+    placed with the club he left, and a leg the record cannot place guessed
+    into the first game to come -- each named by the gate's check of the
+    worked examples' one-game fixtures, and step 2 making the call. AND A
+    FIFTH FROM ITS PROVER (2026-10-07): the placement as handed, each leg in
+    its club's next dated game whatever the club's latest begun game or a
+    game with no start time says -- two legs of a game past its listed start
+    and not yet over, or of one with no start time yet, put in two later
+    games and said to share none (escaping on the change as handed, whose
+    gate passed it, and caught here).
+
+    AS RELEASED (5b71887): no leg of an entry is placed in a game, nothing is
+    flagged, and there is no check.
+    """
+    violation = "an unflagged same-game pair"
+    missed: list[str] = []
+    first = None
+    if _ec_shipped_clean(missed):
+        ec, em = _ec_modules()
+        real_place, real_players = ec.game_of_leg, ec._players_of_season
+
+        def by_club(conn, leg, **kw):
+            got = real_place(conn, leg, **kw)
+            if got["game"] is None:
+                return got
+            return dict(got, game=dict(got["game"], id=f"{got['game']['id']}:{leg['club']}"))
+
+        def guessed(conn, leg, **kw):
+            got = real_place(conn, leg, **kw)
+            if got["game"] is None and kw.get("games"):
+                return {"game": kw["games"][0], "why": None}
+            return got
+
+        def where_he_began(conn, season, cache):
+            out = {}
+            for r in conn.execute(
+                    "SELECT player_id, player_name, team, week FROM player_week_stats"
+                    " WHERE season = ? ORDER BY week DESC", (season,)):
+                out.setdefault(ec.normalise(r["player_name"]), {})[r["player_id"]] = r["team"]
+            return out
+
+        first = _ec_planted({
+            "the one-game flag never raised":
+                lambda: _ec_swap(em, "one_game_groups", lambda games: []),
+            "two clubs of one game told apart":
+                lambda: _ec_swap(ec, "game_of_leg", by_club),
+            "a traded player placed with the club he left":
+                lambda: _ec_swap(ec, "_players_of_season", where_he_began),
+        }, "in one game", missed)
+        # FROM THE PROVER (2026-10-07): the placement as handed -- each leg in
+        # its club's next DATED game still to come, whatever its club's latest
+        # begun game or a game with no start time says -- put a Minnesota leg
+        # and a Chicago leg of one game past its listed start (an NFL game is
+        # 'scheduled' on the record until a refresh writes its result) in two
+        # games of the next week, and said "No two legs are in one game".
+        def next_dated_game_whatever(conn, leg, **kw):
+            return real_place(conn, leg, **dict(kw, begun=({}, {})))
+
+        first = _ec_planted({
+            "a leg the record cannot place guessed into the first game to come":
+                lambda: _ec_swap(ec, "game_of_leg", guessed),
+            "two legs of a game past its start, or with no start time yet, put in "
+            "their clubs' next dated games":
+                lambda: _ec_swap(ec, "game_of_leg", next_dated_game_whatever),
+        }, "never guessed", missed) or first
+        if real_players is not ec._players_of_season or real_place is not ec.game_of_leg:
+            missed.append("a planted door was left in place")
+    return _ec_result(violation, missed, first)
+
+
+def plant_an_entry_outlined_where_reading_h_gives_none() -> Result:
+    """THE COLOUR, READING (h) (2026-10-07): "Colour law: green outline
+    clears, red outline costs" -- at coin flips, with no model, an entry
+    CLEARS only where every leg's break-even is three points or more under an
+    even chance (B.2), and COSTS where its return per unit at coin flips is
+    below zero; between, the numbers and no outline. Planted four ways: the
+    2-leg entry at 4.5x -- 2.86 points under the bar, the brief's own "number
+    with no outline" -- outlined green for returning more than it costs; an
+    entry returning exactly its cost (4x on two legs) outlined red; the bar
+    read at a tenth, so 2.96 points clears; and the page putting the green
+    outline on by name rather than the server's verdict -- each named, and
+    step 2 making the call.
+
+    AS RELEASED (5b71887): the rail's verdict outlined an entry from the
+    model's chance on each leg's main line, never at coin flips, and there is
+    no check of the entry check's outline.
+    """
+    violation = "an entry outlined where reading (h) gives no outline"
+    missed: list[str] = []
+    first = None
+    if _ec_shipped_clean(missed):
+        ec, em = _ec_modules()
+
+        class _Bar:
+            def __init__(self, rule):
+                self.clears_the_pick_bar = rule
+
+        first = _ec_planted({
+            "an entry returning more than it costs outlined green whatever its legs":
+                lambda: _ec_swap(ec, "picks", _Bar(lambda e: e is not None and e > 0.0)),
+            "an entry returning exactly its cost outlined red":
+                lambda: _ec_swap(em, "costs", lambda ev: float(ev) <= 0.0),
+            "the bar read at a tenth of a point":
+                lambda: _ec_swap(ec, "picks", _Bar(
+                    lambda e: e is not None and round(e * 100.0, 1) >= 3.0)),
+        }, "the outline is", missed)
+        # THE PAGE'S OUTLINE PUT ON BY NAME, not from the server's verdict.
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        anchor = "const verdict = el('div', 'verdict ' + signalClass(r.signal));"
+        if anchor not in js:
+            missed.append("the entry check's verdict moved; the planting must follow it")
+        else:
+            put_back = js.replace(anchor, "const verdict = el('div', 'verdict sig-clears');")
+            hit = [f for f in audit.entry_rail_leg_faults(put_back) if "outline" in f]
+            if not hit:
+                missed.append("the page's green outline put on by name passed the scan")
+            else:
+                first = first or f"the page's green outline put on by name: {hit[0]}"
+    return _ec_result(violation, missed, first)
+
+
+def plant_a_pickem_app_reached_from_the_entry_check() -> Result:
+    """LAW 5'S FORBIDDEN HALF IN THE ENTRY CHECK'S OWN CODE (the brief, 2026-09-
+    30: "Gridiron never logs in to, reads, scrapes or calls any pick'em app,
+    holds no credential for one, never places or edits an entry"). Planted in
+    a copy of the package seven ways: a pick'em app's address in the check, a
+    `urllib` call out, a feed reader imported, the page's fetch sent to an
+    app's address, a credential named for Underdog, a function that would
+    submit an entry, and an entry written to the record -- the first four and
+    the last named by `audit.entry_check_reach_faults`, the credential by
+    `check_no_venue_credentials` and the order path by `check_no_order_path`
+    (both now knowing Underdog and Chalkboard, and an entry's verbs), and step
+    2 making the call.
+
+    AS RELEASED (5b71887): no scan reads an entry check, Underdog and
+    Chalkboard were no venue to the credential scan, and placing or editing
+    an entry was no order path to it.
+    """
+    import shutil as _shutil
+
+    violation = "a pick'em app's address or an outbound call in the entry check"
+    missed: list[str] = []
+    first = None
+    scan = getattr(audit, "entry_check_reach_faults", None)
+    if scan is None:
+        missed.append("the gate has no scan of what the entry check reaches")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        _shutil.copytree(config.PACKAGE_ROOT, root,
+                         ignore=_shutil.ignore_patterns("__pycache__", "*.db", "fonts"))
+        module = root / "entry_check.py"
+        shipped = module.read_text(encoding="utf-8") if module.exists() else ""
+        no_env = Path(tmp) / "no.env"
+        if scan is not None and scan(root=root):
+            missed.append(f"the shipped entry check is named: {scan(root=root)[:2]}")
+
+        def planted(code: str):
+            module.write_text(shipped + chr(10) + "# PLANTED VIOLATION" + chr(10) + code,
+                              encoding="utf-8")
+
+        def reach(what: str, code: str, want: str) -> None:
+            nonlocal first
+            planted(code)
+            try:
+                hit = [f for f in (scan(root=root) if scan else []) if want in f]
+            finally:
+                module.write_text(shipped, encoding="utf-8")
+            if not hit:
+                missed.append(f"{what} passed the scan")
+            else:
+                first = first or f"{what}: {hit[0]}"
+
+        reach("a pick'em app's address in the entry check",
+              "APP_PROJECTIONS = 'https://api.prizepicks.com/projections'" + chr(10),
+              "names an address")
+        reach("a urllib call out of the entry check",
+              "import urllib.request" + chr(10) + "def _read(url):" + chr(10)
+              + "    return urllib.request.urlopen(url).read()" + chr(10),
+              "calls urlopen")
+        reach("a feed reader imported into the entry check",
+              "from .market import sources as _feed" + chr(10), "imports gridiron.market")
+        reach("an entry written to the record by the entry check",
+              "def _keep(conn, legs):" + chr(10)
+              + "    conn.execute('INSERT INTO picks_taken (prediction_id, taken_utc)"
+              + " VALUES (?, ?)', legs)" + chr(10),
+              "hands SQLite a write")
+        # THE PAGE'S FETCH SENT TO AN APP
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        anchor = "const res = await fetch('/api/entry-check', {"
+        if scan is not None:
+            if anchor not in js:
+                missed.append("the entry check's fetch moved; the planting must follow it")
+            else:
+                put_back = js.replace(
+                    anchor, "const res = await fetch('https://api.underdogfantasy.com/v1/entries', {")
+                hit = [f for f in scan(app_js=put_back) if "names an address" in f]
+                if not hit or not [f for f in scan(app_js=put_back) if "fetches" in f]:
+                    missed.append("the page's fetch sent to an app passed the scan")
+                else:
+                    first = first or f"the page's fetch sent to an app: {hit[0]}"
+        # A CREDENTIAL NAMED FOR AN APP, AND AN ENTRY SUBMITTED
+        planted("underdog_session_cookie = ''" + chr(10))
+        try:
+            audit.check_no_venue_credentials(root=root, env_file=no_env)
+            missed.append("a credential named for Underdog in the entry check passed "
+                          "`check_no_venue_credentials`")
+        except audit.LawViolation as exc:
+            first = first or str(exc).splitlines()[-1]
+        finally:
+            module.write_text(shipped, encoding="utf-8")
+        planted("def submit_entry(legs):" + chr(10) + "    return legs" + chr(10))
+        try:
+            audit.check_no_order_path(root=root)
+            missed.append("a function submitting an entry passed `check_no_order_path`")
+        except audit.LawViolation as exc:
+            first = first or str(exc).splitlines()[-1]
+        finally:
+            module.write_text(shipped, encoding="utf-8")
+    return _ec_result(violation, missed, first, check=_EC_REACH_CHECK,
+                      guard="audit.entry_check_reach_faults")
 
 
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
@@ -27586,6 +27996,16 @@ def main() -> int:
     results.append(plant_a_priced_row_without_its_multiplier())
     results.append(plant_a_slate_with_nothing_clearing_filled_with_picks())
     results.append(plant_an_ungated_game_market_drawn_as_a_pick())
+    # THE ENTRY CHECK, STEP 1 (GRIDIRON_ENTRY_CHECK, the brief of 2026-09-30
+    # with ruling D of 2026-10-05; built 2026-10-07): "Plantings: a wrong
+    # break-even, a boost applied twice, an unflagged same-game pair" -- and
+    # the colour reading (h) gives, and LAW 5's forbidden half in the check's
+    # own code.
+    results.append(plant_a_wrong_breakeven())
+    results.append(plant_a_boost_applied_twice())
+    results.append(plant_an_unflagged_same_game_pair())
+    results.append(plant_an_entry_outlined_where_reading_h_gives_none())
+    results.append(plant_a_pickem_app_reached_from_the_entry_check())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

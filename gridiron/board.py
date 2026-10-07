@@ -1349,6 +1349,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
                       "n": sum(1 for t in tiles if t["family"] == family)})
     upcoming_legs = [t for t in tiles if t["state"] == "upcoming"]
     missing = [p["legs"] for p in payouts if p["multiple"] is None]
+    from . import entry_check as _entry_check
 
     labels = language.board_labels()
     # THE QUESTIONS RESULTS SHOWS AS SETTLED, BY ID (the prover of the board
@@ -1428,9 +1429,15 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
                 "empty_words": ladder_words["empty"] if not ladder_rows else None,
             },
             "app_line_words": language.APP_LINE_WORDS,
-            "pick_bar": config.PICK_MIN_EDGE,
             "note": language.props_board_note(),
             "empty_words": language.props_empty_words(sport_label) if not tiles else None,
-            "entry": language.entry_words(),
+            # CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07; reading
+            # (f)): the entry rail grown into the brief's form -- one
+            # calculator. Its words, choices, clubs, the props the operator
+            # marked and the payouts last typed; the arithmetic is the check's
+            # own route's. Until this date the rail held `entry` (its words)
+            # and `pick_bar` (B's bar for its verdict at the model's chance on
+            # each leg's main line), both gone with that verdict.
+            "entry_check": _entry_check.panel(conn, sport=sport, tiles=tiles),
         },
     }

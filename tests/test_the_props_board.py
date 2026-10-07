@@ -19,6 +19,7 @@ none, and these worlds stand in for the day one is.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -264,11 +265,16 @@ def test_the_entry_rail_names_a_leg_by_its_main_lines_contract(conn, monkeypatch
     _tile(planted["board"]["props"], goff)["leg_words"] = unlisted["question"]
     assert any("never by the line the record asked" in f for f in _faults(conn, planted))
     # AND THE RAIL'S ROW PUT BACK TO THE QUESTION'S WORDS: the gate names it.
+    # FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; reading (f)) THE RAIL IS THE
+    # ENTRY CHECK, and a prop the operator marked is offered under its player
+    # and stat and put in the entry with no line (the line is the app's, his
+    # to type): the same defect is the marked prop's button drawn under its
+    # question's own line, which the gate names the same way.
     from pathlib import Path
     js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
     assert audit.entry_rail_leg_faults(js) == []
-    put_back = js.replace("el('span', 'entry-leg-line', l.leg_words || '')",
-                          "el('span', 'entry-leg-line', l.line_words || '')")
+    put_back = js.replace("const put = el('button', 'entry-put', m.words || '');",
+                          "const put = el('button', 'entry-put', m.line_words || '');")
     assert put_back != js
     assert any("`line_words`" in f for f in audit.entry_rail_leg_faults(put_back))
     with pytest.raises(audit.LawViolation):
@@ -532,6 +538,11 @@ def test_the_entry_rail_draws_a_taken_leg_under_its_main_lines_words(page, monke
             if tile["state"] == "upcoming":
                 tile["taken"] = True
                 break
+        # THE ENTRY CHECK'S PANEL READS THE TILES AS MARKED (2026-10-07): the
+        # build drew it before this marked one, so it is drawn again.
+        from gridiron import entry_check
+        out["props"]["entry_check"] = entry_check.panel(
+            args[0], sport=kwargs["sport"], tiles=out["props"]["tiles"])
         return out
 
     monkeypatch.setattr(board, "_venue_prop_ladders", off_the_own_line)
@@ -541,29 +552,60 @@ def test_the_entry_rail_draws_a_taken_leg_under_its_main_lines_words(page, monke
     page.set_viewport_size({"width": 1440, "height": 900})
     with wait_for_the_redraw_it_starts(page, "props-tiles"):
         page.evaluate("location.hash = '#/props'")
-    page.wait_for_selector("#entry-legs .entry-leg", timeout=15000)
+    # FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; reading (f)) THE RAIL IS THE
+    # ENTRY CHECK: the operator types each leg at the app's line, and a prop
+    # he marked is offered under its player and stat and put in the entry with
+    # its player, club and stat and NO line -- no line is the app's but the
+    # one he types. Until that date this test held the rail's row to the main
+    # line's words; it holds now that neither the main line's words nor the
+    # question's own line nor any chance reaches the rail.
+    page.wait_for_selector("#entry-marked .entry-put", timeout=15000)
+    page.click("#entry-marked .entry-put")
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('#entry-legs .entry-leg input')]"
+        ".some(i => i.value.trim())", timeout=10000)
     got = page.evaluate("""() => {
         const tile = document.querySelector('#props-tiles .prop.q-taken');
         const rows = tile ? [...tile.querySelectorAll('.leg-row')] : [];
-        return { rail: [...document.querySelectorAll('#entry-legs .entry-leg-line')]
-                         .map(e => e.textContent),
+        const leg = document.querySelector('#entry-legs .entry-leg');
+        return { put: [...document.querySelectorAll('#entry-marked .entry-put')]
+                        .map(e => e.textContent),
+                 values: [...leg.querySelectorAll('input, select')].map(i => i.value),
+                 rail: document.getElementById('entry-rail').textContent,
                  main: rows.length > 1 ? rows[1].querySelector('.leg-words').textContent : null,
                  own: tile ? tile.querySelector('.prop-own').textContent : null }; }""")
     assert got["main"] and got["own"], got
-    assert got["rail"] == [got["main"]], got
-    assert not got["own"].endswith(got["rail"][0]) and got["rail"][0] not in got["own"], got
+    assert len(got["put"]) == 1 and " · " in got["put"][0], got
+    name, stat = got["put"][0].split(" · ")
+    assert name in got["values"] and stat in got["values"], got
+    # The leg's line, and the line before a discount, are left for him to type.
+    numbers = page.evaluate("[...document.querySelector('#entry-legs .entry-leg')"
+                            ".querySelectorAll('input[type=number]')].map(i => i.value)")
+    assert numbers == ["", ""], numbers
+    assert got["main"] not in got["rail"] and got["own"] not in got["rail"], got
+    assert not re.search(r"\d+(\.\d)?%", got["rail"]), "a chance reached the rail"
     assert not page.page_errors, page.page_errors
 
 
 def test_the_entry_rails_filled_payout_follows_the_legs_taken(page, monkeypatch):
     """THE PROVER OF RULING C (2026-10-06), in a real Chromium: the payout the
-    page fills into the entry rail is the one typed for the number of legs
-    taken, and follows it. As built it was filled only into an empty field,
-    so the 2-pick's 3x stayed when a third leg was taken and the verdict read
-    a 3-leg entry at it. One the operator types in the field stays his. In
-    the test server's process only: the payouts are read as typed (3x and
-    6x) and the first legs still to start as taken, so the shared world is
-    not written."""
+    page fills into the entry rail is the one typed for the entry it holds,
+    and follows it. As built it was filled only into an empty field, so the
+    2-pick's 3x stayed when a third leg was taken and the verdict read a
+    3-leg entry at it. One the operator types in the field stays his.
+
+    FROM THE ENTRY CHECK'S STEP 1 (2026-10-07; readings (e) and (f)) THE RAIL
+    IS THE ENTRY CHECK, and what the page fills in is the payout last typed
+    and confirmed for THIS app, entry type and number of legs, offered and
+    never ticked by the page ("offered as a default and must be confirmed").
+    Until that date the field followed the legs taken from the tiles and the
+    settings' two power payouts; it follows the entry's own app, type and
+    size now, and the confirming box is the operator's alone. In the test
+    server's process only: the payouts last typed are read as two rows
+    (PrizePicks 2-pick power 3x, 3-pick power 6x), and the first legs still
+    to start as taken, so the shared world is not written."""
+    from gridiron import entry_check
+
     taken = {"n": 2}
     real_reader, real_build = board.typed_payouts, board.build
 
@@ -588,33 +630,59 @@ def test_the_entry_rails_filled_payout_follows_the_legs_taken(page, monkeypatch)
                                         "ticker": "main"}]
                  for c in cards if c.get("line_asked") is not None}, None)
 
+    def last_typed(conn):
+        return [{"app": "prizepicks", "entry_type": "power", "legs": legs,
+                 "fields": {"multiplier": value}, "typed_utc": "2026-10-06T12:00:00Z",
+                 "words": f"Last typed for PrizePicks {legs}-pick power: {value}x."}
+                for legs, value in ((2, "3"), (3, "6"))]
+
     monkeypatch.setattr(board, "typed_payouts", reader)
     monkeypatch.setattr(board, "build", some_taken)
     monkeypatch.setattr(board, "_venue_prop_ladders", at_each_own_line)
+    monkeypatch.setattr(entry_check, "remembered", last_typed)
     from tests.conftest import wait_for_the_redraw_it_starts
-
-    def redraw(n):
-        taken["n"] = n
-        with wait_for_the_redraw_it_starts(page, "props-tiles"):
-            page.click("#props-chips .chip-btn[data-key=''] >> nth=0")
-        page.wait_for_function(
-            "(n) => document.querySelectorAll('#entry-legs .entry-leg').length === n",
-            arg=n, timeout=15000)
-        return page.input_value("#entry-pays")
 
     page.set_viewport_size({"width": 1440, "height": 900})
     with wait_for_the_redraw_it_starts(page, "props-tiles"):
         page.evaluate("location.hash = '#/props'")
     assert page.evaluate("document.querySelectorAll('#props-tiles .prop').length") >= 3
-    assert redraw(2) == "3"
     # A TAKEN PICK KEEPS ITS OUTLINE (the prover, 2026-10-06): `.q-taken`
     # took it off a prop tile as built.
     outlines = page.evaluate(
         "[...document.querySelectorAll('#props-tiles .prop.q-taken.sig-clears')]"
         ".map(t => getComputedStyle(t).boxShadow)")
     assert outlines and all("1.5px" in s for s in outlines), outlines
-    assert redraw(3) == "6", "the 2-pick's payout stayed in the field for a 3-leg entry"
-    assert redraw(1) == ""
-    page.fill("#entry-pays", "5")
-    assert redraw(2) == "5", "a payout the operator typed in the field was replaced"
+
+    payout = "#entry-payout .entry-pays-rows input"
+    box = "#entry-payout .entry-confirm input"
+
+    def legs(n):
+        page.wait_for_function(
+            "(n) => document.querySelectorAll('#entry-legs .entry-leg').length === n",
+            arg=n, timeout=15000)
+        return page.input_value(payout)
+
+    # NO APP IS CHOSEN FOR HIM, so nothing is filled until he chooses one.
+    page.wait_for_selector(payout, timeout=15000)
+    assert legs(2) == ""
+    page.select_option("#entry-form .entry-head-row select >> nth=0", "prizepicks")
+    assert legs(2) == "3"
+    assert not page.is_checked(box), "the page ticked the box for him"
+    assert "Last typed for PrizePicks 2-pick power" in page.text_content("#entry-offered")
+    page.click("#entry-more")
+    assert legs(3) == "6", "the 2-pick's payout stayed in the field for a 3-leg entry"
+    assert not page.is_checked(box)
+    page.click("#entry-more")
+    assert legs(4) == ""
+    page.click("#entry-legs .entry-leg >> nth=3 >> .entry-remove")
+    assert legs(3) == "6"
+    # A TICK FOR ONE OFFER IS NOT A TICK FOR THE NEXT.
+    page.check(box)
+    page.click("#entry-legs .entry-leg >> nth=2 >> .entry-remove")
+    assert legs(2) == "3" and not page.is_checked(box)
+    # ONE HE TYPES STAYS HIS, whatever the size, and is his to confirm.
+    page.fill(payout, "5")
+    page.click("#entry-more")
+    assert legs(3) == "5", "a payout the operator typed in the field was replaced"
+    assert not page.is_checked(box)
     assert not page.page_errors, page.page_errors

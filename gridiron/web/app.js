@@ -2113,132 +2113,398 @@ const Gridiron = (function () {
     host.hidden = false;
   }
 
-  // THE ENTRY RAIL. Legs are the props marked taken on this slate; the
-  // operator types what the venue pays; three readings and the floor follow
-  // from arithmetic on numbers the payload already carries. Labels are the
-  // server's; the numbers are formatted here and nothing is composed.
-  // FROM RULING C (2026-10-05): a leg's chance is the model's chance at its
-  // main line -- about the app's line -- and never its own question's at
-  // another line; a leg with none leaves the entry unread.
-  function entryLines(legs, pays, props, labels) {
-    const host = document.getElementById('entry-lines');
-    if (!host) return;
-    host.innerHTML = '';
-    const words = props.entry || {};
-    const line = (label, value, tipWords) => {
-      const row = el('div', 'entry-line');
-      row.appendChild(el('span', 'entry-label', label));
-      row.appendChild(tip(el('span', 'entry-value', value), tipWords));
-      host.appendChild(row);
+  // CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, the arithmetic, no model;
+  // the brief of 2026-09-30 with ruling D of 2026-10-05; built 2026-10-07).
+  // THE ENTRY RAIL, GROWN INTO THE BRIEF'S FORM -- ONE CALCULATOR (reading
+  // (f)): the operator types the entry as the app shows it -- the app, power
+  // or flex, each leg (player, club, stat, line, over or under, standard,
+  // goblin or demon, the line before a discount) and what the app pays for
+  // the whole entry, with a promo if there is one -- and the server answers
+  // (`/api/entry-check`, `entry_check.check`). Until 2026-10-07 the rail
+  // listed the props marked taken and read them at the model's chance on
+  // each leg's MAIN line -- the venue's, never the app's line -- in three
+  // readings and a verdict of its own; those are gone, and a marked prop is
+  // put in the entry with its player, club and stat, its line left to type.
+  // PLACED, NEVER COMPOSED: every word is the server's, and the outline is
+  // the server's verdict (`signalClass`). Nothing is worked out here.
+  //
+  // THE ENTRY OUTLIVES A REDRAW: the Props page redraws on every chip and
+  // sort, and the entry the operator is typing is kept here, not in nodes.
+  const entry = {
+    app: '', type: 'power', legs: [],
+    payout: { multiplier: '', table: {} },
+    // A PAYOUT THE PAGE FILLED IN is the last one typed for this app, entry
+    // type and size, offered and NOT confirmed (reading (e)); `filled` says
+    // the page put it there, and `offered` which row it was.
+    filled: false, offered: null, confirmed: false,
+    promo: { kind: 'none', payout: { multiplier: '', table: {} },
+             percent: '', cap: '', units: '' },
+    result: null, changed: false,
+  };
+  let entryPanel = null;
+
+  function blankLeg() {
+    return { player: '', club: '', stat: '', line: '', side: 'over',
+             kind: 'standard', original: '' };
+  }
+
+  function entryPayoutEmpty() {
+    if (entry.type === 'power') return !String(entry.payout.multiplier || '').trim();
+    return !Object.values(entry.payout.table || {}).some(v => String(v || '').trim());
+  }
+
+  // THE PAYOUT LAST TYPED FOR THIS APP, ENTRY TYPE AND SIZE (reading (e)),
+  // filled in and never confirmed by the page. A VALUE THE PAGE FILLED IN
+  // FOLLOWS THE ENTRY (the prover of ruling C's rule, 2026-10-06, for the
+  // rail's field): a change of app, type or number of legs fills it again,
+  // and one the operator typed stays his. THE SAME OFFER AGAIN KEEPS HIS TICK
+  // (2026-10-07, resumed build): a redraw of the page offers the row already
+  // in the fields, and the box he ticked for it stays as he left it; any
+  // other row is offered unticked.
+  function fillEntryPayout(ec) {
+    if (!entryPayoutEmpty() && !entry.filled) return;
+    const got = (ec.remembered || []).find(r => r.app === entry.app
+      && r.entry_type === entry.type && r.legs === entry.legs.length);
+    const keys = ['app', 'entry_type', 'legs', 'typed_utc'];
+    if (got && entry.filled && entry.offered && keys.every(k => entry.offered[k] === got[k])) return;
+    const fields = got ? got.fields : {};
+    entry.payout = { multiplier: fields.multiplier || '',
+                     table: Object.assign({}, fields.table || {}) };
+    entry.filled = !!got;
+    entry.offered = got || null;
+    entry.confirmed = false;
+  }
+
+  // ANY CHANGE TO THE ENTRY puts the last answer aside -- numbers about
+  // another entry are never left beside this one -- and a change of app,
+  // type or size asks for the payout to be confirmed again: the payout is
+  // the one the app shows for THIS entry.
+  function entryChanged(sized) {
+    if (sized) { entry.confirmed = false; if (entryPanel) fillEntryPayout(entryPanel); }
+    if (entry.result) entry.changed = true;
+  }
+
+  // A FIELD AND ITS LABEL: the label's words name the control for a screen
+  // reader, and a tooltip, where there is one, sits on the words.
+  function entryField(labelWords, control, cls, tipWords) {
+    const label = el('label', 'entry-field' + (cls ? ' ' + cls : ''));
+    label.appendChild(tip(el('span', 'entry-field-label', labelWords || ''), tipWords));
+    label.appendChild(control);
+    return label;
+  }
+
+  function entryInput(value, kind, onInput) {
+    const input = el('input', 'entry-input');
+    input.type = kind === 'text' ? 'text' : 'number';
+    if (kind !== 'text') { input.inputMode = 'decimal'; input.step = 'any'; input.min = '0'; }
+    input.autocomplete = 'off';
+    input.value = value || '';
+    input.oninput = () => onInput(input.value);
+    return input;
+  }
+
+  function entrySelect(options, chosen, onChange) {
+    const select = el('select', 'entry-select');
+    (options || []).forEach(o => {
+      const opt = el('option', null, o.label || '');
+      opt.value = o.key;
+      select.appendChild(opt);
+    });
+    select.value = chosen;
+    select.onchange = () => onChange(select.value);
+    return select;
+  }
+
+  // ONE LEG: what the operator types off the app, each field labelled in the
+  // server's words.
+  function entryLegRow(ec, i) {
+    const words = ec.labels || {};
+    const leg = entry.legs[i];
+    const row = el('fieldset', 'entry-leg');
+    row.appendChild(el('legend', 'entry-leg-name', (ec.leg_labels || [])[i] || ''));
+    const set = (field) => (value) => { leg[field] = value; entryChanged(false); paintEntryResult(); };
+    const player = entryInput(leg.player, 'text', set('player'));
+    row.appendChild(entryField(words.player, player, 'entry-wide'));
+    const clubs = [{ key: '', label: words.club_none || '' }].concat(ec.clubs || []);
+    // A CLUB'S FULL NAME AND A STAT'S WORDS TAKE THE RAIL'S WIDTH, and the
+    // four short fields two to a row (the render of 2026-10-07: at 1300 the
+    // rail is 330px, and a club, "Standard" and "Choose the app" were cut).
+    row.appendChild(entryField(words.club, entrySelect(clubs, leg.club, set('club')), 'entry-wide'));
+    const stat = entryInput(leg.stat, 'text', set('stat'));
+    stat.setAttribute('list', 'entry-stats');
+    row.appendChild(entryField(words.stat, stat, 'entry-wide'));
+    row.appendChild(entryField(words.line, entryInput(leg.line, 'number', set('line')), 'entry-half'));
+    row.appendChild(entryField(words.side, entrySelect(ec.sides, leg.side, set('side')), 'entry-half'));
+    row.appendChild(entryField(words.kind, entrySelect(ec.kinds, leg.kind, set('kind')), 'entry-half'));
+    const original = entryInput(leg.original, 'number', set('original'));
+    row.appendChild(entryField(words.original, original, 'entry-half', words.original_tip));
+    const remove = el('button', 'entry-remove', words.remove || '');
+    remove.type = 'button';
+    remove.disabled = entry.legs.length <= (ec.min_legs || 2);
+    remove.onclick = () => {
+      entry.legs.splice(i, 1);
+      entryChanged(true);
+      drawEntryForm(ec);
     };
-    const n = legs.length;
-    if (!n) return;
-    const known = legs.every(l => l.main_chance !== null && l.main_chance !== undefined);
-    const probs = known ? legs.map(l => l.main_chance) : [];
-    const product = known ? probs.reduce((a, b) => a * b, 1) : null;
-    const perDollar = (x) => (x === null || x === undefined || !isFinite(x))
-      ? ABSENT : signed(x, 2);
-    const be = pays && pays > 1 ? Math.pow(pays, -1 / n) : null;
-    const modelLine = pays && known ? pays * product - 1 : null;
-    // THE VERDICT (ruling c, 2026-09-25): the one place a prop earns its
-    // colour, against the multiple the operator typed, with the thinnest
-    // record among the legs beside it so the glow never stands alone.
-    const verdict = el('div', 'verdict');
-    if (modelLine !== null && be !== null) {
-      // "CLEARS THE BAR" ONLY OF AN ENTRY WHOSE EVERY LEG IS A PICK at this
-      // payout (operator ruling B, 2026-10-05; the brief's "leave its
-      // arithmetic, but it may not say 'pick' below B.2"; built 2026-10-07):
-      // each leg three points or more over the entry's break-even, the bar
-      // the server sends (`pick_bar`). An entry that returns more without
-      // that says so in other words and wears no outline; the arithmetic
-      // beneath is unchanged.
-      const bar = props.pick_bar;
-      const everyLegAPick = typeof bar === 'number'
-        && legs.every(l => l.main_chance - be >= bar - 1e-9);
-      const v = el('div', 'v');
-      if (modelLine > 0 && everyLegAPick) {
-        verdict.classList.add('sig-clears');
-        v.appendChild(el('span', 'v-words', words.verdict_clears));
-      } else if (modelLine > 0) {
-        v.appendChild(el('span', 'v-words', words.verdict_returns));
-      } else {
-        verdict.classList.add('sig-costs');
-        v.appendChild(el('span', 'v-words', words.verdict_short));
-      }
-      v.appendChild(el('b', 'v-mult', num(pays, 2) + 'x'));
-      verdict.appendChild(tip(v, (modelLine > 0 && !everyLegAPick)
-        ? words.verdict_not_every_leg : words.verdict_tip));
-      const thinnest = legs.slice().sort((a, b) => (a.badge_n || 0) - (b.badge_n || 0))[0];
-      if (thinnest) verdict.appendChild(badge(thinnest, labels));
+    row.appendChild(remove);
+    return row;
+  }
+
+  // WHAT THE APP PAYS FOR THIS ENTRY: a power multiplier, or a flex table
+  // row by row, as the app shows it; the last one typed for this app, type
+  // and size offered, and the box saying it is what the app shows -- which
+  // only the operator ticks.
+  function entryPayoutBlock(ec, holder, fieldsFor, rowsWords, powerWords) {
+    const n = entry.legs.length;
+    const block = el('div', 'entry-pays-rows');
+    if (entry.type === 'power') {
+      block.appendChild(entryField(powerWords, entryInput(holder.multiplier, 'number', (v) => {
+        holder.multiplier = v; fieldsFor(); }), 'entry-half'));
     } else {
-      verdict.appendChild(el('div', 'v-untyped', known ? (words.verdict_untyped || '')
-                                                       : (words.verdict_no_chance || '')));
+      ((ec.flex_rows || {})[String(n)] || []).forEach(r => {
+        const key = String(r.right);
+        block.appendChild(entryField(r.label, entryInput((holder.table || {})[key], 'number', (v) => {
+          holder.table[key] = v; fieldsFor(); }), 'entry-half'));
+      });
+      block.appendChild(el('p', 'footnote entry-note-small', rowsWords || ''));
     }
-    host.appendChild(verdict);
-    line(labels.line_model, perDollar(modelLine));
-    let half = null;
-    if (pays && be !== null && known) {
-      const shrunk = probs.map(p => be + (p - be) / 2);
-      half = pays * shrunk.reduce((a, b) => a * b, 1) - 1;
+    return block;
+  }
+
+  function drawEntryPayout(ec) {
+    const host = document.getElementById('entry-payout');
+    if (!host) return;
+    const words = ec.labels || {};
+    host.innerHTML = '';
+    host.appendChild(el('h5', 'entry-sub', words.payout_heading || ''));
+    const confirm = el('input', 'entry-confirm-box');
+    confirm.type = 'checkbox';
+    confirm.checked = entry.confirmed === true;
+    confirm.onchange = () => { entry.confirmed = confirm.checked; entryChanged(false); paintEntryResult(); };
+    host.appendChild(entryPayoutBlock(ec, entry.payout, () => {
+      // A PAYOUT THE OPERATOR TYPES IS HIS, and is confirmed again: the box
+      // spoke of the value that was there.
+      entry.filled = false; entry.offered = null; entry.confirmed = false;
+      confirm.checked = false; entryChanged(false); paintEntryResult();
+      const said = document.getElementById('entry-offered');
+      if (said) said.hidden = true;
+    }, words.payout_flex_note, words.payout_power));
+    const offered = el('p', 'entry-offered', (entry.filled && entry.offered) ? entry.offered.words : '');
+    offered.id = 'entry-offered';
+    offered.hidden = !(entry.filled && entry.offered);
+    host.appendChild(offered);
+    const label = el('label', 'entry-confirm');
+    label.appendChild(confirm);
+    label.appendChild(el('span', 'entry-confirm-words', words.confirm || ''));
+    host.appendChild(label);
+  }
+
+  function drawEntryPromo(ec) {
+    const host = document.getElementById('entry-promo');
+    if (!host) return;
+    const words = ec.labels || {};
+    const promo = entry.promo;
+    host.innerHTML = '';
+    host.appendChild(el('h5', 'entry-sub', words.promo_heading || ''));
+    host.appendChild(entryField(words.promo, entrySelect(ec.promos, promo.kind, (v) => {
+      promo.kind = v; entryChanged(false); drawEntryPromo(ec); paintEntryResult(); }), 'entry-wide entry-promo-kind'));
+    const set = (field) => (value) => { promo[field] = value; entryChanged(false); paintEntryResult(); };
+    if (promo.kind === 'raised') {
+      host.appendChild(entryPayoutBlock(ec, promo.payout, () => { entryChanged(false); paintEntryResult(); },
+                                        words.raised_flex_note, words.raised_power));
+    } else if (promo.kind === 'profit') {
+      host.appendChild(entryField(words.percent, entryInput(promo.percent, 'number', set('percent')), 'entry-half'));
+      host.appendChild(entryField(words.cap, entryInput(promo.cap, 'number', set('cap')),
+                                  'entry-half', words.cap_note));
+      host.appendChild(entryField(words.entry_units, entryInput(promo.units, 'number', set('units')),
+                                  'entry-half', words.entry_units_note));
     }
-    line(labels.line_half, perDollar(half));
-    line(labels.line_kalshi, labels.not_listed || '', words.kalshi_absent);
-    line(labels.line_floor, product ? num(1 / product, 2) + 'x' : ABSENT);
+  }
+
+  function drawEntryForm(ec) {
+    const host = document.getElementById('entry-form');
+    if (!host) return;
+    const words = ec.labels || {};
+    host.innerHTML = '';
+    const head = el('div', 'entry-head-row');
+    // NO APP IS CHOSEN FOR HIM (2026-10-07, resumed build): the payout he
+    // confirms is kept and offered by app.
+    const apps = [{ key: '', label: words.app_none || '' }].concat(ec.apps || []);
+    head.appendChild(entryField(words.app, entrySelect(apps, entry.app, (v) => {
+      entry.app = v; entryChanged(true); drawEntryForm(ec); }), 'entry-two-thirds'));
+    head.appendChild(entryField(words.entry, entrySelect(ec.types, entry.type, (v) => {
+      entry.type = v; entryChanged(true); drawEntryForm(ec); }), 'entry-third'));
+    host.appendChild(head);
+    const stats = el('datalist');
+    stats.id = 'entry-stats';
+    (ec.stats || []).forEach(s => { const o = el('option'); o.value = s; stats.appendChild(o); });
+    host.appendChild(stats);
+    host.appendChild(el('h5', 'entry-sub', words.legs_heading || ''));
+    const legs = el('div', 'entry-legs');
+    legs.id = 'entry-legs';
+    entry.legs.forEach((_, i) => legs.appendChild(entryLegRow(ec, i)));
+    host.appendChild(legs);
+    const more = el('button', 'entry-more', words.more || '');
+    more.type = 'button';
+    more.id = 'entry-more';
+    more.disabled = entry.legs.length >= (ec.max_legs || 8);
+    more.onclick = () => { entry.legs.push(blankLeg()); entryChanged(true); drawEntryForm(ec); };
+    host.appendChild(more);
+    // THE PROPS THE OPERATOR MARKED, each put in the entry with its player,
+    // club and stat and no line -- the line is the app's, and his to type.
+    if ((ec.marked || []).length) {
+      const marked = el('div', 'entry-marked');
+      marked.id = 'entry-marked';
+      marked.appendChild(el('h5', 'entry-sub', words.marked_heading || ''));
+      marked.appendChild(el('p', 'footnote entry-note-small', words.marked_note || ''));
+      ec.marked.forEach(m => {
+        const put = el('button', 'entry-put', m.words || '');
+        put.type = 'button';
+        put.onclick = () => {
+          let at = entry.legs.findIndex(l => !String(l.player || '').trim());
+          if (at < 0) {
+            if (entry.legs.length >= (ec.max_legs || 8)) return;
+            entry.legs.push(blankLeg());
+            at = entry.legs.length - 1;
+          }
+          Object.assign(entry.legs[at], { player: m.player, club: m.club, stat: m.stat });
+          entryChanged(true);
+          drawEntryForm(ec);
+        };
+        marked.appendChild(put);
+      });
+      host.appendChild(marked);
+    }
+    const payout = el('div', 'entry-block');
+    payout.id = 'entry-payout';
+    host.appendChild(payout);
+    const promo = el('div', 'entry-block');
+    promo.id = 'entry-promo';
+    host.appendChild(promo);
+    const check = el('button', 'entry-check', words.check || '');
+    check.type = 'button';
+    check.id = 'entry-check';
+    check.onclick = () => checkEntry(ec).catch(showError);
+    host.appendChild(check);
+    drawEntryPayout(ec);
+    drawEntryPromo(ec);
+    paintEntryResult();
+  }
+
+  // THE ENTRY AS THE SERVER READS IT: every field as typed, and whether the
+  // operator ticked the box -- never the page.
+  function entryBody() {
+    const payoutOf = (holder) => entry.type === 'power'
+      ? { multiplier: holder.multiplier } : { table: Object.assign({}, holder.table) };
+    const promo = entry.promo;
+    const body = {
+      sport: 'nfl', app: entry.app, entry_type: entry.type,
+      legs: entry.legs.map(l => ({ player: l.player, club: l.club, stat: l.stat,
+                                   line: l.line, side: l.side, kind: l.kind,
+                                   original_line: l.original })),
+      payout: payoutOf(entry.payout),
+      payout_confirmed: entry.confirmed === true,
+      promo: { kind: promo.kind },
+    };
+    if (promo.kind === 'raised') body.promo.payout = payoutOf(promo.payout);
+    if (promo.kind === 'profit') {
+      Object.assign(body.promo, { percent: promo.percent, cap_units: promo.cap,
+                                  entry_units: promo.units });
+    }
+    return body;
+  }
+
+  async function checkEntry(ec) {
+    const button = document.getElementById('entry-check');
+    const seq = sportSeq;
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch('/api/entry-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-Gridiron-Form': csrfToken || '' },
+        body: JSON.stringify(entryBody()),
+      });
+      const answer = await res.json();
+      if (stale(seq)) return;
+      entry.result = res.ok ? answer : { refused_words: answer.detail || '' };
+      entry.changed = false;
+      // THE PAYOUTS LAST TYPED, as the check left them: the next fill reads
+      // these.
+      if (res.ok && answer.remembered) ec.remembered = answer.remembered;
+      paintEntryResult();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  // THE ANSWER: reading (h)'s outline on the verdict (green where every
+  // leg's break-even is three points or more under an even chance, red where
+  // the entry returns less than it costs at coin flips, none between), the
+  // lines, the promo converted, the legs in one game, and each leg's game.
+  function paintEntryResult() {
+    const host = document.getElementById('entry-lines');
+    if (!host || !entryPanel) return;
+    const words = entryPanel.labels || {};
+    const r = entry.result;
+    host.innerHTML = '';
+    if (!r) return;
+    if (entry.changed) { host.appendChild(el('p', 'entry-ask', words.changed || '')); return; }
+    if (r.refused_words) { host.appendChild(el('p', 'entry-ask', r.refused_words)); return; }
+    if (r.ask_words) host.appendChild(el('p', 'entry-ask', r.ask_words));
+    if (r.computed) {
+      const verdict = el('div', 'verdict ' + signalClass(r.signal));
+      verdict.appendChild(tip(el('span', 'v-words', r.verdict_words || ''), r.verdict_tip));
+      host.appendChild(verdict);
+      (r.lines || []).forEach(line => {
+        const row = el('div', 'entry-line');
+        row.appendChild(el('span', 'entry-label', line.label || ''));
+        row.appendChild(tip(el('span', 'entry-value', line.value_words || ''), line.tip));
+        host.appendChild(row);
+      });
+      if (r.promo_words) host.appendChild(el('p', 'entry-said', r.promo_words));
+    }
+    if ((r.one_game_words || []).length) {
+      host.appendChild(el('h5', 'entry-sub', words.one_game_heading || ''));
+      r.one_game_words.forEach(w => host.appendChild(el('p', 'entry-said', w)));
+    }
+    (r.legs || []).forEach(l => {
+      const row = el('div', 'entry-read-leg');
+      row.appendChild(el('span', 'entry-read-words', l.words || ''));
+      row.appendChild(el('span', 'entry-read-detail', l.detail_words || ''));
+      row.appendChild(el('span', 'entry-read-game', l.game_words || l.unplaced_words || ''));
+      host.appendChild(row);
+    });
+    if (r.remembered_now_words) host.appendChild(el('p', 'footnote entry-note-small', r.remembered_now_words));
   }
 
   function renderEntryRail(props, labels, after) {
     const rail = document.getElementById('entry-rail');
     const heading = document.getElementById('entry-heading');
-    const legsHost = document.getElementById('entry-legs');
-    const empty = document.getElementById('entry-empty');
-    const paysWords = document.getElementById('entry-pays-words');
-    const pays = document.getElementById('entry-pays');
+    const intro = document.getElementById('entry-intro');
+    const form = document.getElementById('entry-form');
     const note = document.getElementById('entry-note');
-    if (!rail || !legsHost) return;
-    const words = props.entry || {};
-    if (heading) heading.textContent = words.heading || labels.entry || '';
-    if (paysWords) paysWords.textContent = labels.pays || '';
-    if (note) note.textContent = words.note || '';
-    const legs = (props.tiles || []).filter(t => t.taken && t.state === 'upcoming');
-    legsHost.innerHTML = '';
-    // A LEG IS NAMED BY ITS OWN WORDS (the prover of ruling C, 2026-10-06):
-    // the main line's contract, beside the chance at it. Until this date the
-    // row drew the words of the question the record asked at its own line
-    // beside the chance at the main line -- a number under another
-    // contract's words (`audit.entry_rail_leg_faults`).
-    legs.forEach(l => {
-      const row = el('div', 'entry-leg');
-      row.appendChild(el('span', 'entry-leg-line', l.leg_words || ''));
-      row.appendChild(el('span', 'entry-leg-prob',
-        (l.main_chance !== null && l.main_chance !== undefined)
-          ? (l.main_chance_words || '') : (l.main_chance_words || l.main_words || '')));
-      legsHost.appendChild(row);
-    });
-    if (empty) {
-      empty.textContent = legs.length ? '' : (words.empty || '');
-      empty.hidden = !!legs.length;
+    if (!rail || !form) return;
+    const ec = props.entry_check || {};
+    if (heading) heading.textContent = ec.heading || '';
+    if (!ec.open) {
+      // NFL PLAYER PROPS ONLY (scope v1): another sport's page says so.
+      entryPanel = null;
+      if (intro) intro.textContent = ec.closed_words || '';
+      form.innerHTML = '';
+      const lines = document.getElementById('entry-lines');
+      if (lines) lines.innerHTML = '';
+      if (note) note.textContent = '';
+      rail.hidden = false;
+      return;
     }
-    const paint = () => entryLines(legs, parseFloat(pays && pays.value) || null, props, labels);
-    if (pays) {
-      // THE PAYOUT YOU TYPED FOR AN ENTRY OF THIS SIZE, or nothing (operator
-      // ruling C.3, 2026-10-05): until 2026-10-06 the field was filled with
-      // the declared 3x whatever was typed, which drew a verdict from a
-      // payout nobody typed. A VALUE THE PAGE FILLED IN FOLLOWS THE LEGS (the
-      // prover of ruling C, 2026-10-06): as built the 2-pick's payout, filled
-      // in for two legs, stayed in the field when a third was taken, and the
-      // verdict read a 3-leg entry at it. One the operator types stays his.
-      if (!pays.value || pays.dataset.filled) {
-        const typed = ((props.payouts || {}).entries || []).find(
-          e => e.legs === legs.length && e.multiple !== null && e.multiple !== undefined);
-        pays.value = typed ? String(typed.value || '') : '';
-        pays.dataset.filled = 'page';
-      }
-      pays.oninput = () => { delete pays.dataset.filled; paint(); };
-    }
-    paint();
-    // DRAWN NOW THAT IT CAN ACT (2026-09-29): its field has its label and
-    // its lines their words. Hidden in the page's own file until the first
-    // answer, when it was an empty card with an unlabelled number field.
+    entryPanel = ec;
+    if (intro) intro.textContent = (ec.labels || {}).intro || '';
+    while (entry.legs.length < (ec.min_legs || 2)) entry.legs.push(blankLeg());
+    fillEntryPayout(ec);
+    drawEntryForm(ec);
+    if (note) note.textContent = ec.note || '';
+    // DRAWN NOW THAT IT CAN ACT (2026-09-29): every field has its label.
     rail.hidden = false;
   }
 

@@ -3017,35 +3017,83 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .ladder-main .ladder-contract { font-weight: 700; }
 .ladder-main-mark { font-size: 10px; line-height: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .ladder-price { font: 800 16px/18px var(--cond); }
+/* CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07; reading (f)): the
+   entry rail grown into the brief's form. NO LONGER STICKY: the form is
+   taller than a screen, and a sticky panel taller than the screen hides its
+   own foot. Every field, select and button, and the label the confirming box
+   is tapped through, stands 44px tall in whole pixels and 44px wide or more
+   at 390 (the board merge's floor: every line height below is whole pixels),
+   and nothing in it arrives by a movement (operator question 20). Ink only:
+   the one colour is the verdict's outline, `.sig-clears` or `.sig-costs`,
+   which the server's verdict chooses (the colour law, reading (h)). */
 .entry-rail {
-  position: sticky; top: 130px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
-  display: grid; gap: 4px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  display: grid; gap: 8px; min-width: 0;
 }
-.entry-rail h4 { font: 800 20px/1 var(--cond); letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 4px; }
-.entry-leg { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; gap: 8px; }
-.entry-leg-line { font: 700 16px/1.1 var(--cond); letter-spacing: 0.02em; color: var(--chrome); overflow-wrap: anywhere; }
-.entry-leg-prob { color: var(--muted); font-variant-numeric: tabular-nums; }
-.entry-pays { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 4px; font-size: 12px; color: var(--muted); gap: 8px; }
-.entry-pays input {
-  width: 96px; background: var(--card-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-  color: var(--chrome); font: 800 18px/1 var(--cond); text-align: right;
-  /* A FIELD A THUMB TYPES INTO (the board merge, 2026-09-29): 40px tall at
-     390 until then; the floor is 44, in whole pixels. */
-  min-height: 44px;
+.entry-rail h4 { font: 800 20px/24px var(--cond); letter-spacing: 0.04em; text-transform: uppercase; margin: 0; }
+.entry-rail .footnote { font-size: 11px; color: var(--muted); margin: 0; line-height: 16px; }
+#entry-form { display: grid; gap: 10px; min-width: 0; }
+.entry-head-row, .entry-leg, .entry-block, .entry-pays-rows {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; min-width: 0;
 }
-#entry-lines { margin-top: 12px; border-radius: 12px; padding: 14px; background: var(--card-2); display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 12px; color: var(--muted); }
-#entry-lines:empty { display: none; }
-.entry-line { display: contents; }
-.entry-label { color: var(--muted); }
-.entry-value { font: 800 16px/1 var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
-.entry-rail .footnote { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+.entry-sub { margin: 4px 0 0; font: 800 13px/16px var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); grid-column: 1 / -1; }
+.entry-legs { display: grid; gap: 10px; min-width: 0; }
+.entry-leg { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); }
+.entry-leg-name { padding: 0 4px; font: 700 12px/16px var(--cond); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+/* A FIELD'S CONTROL SITS AT THE FOOT OF ITS CELL (the render of 2026-10-07):
+   two labels of different lengths side by side leave both controls on one
+   line. The payout's rows take the block's width -- they were one column of
+   six, the label five lines tall over a 36px field. */
+.entry-field { display: grid; gap: 4px; align-content: end; min-width: 0; grid-column: span 3; }
+.entry-field.entry-wide { grid-column: 1 / -1; }
+.entry-field.entry-third { grid-column: span 2; }
+.entry-field.entry-two-thirds { grid-column: span 4; }
+.entry-pays-rows { grid-column: 1 / -1; }
+.entry-field-label { font-size: 11px; line-height: 14px; color: var(--muted); }
+.entry-input, .entry-select {
+  box-sizing: border-box; width: 100%; min-width: 44px; height: 44px; min-height: 44px;
+  background: var(--card-3); border: 1px solid var(--line); border-radius: 8px; padding: 0 10px;
+  color: var(--chrome); font: 600 15px/20px var(--body);
+}
+.entry-input[type="number"] { font: 800 17px/20px var(--cond); }
+.entry-remove, .entry-more, .entry-put, .entry-check {
+  box-sizing: border-box; min-height: 44px; min-width: 44px; padding: 11px 14px; border-radius: 8px;
+  border: 1px solid var(--line-lit); background: transparent; color: var(--chrome); cursor: pointer;
+  font: 700 14px/20px var(--cond); letter-spacing: 0.04em; text-align: left;
+}
+.entry-remove { grid-column: 1 / -1; justify-self: start; color: var(--muted); }
+.entry-more { justify-self: start; }
+.entry-remove:disabled, .entry-more:disabled, .entry-check:disabled { opacity: 0.5; cursor: default; }
+.entry-marked { display: grid; gap: 6px; }
+.entry-put { overflow-wrap: anywhere; }
+.entry-check { width: 100%; border-color: var(--chrome); text-align: center; font-size: 16px; text-transform: uppercase; letter-spacing: 0.08em; }
+.entry-offered { grid-column: 1 / -1; margin: 0; font-size: 12px; line-height: 16px; color: var(--chrome); }
+.entry-confirm {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 18px; color: var(--chrome); cursor: pointer;
+}
+.entry-confirm input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--chrome); }
+.entry-note-small { grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 15px; }
 
-/* THE VERDICT (ruling c, 2026-09-25): the mockup's `.verdict` and `.v`,
-   wearing the outline the typed multiple earns, with a leg's badge beside it. */
-.verdict { border-radius: 12px; padding: 14px; background: var(--card-2); display: flex; align-items: center; justify-content: space-between; gap: 10px; grid-column: 1 / -1; margin-bottom: 6px; }
-.verdict .v { font: 800 22px/1.05 var(--cond); color: var(--chrome); display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
-.verdict .v-mult { font-weight: 800; }
-.verdict .v-untyped { font-size: 12px; color: var(--muted); }
+/* THE ANSWER: the verdict, wearing reading (h)'s outline where it has one,
+   the lines, the promo converted, the legs in one game and each leg's game.
+   Its numbers sit in `.entry-value`, which never transitions (MOTION). */
+#entry-lines { display: grid; gap: 6px; min-width: 0; }
+#entry-lines:empty { display: none; }
+/* THE RAIL'S OWN VERDICT (2026-10-07, resumed build): scoped to the rail, so
+   the settled card's `.verdict` above -- 12px, centred, letter-spaced -- does
+   not reach a sentence, and this does not reach the settled card. */
+.entry-rail .verdict {
+  display: block; min-width: 0; text-align: left; letter-spacing: normal; font-weight: 400;
+  border-radius: 12px; padding: 14px; background: var(--card-2); margin-bottom: 4px;
+}
+.entry-rail .verdict .v-words { font: 800 17px/22px var(--cond); color: var(--chrome); }
+.entry-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; line-height: 16px; }
+.entry-label { color: var(--muted); }
+.entry-value { font: 800 16px/20px var(--cond); color: var(--chrome); text-align: right; font-variant-numeric: tabular-nums; }
+.entry-said, .entry-ask { margin: 0; font-size: 13px; line-height: 18px; color: var(--chrome); }
+.entry-read-leg { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; line-height: 16px; color: var(--muted); }
+.entry-read-words { font: 700 14px/18px var(--cond); color: var(--chrome); overflow-wrap: anywhere; }
 
 /* THE FAMILY HUE on a chip's dot and its pressed state, and on the tile's tag. */
 .chip-btn[style*="--family"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--family); display: inline-block; }

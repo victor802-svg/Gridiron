@@ -446,17 +446,16 @@
       </div>
       <!-- NOT DRAWN UNTIL IT CAN ACT (2026-09-29): before the first answer
            the rail was an empty card holding a number field with no label
-           and no legs to price. `renderEntryRail` shows it with its words. -->
+           and no legs to price. `renderEntryRail` shows it with its words.
+           CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07; reading
+           (f)): the rail grown into the brief's form -- one calculator. The
+           form is drawn from the server's words into `entry-form`, and the
+           answer of `/api/entry-check` into `entry-lines`. -->
       <aside class="entry-rail" id="entry-rail" hidden>
         <h4 id="entry-heading"></h4>
-        <div id="entry-legs"></div>
-        <p class="footnote" id="entry-empty" hidden></p>
-        <label class="entry-pays" id="entry-pays-label">
-          <span id="entry-pays-words"></span>
-          <input id="entry-pays" type="number" inputmode="decimal" min="1"
-                 step="0.1" autocomplete="off">
-        </label>
-        <div id="entry-lines"></div>
+        <p class="footnote entry-intro" id="entry-intro"></p>
+        <div id="entry-form"></div>
+        <div id="entry-lines" aria-live="polite"></div>
         <p class="footnote" id="entry-note"></p>
       </aside>
     </div>

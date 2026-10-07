@@ -98,13 +98,34 @@ def test_no_route_can_write_to_the_record():
     would eventually guess wrong -- silently, into an append-only table.
 
     A SIXTH POST still has to come back here and argue for itself.
+
+    `POST /api/entry-check` is the sixth, added 2026-10-07 under
+    GRIDIRON_ENTRY_CHECK step 1 (the brief of 2026-09-30, with ruling D of
+    2026-10-05), and this is its argument. It is a POST because it carries a
+    form -- the entry the operator typed off the app -- and it answers with
+    arithmetic. Its ONE write is the brief's own: "the last one typed per app
+    and entry size is offered as a default and must be confirmed", so the
+    payout he CONFIRMED is kept, one row in `pickem_payouts_typed` (the app,
+    the entry type, the number of legs and the multiplier or flex table, and
+    when), and only where it differs from the last one kept for the key. It
+    cannot reach the record: it is given `get_entry_conn`, whose only caller
+    is `entry_check.check`, and the interface's own handle stays
+    `query_only`; the table refuses an edit, a delete and a replacing insert;
+    and `audit.check_the_entry_check_reaches_no_app` refuses, in the check's
+    own code, any write to another table, any import or call that could reach
+    another machine, and any address -- LAW 5's forbidden half, "never places
+    or edits an entry". No leg, no stake, no result and nothing in money is
+    written. The same two locks as the others: a session and a CSRF token.
+
+    A SEVENTH POST still has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/api/settings", "/api/taken/package/{package_id}",
+    assert writers == ["/api/entry-check", "/api/settings",
+                       "/api/taken/package/{package_id}",
                        "/api/taken/{prediction_id}",
                        "/auth/login", "/auth/logout"], (
         f"a write verb appeared outside the sign-in paths: {writers}"
@@ -136,6 +157,17 @@ def test_no_route_can_touch_a_prediction(client):
     # `test_auth.py::test_the_backoff_survives_a_restart` then measured,
     # and it failed in the full suite while passing alone. `test_auth.py`
     # covers the login route against the record directly.
+    # THE SIXTH ROUTE TOO (the entry check, 2026-10-07): an entry checked
+    # with its payout confirmed, which keeps that payout, leaves `predictions`
+    # as it was found. Before the sign-out, which closes the route.
+    csrf = auth.csrf_token(client.cookies.get(auth.COOKIE_NAME))
+    leg = {"player": "Somebody", "club": "", "stat": "passing yards", "line": "250.5",
+           "side": "over", "kind": "standard", "original_line": ""}
+    checked = client.post("/api/entry-check", headers={auth.CSRF_HEADER: csrf or ""},
+                          json={"app": "underdog", "entry_type": "power", "legs": [leg, leg],
+                                "payout": {"multiplier": "3"}, "payout_confirmed": True,
+                                "promo": {"kind": "none"}})
+    assert checked.status_code == 200 and checked.json()["computed"], checked.text
     client.post("/auth/logout")
     after = snapshot()
     assert (before["n"], before["sum_"]) == (after["n"], after["sum_"])

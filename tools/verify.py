@@ -957,6 +957,28 @@ def step_2_guards() -> bool:
                       now=db.utcnow())
                   for sport in _config().SPORTS
                   for forecaster in ("statistical", "llm")] and None),
+        # THE ENTRY CHECK, STEP 1 (GRIDIRON_ENTRY_CHECK, the brief of
+        # 2026-09-30 with ruling D of 2026-10-05; built 2026-10-07): "Output:
+        # break-even per leg (power M^(-1/N); flex solved from the typed
+        # table); EV per unit at coin-flip legs; the boost's value (EV with
+        # minus without); a same-game flag on legs from one game". BY ITS
+        # WORKED EXAMPLES, NOT ON THE RECORD (the record holds no entry): the
+        # shipped check on each example worked by hand, in a scratch world of
+        # its own, and the shipped arithmetic against the audit's own over a
+        # spread of payouts -- a wrong break-even, a promo applied twice, a
+        # pair in one game left unflagged, an outline reading (h) does not
+        # give, a number from a payout not confirmed, each named.
+        ("the entry check's arithmetic is its own (entry check, step 1)",
+         audit.check_the_entry_check_is_its_own_arithmetic),
+        # AND LAW 5'S FORBIDDEN HALF, READ IN ITS OWN CODE: "Gridiron never
+        # logs in to, reads, scrapes or calls any pick'em app, holds no
+        # credential for one, never places or edits an entry." Its two
+        # modules, its route and its functions in app.js import, call and
+        # name nothing that reaches another machine, and write nothing but
+        # the payout the operator confirmed. The credential and order scans
+        # below read its modules as they read every other.
+        ("the entry check reaches no app and writes no entry (LAW 5)",
+         audit.check_the_entry_check_reaches_no_app),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

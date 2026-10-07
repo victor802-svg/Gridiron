@@ -998,6 +998,13 @@ BOARD_VIEWS = ("games", "games, a row open", "games, every row open", "props",
                # full ladder moves to its own 'Kalshi ladder' view"), and the
                # Props page's payout fields beside it.
                "props, the Kalshi ladder",
+               # CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07): the
+               # rail grown into the brief's form. "props" measures it as it
+               # opens -- the app and entry selects, two legs' fields, a
+               # power payout, the confirming box, the promo, the button --
+               # and this every field it can draw besides: a flex table, a
+               # third leg, a promo's three fields, and its answer.
+               "props, a flex entry with a promo, checked",
                "record", "results", "settings", "the menu")
 
 
@@ -1006,6 +1013,7 @@ def _open_a_view(phone, view):
     route = {"games": "#/games", "games, a row open": "#/games",
              "games, every row open": "#/games",
              "props": "#/props", "props, the Kalshi ladder": "#/props",
+             "props, a flex entry with a promo, checked": "#/props",
              "record": "#/record", "results": "#/results",
              "settings": "#/settings", "the menu": "#/games"}[view]
     _open_route(phone, route)
@@ -1045,6 +1053,31 @@ def _open_a_view(phone, view):
             phone.click("#props-chips .chip-btn[data-key='ladder']")
         phone.wait_for_selector(
             "#props-chips .chip-btn[data-key='ladder'][aria-pressed='true']", timeout=10000)
+    if view == "props, a flex entry with a promo, checked":
+        # EVERY FIELD THE ENTRY CHECK CAN DRAW, AND ITS ANSWER (2026-10-07):
+        # flex, a third leg, a promo's share, cap and units, each leg typed,
+        # and the check asked. No payout is confirmed, so the answer is the
+        # legs as read and the ask to confirm, and nothing is kept in the
+        # shared world.
+        heads = "#entry-form .entry-head-row select"
+        phone.wait_for_selector(heads, timeout=15000)
+        phone.select_option(f"{heads} >> nth=0", "underdog")
+        phone.select_option(f"{heads} >> nth=1", "flex")
+        phone.click("#entry-more")
+        phone.wait_for_function(
+            "document.querySelectorAll('#entry-legs .entry-leg').length === 3", timeout=10000)
+        phone.select_option("#entry-promo select", "profit")
+        phone.wait_for_function(
+            "document.querySelectorAll('#entry-promo input').length === 3", timeout=10000)
+        for i in range(3):
+            leg = f"#entry-legs .entry-leg >> nth={i} >> input"
+            phone.fill(f"{leg} >> nth=0", f"A Player {i + 1}")
+            phone.fill(f"{leg} >> nth=1", "receptions")
+            phone.fill(f"{leg} >> nth=2", "4.5")
+        phone.fill("#entry-payout .entry-pays-rows input >> nth=0", "6")
+        phone.fill("#entry-promo input >> nth=0", "20")
+        phone.click("#entry-check")
+        phone.wait_for_selector("#entry-lines .entry-read-leg", timeout=10000)
     if view == "record":
         phone.wait_for_selector("#view-record .panel:not([hidden])", timeout=15000)
     if view == "results":
@@ -1189,7 +1222,10 @@ def test_the_first_load_placeholder_draws_no_control_it_cannot_act_with(served, 
         bar = "#games-controls" if tab == "games" else "#props-controls"
         page.wait_for_selector(f"{bar} select", state="visible", timeout=15000)
         if tab == "props":
-            page.wait_for_selector("#entry-pays", state="visible", timeout=15000)
+            # THE ENTRY CHECK'S BUTTON (2026-10-07): the rail's one payout
+            # field, `#entry-pays`, went with its readings; the form is drawn
+            # whole once the answer is in, its button last.
+            page.wait_for_selector("#entry-check", state="visible", timeout=15000)
         page.wait_for_function(_AT_REST, timeout=15000)
         assert not _unnamed_controls(page), _unnamed_controls(page)
     finally:

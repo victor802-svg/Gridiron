@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -112,6 +113,11 @@ FORBIDDEN_IDENTIFIERS = (
     # by the close and claim readers through `live.start_of`, outside the
     # prediction path; nothing on the path may name the table.
     "live_first_under_way",
+    # WHAT A PICK'EM APP PAYS, AS THE OPERATOR TYPED IT (GRIDIRON_ENTRY_CHECK
+    # step 1, 2026-10-07): a payout per unit is a price, and the model is
+    # written before any price is in view (LAW 1). The entry check reads and
+    # writes it, outside the prediction path.
+    "pickem_payouts_typed",
 )
 
 
@@ -6521,6 +6527,14 @@ def check_the_shortlist_speaks_of_questions(payload) -> None:
 VENUE_WORDS = (
     "kalshi", "polymarket", "draftkings", "fanduel", "betfair", "pinnacle",
     "bookmaker", "sportsbook", "prizepicks", "exchange", "venue", "book",
+    # THE OTHER TWO PICK'EM APPS THE ENTRY CHECK NAMES (GRIDIRON_ENTRY_CHECK
+    # step 1, 2026-10-07; the brief: "Gridiron never logs in to, reads,
+    # scrapes or calls any pick'em app, holds no credential for one").
+    # PrizePicks was here already; Underdog and Chalkboard join it, so a
+    # credential named for either is a venue credential wherever it sits.
+    # Grepped against the tree before adding: no identifier carries either
+    # beside a credential word.
+    "underdog", "chalkboard",
 )
 CREDENTIAL_WORDS = (
     "api_key", "apikey", "secret", "token", "password", "cookie", "session",
@@ -6545,6 +6559,13 @@ ORDER_PATH_IDENTIFIERS = (
     "account_balance", "available_balance", "account_positions",
     "open_positions", "portfolio_value", "withdraw_funds", "deposit_funds",
     "transfer_funds", "fund_account",
+    # A PICK'EM ENTRY IS NEVER PLACED OR EDITED HERE (GRIDIRON_ENTRY_CHECK
+    # step 1, 2026-10-07; the brief: "never places or edits an entry"). The
+    # entry check reads an entry the operator typed and writes only the
+    # payout he confirmed; these are the names that would send one. Grepped
+    # against the tree before adding: none is an identifier anywhere.
+    "place_entry", "submit_entry", "send_entry", "edit_entry", "modify_entry",
+    "amend_entry", "cancel_entry", "entry_ticket",
     # NOT a bare "withdraw": this project already withdrew a feature and calls
     # it that -- WITHDRAWN, WithdrawalRefused, _withdraw -- so the bare word
     # would report three findings that are nothing to do with money. Caught on
@@ -6569,7 +6590,9 @@ WAGERING_LEDGER_TABLES = (
 #: read, printed or logged by any of this -- the name is the whole finding.
 VENUE_ENV_PREFIXES = ("KALSHI", "POLYMARKET", "DRAFTKINGS", "FANDUEL",
                       "BETFAIR", "PINNACLE", "PRIZEPICKS", "BOOKMAKER",
-                      "EXCHANGE")
+                      "EXCHANGE",
+                      # the entry check's other two apps (2026-10-07)
+                      "UNDERDOG", "CHALKBOARD")
 VENUE_ENV_SUFFIXES = ("KEY", "SECRET", "TOKEN", "PASSWORD", "COOKIE",
                       "SESSION", "CREDENTIAL", "AUTH")
 
@@ -13485,61 +13508,135 @@ def props_board_faults(payload, *, typed: dict[int, float | None],
     return faults
 
 
-#: THE ENTRY RAIL'S LEG ROW, as `renderEntryRail` draws it (the prover of
-#: ruling C, 2026-10-06). As built the rail drew `l.line_words` -- the words
-#: of the question the record asked at its OWN line -- beside `main_chance`,
-#: the model's chance at the venue's MAIN line, so a taken leg read "over 200.5
-#: passing yards · 64%" for a chance at 250.5, on whichever side the model
-#: favours there: a number under another contract's words. The row draws the
-#: leg's own words (`leg_words`, the main line's contract), and neither the
-#: question's words nor its own chance.
+#: THE ENTRY RAIL, as app.js draws it. FROM THE PROVER OF RULING C
+#: (2026-10-06): the rail drew `l.line_words` -- the words of the question the
+#: record asked at its OWN line -- beside `main_chance`, the model's chance at
+#: the venue's MAIN line, so a taken leg read "over 200.5 passing yards · 64%"
+#: for a chance at 250.5: a number under another contract's words; and it
+#: filled its payout only into an empty field, so the 2-pick's typed payout
+#: stayed for a 3-leg entry. FROM THE ENTRY CHECK'S STEP 1 (GRIDIRON_ENTRY_
+#: CHECK, 2026-10-07; reading (f)) THE RAIL IS THE ENTRY CHECK: the operator
+#: types each leg at the app's line, a prop he marked is put in with its
+#: player, club and stat and NO line, and no model number is drawn in it at
+#: all (step 1 has no model; the model at the typed line is step 2's) -- so
+#: the rail may draw no tile's line or chance anywhere, its payout filled in
+#: follows the entry's app, type and size, the page never ticks the box that
+#: confirms a payout, and its outline is the server's verdict alone.
 _RAIL_FUNCTION = re.compile(r"\n  (?:async )?function renderEntryRail\(")
 _RAIL_NEXT_FUNCTION = re.compile(r"\n  (?:async )?function \w+\(")
 
+#: THE ENTRY CHECK'S FUNCTIONS IN APP.JS (2026-10-07), every one read: a
+#: function gone, renamed or split is named, so the scans below cannot be
+#: stepped round by moving the code.
+ENTRY_CHECK_JS_FUNCTIONS = (
+    "blankLeg", "entryPayoutEmpty", "fillEntryPayout", "entryChanged",
+    "entryField", "entryInput", "entrySelect", "entryLegRow",
+    "entryPayoutBlock", "drawEntryPayout", "drawEntryPromo", "drawEntryForm",
+    "entryBody", "checkEntry", "paintEntryResult", "renderEntryRail",
+)
+
+#: A TILE'S LINE OR THE MODEL'S CHANCE: what a prop tile carries that the
+#: entry check may never draw beside a leg the operator types at the app's
+#: line (step A's rule, a number under the words of the contract it belongs
+#: to; and step 1 has no model).
+_RAIL_TILE_NUMBERS = ("line_words", "leg_words", "main_words", "main_chance",
+                      "main_chance_words", "prob_words", "question",
+                      "own_question_words", "breakeven_words", "edge_words")
+
+
+def _js_function_bodies(js: str, names) -> dict:
+    """Each named top-level function of the page's script (two spaces in),
+    as (its line, its body to the next function), or None where it is gone.
+    Comments are blanked first: a comment may neither trip a scan nor
+    satisfy one."""
+    js = _without_comments(js, "js")
+    out = {}
+    for name in names:
+        start = re.search(r"\n  (?:async )?function %s\(" % re.escape(name), js)
+        if start is None:
+            out[name] = None
+            continue
+        after = _RAIL_NEXT_FUNCTION.search(js, start.end())
+        out[name] = (js.count(chr(10), 0, start.start()) + 2,
+                     js[start.start():after.start() if after else len(js)])
+    return out
+
 
 def entry_rail_leg_faults(js: str | None = None) -> list[str]:
-    """The entry rail drawing a taken leg under any words but its own
-    (`leg_words`), or beside the question's own chance (`prob_words`); or
-    keeping a payout the page filled in for another number of legs."""
+    """The entry rail -- the entry check, from 2026-10-07 -- drawing a tile's
+    line or the model's chance beside a typed leg, putting a marked prop in
+    with anything but its player, club and stat, keeping a payout the page
+    filled in for another app, type or size, confirming a payout itself, or
+    wearing an outline the server's verdict did not give."""
     if js is None:
         js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
-    js = _without_comments(js, "js")
-    start = _RAIL_FUNCTION.search(js)
-    if start is None:
-        return ["`renderEntryRail` is gone from app.js, so nothing says what the entry "
-                "rail draws a taken leg under (operator ruling C, 2026-10-05)"]
-    after = _RAIL_NEXT_FUNCTION.search(js, start.end())
-    body = js[start.start():after.start() if after else len(js)]
-    line = js.count(chr(10), 0, start.start()) + 2
+    bodies = _js_function_bodies(js, ENTRY_CHECK_JS_FUNCTIONS)
     faults = []
-    if not re.search(r"\.leg_words\b", body):
-        faults.append(f"app.js:{line} `renderEntryRail` does not draw a leg's own words "
-                      f"(`leg_words`): its chance at the main line stands under other words "
-                      f"(operator ruling C, 2026-10-05)")
-    for field in ("line_words", "prob_words", "question"):
-        if re.search(r"\.%s\b" % field, body):
-            faults.append(
-                f"app.js:{line} `renderEntryRail` reads `{field}`, the question the record "
-                f"asked at its own line, beside a leg's chance at the venue's main line: a "
-                f"number under another contract's words (operator ruling C, 2026-10-05)")
-    # THE PAYOUT THE PAGE FILLS IN FOLLOWS THE LEGS (the prover of ruling C,
-    # 2026-10-06): filled only into an empty field, the 2-pick's typed payout
-    # stayed when a third leg was taken and the verdict read a 3-leg entry at
-    # a payout nobody typed for it. A value the page filled is filled again
-    # for the number of legs taken; one the operator types is left alone.
-    if not _RAIL_REFILL.search(body):
+    for name, got in bodies.items():
+        if got is None:
+            faults.append(f"`{name}` is gone from app.js, so nothing says what the entry "
+                          f"check draws a leg under, fills its payout with, or outlines "
+                          f"(the entry check, step 1, 2026-10-07)")
+    for name, got in bodies.items():
+        if got is None:
+            continue
+        line, body = got
+        for field in _RAIL_TILE_NUMBERS:
+            if re.search(r"\.%s\b" % field, body):
+                faults.append(
+                    f"app.js:{line} `{name}` reads `{field}`, a prop tile's line or the "
+                    f"model's chance, into the entry rail beside a leg typed at the app's "
+                    f"line: a number under another contract's words (operator ruling C, "
+                    f"2026-10-05; the entry check, step 1, has no model)")
+        # THE PAGE NEVER CONFIRMS A PAYOUT (reading (e)): only the operator's
+        # tick does, read from the box as he left it.
+        for m in re.finditer(r"entry\.confirmed\s*=(?!=)\s*([^;\n]+)", body):
+            if m.group(1).strip() not in ("false", "confirm.checked"):
+                faults.append(f"app.js:{line} `{name}` sets the payout confirmed to "
+                              f"{m.group(1).strip()!r}: the page confirms a payout itself "
+                              f"(reading (e): only the operator confirms it)")
+        if re.search(r"\.checked\s*=\s*true\b", body):
+            faults.append(f"app.js:{line} `{name}` ticks a box itself: the page confirms a "
+                          f"payout itself (reading (e): only the operator confirms it)")
+        # THE OUTLINE IS THE SERVER'S VERDICT (reading (h)): `signalClass` of
+        # the answer's own `signal`, and nothing else adds one.
+        if re.search(r"""['"]sig-(?:clears|costs|won|lost)['"]""", body):
+            faults.append(f"app.js:{line} `{name}` puts an outline class on by name: an "
+                          f"outline the server's verdict did not give (reading (h))")
+    form = bodies.get("drawEntryForm")
+    if form is not None and not re.search(
+            r"el\(\s*'button',\s*'entry-put',\s*m\.words\b[\s\S]{0,700}?"
+            r"player:\s*m\.player,\s*club:\s*m\.club,\s*stat:\s*m\.stat\s*\}", form[1]):
         faults.append(
-            f"app.js:{line} `renderEntryRail` fills the entry's payout only into an empty "
-            f"field, so a payout typed for another number of legs stays when a leg is "
-            f"taken and the verdict reads the entry at it (operator ruling C.3, "
-            f"2026-10-05: no payout the operator did not type)")
+            f"app.js:{form[0]} `drawEntryForm` does not put a marked prop in the entry "
+            f"under its player-and-stat words with its player, club and stat alone: its "
+            f"line is the app's, and the operator's to type (reading (f))")
+    fill = bodies.get("fillEntryPayout")
+    if fill is not None and not _RAIL_REFILL.search(fill[1]):
+        # THE PAYOUT THE PAGE FILLS IN FOLLOWS THE ENTRY (the prover of ruling
+        # C, 2026-10-06, for the rail's field): a value the page filled is
+        # filled again for the app, type and size checked, never confirmed;
+        # one the operator types is left alone.
+        faults.append(
+            f"app.js:{fill[0]} `fillEntryPayout` fills the entry's payout only into an "
+            f"empty field, or not by the entry's own app, type and number of legs, or "
+            f"leaves it confirmed: a payout typed for another entry stays and is read "
+            f"at it (operator ruling C.3, 2026-10-05; reading (e): offered, never "
+            f"confirmed by the page)")
+    paint = bodies.get("paintEntryResult")
+    if paint is not None and "signalClass(r.signal)" not in paint[1]:
+        faults.append(f"app.js:{paint[0]} `paintEntryResult` does not draw the verdict's "
+                      f"outline from the server's own verdict (reading (h))")
     return faults
 
 
-#: The rail's fill: an empty field, or one the page filled, is filled again.
+#: The fill: an empty payout, or one the page filled, is filled again from the
+#: last one typed for THIS app, type and number of legs, and never confirmed.
 _RAIL_REFILL = re.compile(
-    r"if\s*\(\s*!pays\.value\s*\|\|\s*pays\.dataset\.filled\s*\)\s*\{[\s\S]{0,400}?"
-    r"\.legs\s*===\s*legs\.length[\s\S]{0,400}?pays\.dataset\.filled\s*=\s*'")
+    r"if\s*\(\s*!entryPayoutEmpty\(\)\s*&&\s*!entry\.filled\s*\)\s*return;[\s\S]{0,300}?"
+    r"r\.app\s*===\s*entry\.app\s*&&\s*r\.entry_type\s*===\s*entry\.type\s*&&\s*"
+    r"r\.legs\s*===\s*entry\.legs\.length[\s\S]{0,400}?entry\.filled\s*=\s*!!got;"
+    r"[\s\S]{0,200}?entry\.confirmed\s*=\s*false;")
 
 
 def check_the_props_board_calls_no_rung_a_pick(conn, payload, *, app_js: str | None = None) -> None:
@@ -13569,6 +13666,717 @@ def check_the_props_board_calls_no_rung_a_pick(conn, payload, *, app_js: str | N
             "a pick'em pick ... only legs clearing B.2 get a pick badge ... until "
             "typed, the page asks for it and shows no break-even\"):"
             + _NL2 + _NL2.join(faults[:8]))
+
+
+# ---------------------------------------------------------------------------
+# CHECK AN ENTRY, STEP 1: THE ARITHMETIC, NO MODEL (GRIDIRON_ENTRY_CHECK; the
+# brief of 2026-09-30 with ruling D of 2026-10-05; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# The brief, step 1: "Output: break-even per leg (power M^(-1/N); flex solved
+# from the typed table); EV per unit at coin-flip legs; the boost's value (EV
+# with minus without); a same-game flag on legs from one game ... Colour law:
+# green outline clears, red outline costs." -- and its plantings: "a wrong
+# break-even, a boost applied twice, an unflagged same-game pair". Ruling D:
+# "break-even comes from that payout only". LAW 5 (the brief's forbidden
+# half): "Gridiron never logs in to, reads, scrapes or calls any pick'em app,
+# holds no credential for one, never places or edits an entry."
+#
+# TWO CHECKS, BOTH BY FIXTURES AND THE SHIPPED SOURCE, NOT ON THE RECORD: the
+# record holds no entry (none is ever written) and only the payouts the
+# operator confirmed.
+#
+#   * `entry_check_arithmetic_faults` runs the shipped check on the worked
+#     examples below -- each number worked out by hand on 2026-10-07 and held
+#     to the audit's own arithmetic at import -- on a scratch world of its own
+#     (four clubs, two games still to come, a game played, players and a
+#     traded one and two of one name), and over a declared spread of payouts
+#     against the audit's own arithmetic; and names a wrong break-even, a
+#     return at coin flips, a promo applied twice or not once, a pair in one
+#     game left unflagged or a leg it could not place said checked, an
+#     outline reading (h) does not give, a number worked from a payout not
+#     confirmed or moved by a leg's kind, a refusal not made, a payout not
+#     kept as typed or kept unconfirmed, and a word a reader should not meet.
+#   * `entry_check_reach_faults` reads the entry check's own code -- its two
+#     modules, its route and its functions in app.js -- for an import, a call
+#     or an address that could reach another machine, and for a write to any
+#     table but the payouts typed.
+
+#: THE CLOCK THE WORKED EXAMPLES ARE ASKED AT: before the scratch world's
+#: games, so they are still to come.
+ENTRY_CHECK_NOW = "2099-10-01T00:00:00Z"
+
+
+def _ec_leg(player: str, club: str, *, line: float = 250.5, side: str = "over",
+            kind: str = "standard", original: str = "", stat: str = "passing yards") -> dict:
+    return {"player": player, "club": club, "stat": stat, "line": str(line),
+            "side": side, "kind": kind, "original_line": original}
+
+
+def _ec_form(legs: list, payout: dict, *, entry_type: str = "power", app: str = "prizepicks",
+             confirmed: bool = True, promo: dict | None = None) -> dict:
+    return {"app": app, "entry_type": entry_type, "legs": legs, "payout": payout,
+            "payout_confirmed": confirmed, "promo": promo or {"kind": "none"}}
+
+
+_EC_TWO = [_ec_leg("Jared Goff", "DET"), _ec_leg("Josh Allen", "BUF")]
+_EC_THREE = _EC_TWO + [_ec_leg("Patrick Mahomes", "KC")]
+_EC_FIVE = _EC_THREE + [_ec_leg("Jordan Love", "GB"), _ec_leg("Amon-Ra St. Brown", "DET",
+                                                                stat="receiving yards", line=70.5)]
+_EC_FLEX5 = {"table": {"5": "10", "4": "2", "3": "0.4"}}
+_EC_FLEX3 = {"table": {"3": "2.25", "2": "1.25"}}
+
+#: THE WORKED EXAMPLES (2026-10-07), each by hand: power M^(-1/N) and
+#: M * 0.5^N - 1; flex the root of the sum of C(N,k) p^k (1-p)^(N-k) payout(k)
+#: less one, and at coin flips the sum of C(N,k)/2^N payout(k) less one. The
+#: brief's own (a 2-leg power entry at 3x, 57.74% and -0.25; at 4.5x, 47.14%,
+#: +0.125 and no outline, 2.86 points under an even chance; a goblin and a
+#: demon leg, the payout alone; 3 legs at 5x, 58.48% and -0.375; a 5-leg flex
+#: table; a promo from 3x to 3.5x; a 20% profit promo with a cap) and the
+#: edges of the colour, the promos on a flex table, the one-game flag and the
+#: refusals. Held to the audit's own arithmetic at import
+#: (`_check_the_entry_check_fixtures`).
+ENTRY_CHECK_WORKED_EXAMPLES = (
+    {"name": "a 2-leg power entry at 3x", "form": _ec_form(_EC_TWO, {"multiplier": "3"}),
+     "power": (3.0, 2), "breakeven": 0.577350, "expected": -0.25, "signal": "costs",
+     "words": ("57.74%", "-0.25 per unit", "7.74 points under its break-even")},
+    {"name": "a 2-leg power entry at 4.5x", "form": _ec_form(_EC_TWO, {"multiplier": "4.5"}),
+     "power": (4.5, 2), "breakeven": 0.471405, "expected": 0.125, "signal": "none",
+     "words": ("47.14%", "+0.125 per unit", "2.86 points over its break-even")},
+    {"name": "a goblin and a demon leg in one 2-leg power entry at 3x",
+     "form": _ec_form([_ec_leg("Jared Goff", "DET", kind="goblin", original="265.5"),
+                       _ec_leg("Josh Allen", "BUF", kind="demon")], {"multiplier": "3"}),
+     "power": (3.0, 2), "breakeven": 0.577350, "expected": -0.25, "signal": "costs",
+     "words": ("57.74%", "goblin · discounted from 265.5", "demon")},
+    {"name": "a 3-leg power entry at 5x", "form": _ec_form(_EC_THREE, {"multiplier": "5"}),
+     "power": (5.0, 3), "breakeven": 0.584804, "expected": -0.375, "signal": "costs",
+     "words": ("58.48%", "-0.375 per unit")},
+    {"name": "a 5-leg flex entry: 5 right pays 10x, 4 pays 2x, 3 pays 0.4x",
+     "form": _ec_form(_EC_FIVE, _EC_FLEX5, entry_type="flex", app="underdog"),
+     "flex": ({5: 10.0, 4: 2.0, 3: 0.4}, 5), "breakeven": 0.542525, "expected": -0.25,
+     "signal": "costs", "words": ("54.25%", "-0.25 per unit")},
+    {"name": "a 2-leg power entry at 3x, the app's promo raising it to 3.5x",
+     "form": _ec_form(_EC_TWO, {"multiplier": "3"},
+                      promo={"kind": "raised", "payout": {"multiplier": "3.5"}}),
+     "power": (3.0, 2), "breakeven": 0.577350, "expected": -0.25,
+     "offered_power": (3.5, 2), "offered_breakeven": 0.534522, "offered_expected": -0.125,
+     "promo_adds": 0.125, "signal": "costs",
+     "words": ("53.45%", "-0.125 per unit", "+0.125 per unit",
+               "With the promo the app pays 3.5x, from 3x.")},
+    {"name": "a 3-leg power entry at 5x with a 20% profit promo, at most 5 units on 10",
+     "form": _ec_form(_EC_THREE, {"multiplier": "5"},
+                      promo={"kind": "profit", "percent": "20", "cap_units": "5",
+                             "entry_units": "10"}),
+     "power": (5.0, 3), "breakeven": 0.584804, "expected": -0.375,
+     "offered_power": (5.5, 3), "offered_breakeven": 0.566516, "offered_expected": -0.3125,
+     "promo_adds": 0.0625, "signal": "costs",
+     "words": ("makes the entry pay 5.5x, from 5x", "without the cap it would pay 5.8x",
+               "+0.0625 per unit")},
+    {"name": "the same 20% profit promo with no cap",
+     "form": _ec_form(_EC_THREE, {"multiplier": "5"},
+                      promo={"kind": "profit", "percent": "20", "cap_units": ""}),
+     "power": (5.0, 3), "breakeven": 0.584804, "expected": -0.375,
+     "offered_power": (5.8, 3), "offered_breakeven": 0.556575, "offered_expected": -0.275,
+     "promo_adds": 0.1, "signal": "costs", "words": ("makes the entry pay 5.8x, from 5x",)},
+    {"name": "a 2-leg power entry at 5x", "form": _ec_form(_EC_TWO, {"multiplier": "5"}),
+     "power": (5.0, 2), "breakeven": 0.447214, "expected": 0.25, "signal": "clears",
+     "words": ("44.72%", "5.28 points over its break-even", "Clears the bar")},
+    {"name": "a 2-leg power entry with each leg's break-even exactly 3 points under 50%",
+     "form": _ec_form(_EC_TWO, {"multiplier": "4.526935264825713"}),
+     "power": (4.526935264825713, 2), "breakeven": 0.47, "expected": 0.131734,
+     "signal": "clears", "words": ("47.00%", "3.00 points over its break-even")},
+    {"name": "a 2-leg power entry at 4.52x, 2.96 points under the bar",
+     "form": _ec_form(_EC_TWO, {"multiplier": "4.52"}),
+     "power": (4.52, 2), "breakeven": 0.470360, "expected": 0.13, "signal": "none",
+     "words": ("47.04%", "2.96 points over its break-even")},
+    {"name": "a 2-leg power entry at 4x, returning exactly what it costs",
+     "form": _ec_form(_EC_TWO, {"multiplier": "4"}),
+     "power": (4.0, 2), "breakeven": 0.5, "expected": 0.0, "signal": "none",
+     "words": ("50.00%", "+0.00 per unit", "exactly at its break-even")},
+    {"name": "a 3-leg flex entry: 3 right pays 2.25x, 2 pays 1.25x, raised to 2.5x for 3",
+     "form": _ec_form(_EC_THREE, _EC_FLEX3, entry_type="flex", app="chalkboard",
+                      promo={"kind": "raised", "payout": {"table": {"3": "2.5", "2": "1.25"}}}),
+     "flex": ({3: 2.25, 2: 1.25}, 3), "breakeven": 0.590942, "expected": -0.25,
+     "offered_flex": ({3: 2.5, 2: 1.25}, 3), "offered_breakeven": 0.574281,
+     "offered_expected": -0.21875, "promo_adds": 0.03125, "signal": "costs",
+     "words": ("59.09%", "57.43%", "+0.03125 per unit")},
+    {"name": "the 5-leg flex entry with a 20% profit promo and no cap",
+     "form": _ec_form(_EC_FIVE, _EC_FLEX5, entry_type="flex", app="underdog",
+                      promo={"kind": "profit", "percent": "20"}),
+     "flex": ({5: 10.0, 4: 2.0, 3: 0.4}, 5), "breakeven": 0.542525, "expected": -0.25,
+     "offered_flex": ({5: 11.8, 4: 2.2, 3: 0.4}, 5), "offered_breakeven": 0.525267,
+     "offered_expected": -0.1625, "promo_adds": 0.0875, "signal": "costs",
+     "words": ("5 of 5 right pays 11.8x, 4 of 5 right pays 2.2x, 3 of 5 right pays 0.4x",)},
+    # THE ONE-GAME FLAG (reading (d)): two players of one club; a player of
+    # each club in one game; a traded player placed with the club he played
+    # his latest game for; and legs the record cannot place, said unchecked.
+    {"name": "two Detroit legs and a Buffalo one",
+     "form": _ec_form([_ec_leg("Jared Goff", "DET"), _ec_leg("Amon-Ra St. Brown", "DET"),
+                       _ec_leg("Josh Allen", "BUF")], {"multiplier": "6"}),
+     "groups": [[0, 1]], "unchecked": [],
+     "words": ("Legs 1 and 2 are in one game, Green Bay Packers at Detroit Lions",
+               "these legs move together; the math assumes they don't.")},
+    {"name": "a Green Bay leg and a Detroit leg, one game",
+     "form": _ec_form([_ec_leg("Jordan Love", "GB"), _ec_leg("Jared Goff", "DET")],
+                      {"multiplier": "3"}),
+     "groups": [[0, 1]], "unchecked": []},
+    {"name": "a player traded to Kansas City and a Chief",
+     "form": _ec_form([_ec_leg("Davante Adams", "KC"), _ec_leg("Patrick Mahomes", "KC")],
+                      {"multiplier": "3"}),
+     "groups": [[0, 1]], "unchecked": []},
+    {"name": "legs the record cannot place",
+     "form": _ec_form([_ec_leg("Jared Goff", "DET"), _ec_leg("Mike Williams", "KC"),
+                       _ec_leg("Davante Adams", "GB"), _ec_leg("Nobody Atall", "KC"),
+                       _ec_leg("Josh Allen", "")], {"multiplier": "20"}),
+     "groups": [], "unchecked": [1, 2, 3, 4],
+     "words": ("more than one Kansas City Chiefs player called Mike Williams",
+               "Davante Adams playing for Kansas City Chiefs", "No player called Nobody Atall",
+               "No club was chosen", "Legs 2, 3, 4 and 5 could not be placed in a game")},
+    # FROM THE PROVER (2026-10-07): two legs of one game whose next game is
+    # not certain -- Chicago at Minnesota past its listed start and not yet
+    # recorded as over, Los Angeles at Seattle with no start time yet. As
+    # handed, each leg was put in its club's next DATED game, two games apart,
+    # and the pair in one game was said to be in none.
+    {"name": "a Minnesota leg and a Chicago leg, their game past its start and not over",
+     "form": _ec_form([_ec_leg("Justin Jefferson", "MIN"), _ec_leg("DJ Moore", "CHI")],
+                      {"multiplier": "3"}),
+     "groups": [], "unchecked": [0, 1],
+     "words": ("as over, though it is past its listed start",
+               "No leg could be placed in a game")},
+    {"name": "a Seattle leg and a Los Angeles leg, their game with no start time yet",
+     "form": _ec_form([_ec_leg("DK Metcalf", "SEA"), _ec_leg("Puka Nacua", "LAR")],
+                      {"multiplier": "3"}),
+     "groups": [], "unchecked": [0, 1],
+     "words": ("no start time yet for the Los Angeles Rams at Seattle Seahawks game",)},
+    # NOTHING FROM A PAYOUT NOT CONFIRMED (reading (e)), NOR FROM A CAPPED
+    # PROMO WITHOUT THE ENTRY IN UNITS (reading (c)).
+    {"name": "a payout not confirmed",
+     "form": _ec_form(_EC_TWO, {"multiplier": "3"}, confirmed=False),
+     "computed": False, "words": ("nothing is worked out from a payout until you do",)},
+    {"name": "a capped profit promo with no entry in units",
+     "form": _ec_form(_EC_TWO, {"multiplier": "3"},
+                      promo={"kind": "profit", "percent": "20", "cap_units": "5"}),
+     "computed": False, "words": ("Type the entry in units",)},
+    # REFUSED, IN WORDS
+    {"name": "an entry of one leg", "form": _ec_form(_EC_TWO[:1], {"multiplier": "3"}),
+     "refused": True, "words": ("2 to 8 legs",)},
+    {"name": "a payout of 1x", "form": _ec_form(_EC_TWO, {"multiplier": "1"}), "refused": True},
+    {"name": "a flex table paying less for more legs right",
+     "form": _ec_form(_EC_THREE, {"table": {"3": "1.5", "2": "2"}}, entry_type="flex"),
+     "refused": True},
+    {"name": "a raised payout lower than the payout",
+     "form": _ec_form(_EC_TWO, {"multiplier": "3"},
+                      promo={"kind": "raised", "payout": {"multiplier": "2.5"}}),
+     "refused": True},
+)
+
+#: THE PAYOUTS THE PROPERTY CHECK READS (2026-10-07): power from 1.5x to 37.5x
+#: on 2 to 8 legs, and flex tables of 3 to 6 legs, each against the audit's
+#: own arithmetic.
+ENTRY_CHECK_POWER_SPREAD = tuple((m, n) for m in (1.5, 2.0, 3.0, 3.5, 5.0, 6.0, 10.0, 20.0, 37.5)
+                                 for n in range(2, 9))
+ENTRY_CHECK_FLEX_SPREAD = (
+    ({3: 2.25, 2: 1.25}, 3), ({3: 3.0, 2: 1.0}, 3), ({4: 5.0, 3: 1.5}, 4),
+    ({5: 10.0, 4: 2.0, 3: 0.4}, 5), ({6: 25.0, 5: 2.0, 4: 0.4}, 6),
+    ({4: 6.0, 3: 1.5, 2: 0.0}, 4), ({3: 1.2, 2: 1.2, 1: 0.5}, 3),
+)
+
+
+def _own_flex_return(table: dict, legs: int, p: float) -> float:
+    """The audit's own expected return of a flex table, written apart from
+    `entry_math`: each count of legs right, its chance and its payout."""
+    total = 0.0
+    for k in range(legs + 1):
+        ways = 1
+        for i in range(k):
+            ways = ways * (legs - i) // (i + 1)
+        total += ways * (p ** k) * ((1.0 - p) ** (legs - k)) * float(table.get(k, 0.0))
+    return total - 1.0
+
+
+def _own_flex_breakeven(table: dict, legs: int) -> float:
+    lo, hi = 0.0, 1.0
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        if _own_flex_return(table, legs, mid) < 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
+def _own_entry_numbers(ex: dict, which: str = "") -> tuple[float, float] | None:
+    """The audit's own break-even and coin-flip return for a fixture's payout
+    (`power`/`flex`, or the offered `offered_power`/`offered_flex`)."""
+    power, flex = ex.get(f"{which}power"), ex.get(f"{which}flex")
+    if power is not None:
+        m, n = power
+        return math.exp(-math.log(m) / n), m * 0.5 ** n - 1.0
+    if flex is not None:
+        table, n = flex
+        return _own_flex_breakeven(table, n), _own_flex_return(table, n, 0.5)
+    return None
+
+
+def _check_the_entry_check_fixtures() -> None:
+    """THE HAND-WORKED NUMBERS HELD AT IMPORT: each fixture's break-even and
+    coin-flip return agree with the audit's own arithmetic to the precision
+    held, and a promo's addition is the offered return less the typed one."""
+    problems = []
+    for ex in ENTRY_CHECK_WORKED_EXAMPLES:
+        for which, be_key, ev_key in (("", "breakeven", "expected"),
+                                      ("offered_", "offered_breakeven", "offered_expected")):
+            own = _own_entry_numbers(ex, which)
+            if own is None:
+                continue
+            if abs(own[0] - ex[be_key]) > 5e-7 or abs(own[1] - ex[ev_key]) > 5e-7:
+                problems.append(f"{ex['name']}: {own} against {ex[be_key]}, {ex[ev_key]}")
+        if "promo_adds" in ex and abs(ex["offered_expected"] - ex["expected"]
+                                      - ex["promo_adds"]) > 5e-7:
+            problems.append(f"{ex['name']}: the promo's addition is not the offered "
+                            f"return less the typed one")
+    if problems:
+        raise LawViolation("THE ENTRY CHECK'S WORKED EXAMPLES DISAGREE WITH THE "
+                           "AUDIT'S OWN ARITHMETIC:" + _NL2 + _NL2.join(problems))
+
+
+def _entry_check_world(path: Path):
+    """THE SCRATCH WORLD THE WORKED EXAMPLES ARE CHECKED IN (2026-10-07): four
+    clubs with their names, Green Bay at Detroit and Kansas City at Buffalo
+    still to come, a game Detroit already played against Kansas City, and the
+    players the examples name -- Davante Adams with a game for Green Bay and a
+    later one for Kansas City, and two players called Mike Williams on Kansas
+    City. Never the record."""
+    from . import db as _db
+
+    conn = _db.open_db(path)
+    with conn:
+        for code, name in (("DET", "Detroit Lions"), ("GB", "Green Bay Packers"),
+                           ("BUF", "Buffalo Bills"), ("KC", "Kansas City Chiefs"),
+                           ("MIN", "Minnesota Vikings"), ("CHI", "Chicago Bears"),
+                           ("SEA", "Seattle Seahawks"), ("LAR", "Los Angeles Rams")):
+            conn.execute(
+                "INSERT INTO teams (sport, tricode, display_name, short_name, location,"
+                " source_url, fetched_utc) VALUES ('nfl', ?, ?, ?, ?, 'the audit''s world',"
+                " '2099-09-01T00:00:00Z')", (code, name, name.split()[-1], name))
+        # FROM THE PROVER (2026-10-07): Chicago at Minnesota past its listed
+        # start and not yet recorded as over (an NFL game is 'scheduled' on
+        # the record until a refresh writes its result), and Los Angeles at
+        # Seattle with no start time yet -- each club with a dated game after
+        # it, so a leg put in its club's next dated game is a guess.
+        for gid, home, away, start, day, status, hs, as_ in (
+                ("ec_played", "DET", "KC", "2099-09-27T17:00:00Z", None, "final", 24, 20),
+                ("ec_gb_det", "DET", "GB", "2099-10-11T17:00:00Z", None, "scheduled", None, None),
+                ("ec_kc_buf", "BUF", "KC", "2099-10-11T20:25:00Z", None, "scheduled", None, None),
+                ("ec_chi_min", "MIN", "CHI", "2099-09-30T23:00:00Z", None, "scheduled", None, None),
+                ("ec_min_gb", "GB", "MIN", "2099-10-18T17:00:00Z", None, "scheduled", None, None),
+                ("ec_chi_det", "DET", "CHI", "2099-10-18T20:25:00Z", None, "scheduled", None, None),
+                ("ec_lar_sea", "SEA", "LAR", None, "2099-10-10", "scheduled", None, None),
+                ("ec_sea_buf", "BUF", "SEA", "2099-10-18T17:00:00Z", None, "scheduled", None, None),
+                ("ec_lar_kc", "KC", "LAR", "2099-10-19T00:15:00Z", "2099-10-18", "scheduled",
+                 None, None)):
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, kickoff_utc,"
+                " league_date, home, away, status, home_score, away_score)"
+                " VALUES (?, 'nfl', 2099, 5, 'REG', ?, ?, ?, ?, ?, ?, ?)",
+                (gid, start, day or start[:10], home, away, status, hs, as_))
+        for week, pid, name, club in (
+                (1, "ec-goff", "Jared Goff", "DET"), (1, "ec-stb", "Amon-Ra St. Brown", "DET"),
+                (1, "ec-love", "Jordan Love", "GB"), (1, "ec-allen", "Josh Allen", "BUF"),
+                (1, "ec-pm", "Patrick Mahomes", "KC"), (1, "ec-mw1", "Mike Williams", "KC"),
+                (1, "ec-mw2", "Mike Williams", "KC"), (1, "ec-da", "Davante Adams", "GB"),
+                (2, "ec-da", "Davante Adams", "KC"), (1, "ec-jj", "Justin Jefferson", "MIN"),
+                (1, "ec-djm", "DJ Moore", "CHI"), (1, "ec-dk", "DK Metcalf", "SEA"),
+                (1, "ec-pn", "Puka Nacua", "LAR")):
+            conn.execute(
+                "INSERT INTO player_week_stats (season, week, player_id, player_name,"
+                " position, team, opponent) VALUES (2099, ?, ?, ?, 'WR', ?, 'BUF')",
+                (week, pid, name, club))
+    return conn
+
+
+def entry_check_words_faults(node, where: str) -> list[str]:
+    """Internal vocabulary, pressure or advice in any word the entry check
+    sends a reader: every string it carries but a code."""
+    faults: list[str] = []
+    codes = ("key", "app", "entry_type", "club", "typed_utc", "fields", "signal",
+             "numbers")
+
+    def walk(value, path):
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if key in codes:
+                    continue
+                walk(inner, f"{path}.{key}")
+        elif isinstance(value, list):
+            for i, inner in enumerate(value):
+                walk(inner, f"{path}[{i}]")
+        elif isinstance(value, str):
+            for fault in (plain_words_violations(value) + pressure_word_faults(value)
+                          + advice_word_faults(value, path)):
+                faults.append(f"{path}: {fault}")
+
+    walk(node, where)
+    return faults
+
+
+def _entry_check_example_faults(conn, ex: dict) -> list[str]:
+    from . import entry_check as _ec
+
+    name = f"the entry check's {ex['name']}"
+    try:
+        out = _ec.check(conn, json.loads(json.dumps(ex["form"])), now=ENTRY_CHECK_NOW,
+                        remember_it=False)
+    except Exception as exc:  # noqa: BLE001 - named, never swallowed
+        return [f"{name} raised {type(exc).__name__}: {exc}"]
+    faults = entry_check_words_faults(out, name)
+    if ex.get("refused"):
+        if not out.get("refused_words") or out.get("computed"):
+            faults.append(f"{name} was not refused in words: {out.get('refused_words')!r}")
+    if ex.get("computed") is False:
+        if out.get("computed") or out.get("numbers") is not None or out.get("signal") != "none":
+            faults.append(f"{name}: worked out numbers or an outline ({out.get('signal')!r}) "
+                          f"from a payout the operator did not confirm, or with a capped "
+                          f"promo and no entry in units (readings (c) and (e))")
+    numbers = out.get("numbers") or {}
+    for key, what in (("breakeven", "break-even per leg"),
+                      ("expected", "return per unit at coin flips"),
+                      ("offered_breakeven", "break-even per leg with the promo"),
+                      ("offered_expected", "return per unit at coin flips with the promo"),
+                      ("promo_adds", "what the promo adds per unit")):
+        if key not in ex:
+            continue
+        got = numbers.get(key)
+        if got is None or abs(float(got) - float(ex[key])) > 5e-6:
+            faults.append(f"{name}: {what} {got!r}, where it is {ex[key]!r} worked by hand")
+    if "promo_adds" not in ex and ex.get("signal") and numbers.get("promo_adds") is not None:
+        faults.append(f"{name}: a promo nobody typed adds {numbers.get('promo_adds')!r}")
+    if "signal" in ex and out.get("signal") != ex["signal"]:
+        faults.append(f"{name}: the outline is {out.get('signal')!r}, where reading (h) "
+                      f"gives {ex['signal']!r} (green where every leg's break-even is 3 "
+                      f"points or more under an even chance, red where the return at "
+                      f"coin flips is below zero, none between)")
+    if "groups" in ex and numbers.get("groups") != ex["groups"]:
+        faults.append(f"{name}: legs in one game {numbers.get('groups')!r}, where the record "
+                      f"puts {ex['groups']!r} in one game (reading (d))")
+    if "unchecked" in ex and numbers.get("unchecked") != ex["unchecked"]:
+        faults.append(f"{name}: legs not placed {numbers.get('unchecked')!r}, where the "
+                      f"record cannot place {ex['unchecked']!r} (reading (d): never guessed)")
+    if "groups" in ex:
+        said = " ".join(out.get("one_game_words") or [])
+        if ex["groups"] and "these legs move together; the math assumes they don't." not in said:
+            faults.append(f"{name}: legs in one game are not flagged in the brief's words: "
+                          f"{said!r}")
+    text = json.dumps(out, ensure_ascii=False)
+    for want in ex.get("words") or ():
+        if want not in text:
+            faults.append(f"{name} does not say {want!r}")
+    return faults
+
+
+def _entry_check_property_faults() -> list[str]:
+    """The shipped arithmetic against the audit's own over a spread of
+    payouts: the break-even per leg (to a billionth) and the return at coin
+    flips (to a trillionth)."""
+    from . import entry_math as _em
+
+    faults = []
+    for m, n in ENTRY_CHECK_POWER_SPREAD:
+        got = _em.breakeven({"multiplier": m}, n)
+        own = math.exp(-math.log(m) / n)
+        if abs(got - own) > 1e-9:
+            faults.append(f"the break-even per leg of a {n}-leg power entry at {m:g}x is "
+                          f"{got!r}, where M^(-1/N) is {own!r}")
+        ev = _em.expected_return({"multiplier": m}, n)
+        if abs(ev - (m * 0.5 ** n - 1.0)) > 1e-12:
+            faults.append(f"the return at coin flips of a {n}-leg power entry at {m:g}x is "
+                          f"{ev!r}, where it is {m * 0.5 ** n - 1.0!r}")
+    for table, n in ENTRY_CHECK_FLEX_SPREAD:
+        got = _em.breakeven({"table": dict(table)}, n)
+        if abs(_own_flex_return(table, n, got)) > 1e-9 or abs(got - _own_flex_breakeven(table, n)) > 1e-9:
+            faults.append(f"the break-even per leg of the {n}-leg flex table {table} is "
+                          f"{got!r}, where the table returns its cost at "
+                          f"{_own_flex_breakeven(table, n)!r}")
+        ev = _em.expected_return({"table": dict(table)}, n)
+        if abs(ev - _own_flex_return(table, n, 0.5)) > 1e-12:
+            faults.append(f"the return at coin flips of the {n}-leg flex table {table} is "
+                          f"{ev!r}, where it is {_own_flex_return(table, n, 0.5)!r}")
+    return faults
+
+
+def _entry_check_remembered_faults(conn) -> list[str]:
+    """READING (e) ON THE SCRATCH WORLD: a confirmed payout is kept once, as
+    typed, for its app, entry type and size; the same again is not kept
+    twice; and it is offered back with its words and never as confirmed --
+    the form's own confirmation is the only one."""
+    from . import entry_check as _ec
+
+    faults = []
+    form = _ec_form(_EC_THREE, {"multiplier": "5"}, app="chalkboard")
+    before = conn.execute("SELECT COUNT(*) FROM pickem_payouts_typed").fetchone()[0]
+    _ec.check(conn, json.loads(json.dumps(form)), now=ENTRY_CHECK_NOW)
+    _ec.check(conn, json.loads(json.dumps(form)), now=ENTRY_CHECK_NOW)
+    after = conn.execute("SELECT COUNT(*) FROM pickem_payouts_typed").fetchone()[0]
+    if after - before != 1:
+        faults.append(f"the entry check kept {after - before} rows for one payout confirmed "
+                      f"twice, where it keeps one (reading (e))")
+    offered = [r for r in _ec.remembered(conn)
+               if (r["app"], r["entry_type"], r["legs"]) == ("chalkboard", "power", 3)]
+    if len(offered) != 1 or offered[0]["fields"] != {"multiplier": "5"}:
+        faults.append(f"the payout confirmed is not offered back as typed: {offered!r}")
+    elif "confirmed" in offered[0] or "Last typed for Chalkboard 3-pick power" not in offered[0]["words"]:
+        faults.append(f"the payout offered back says {offered[0]['words']!r}, or carries a "
+                      f"confirmation of its own (reading (e): offered, never confirmed)")
+    unconfirmed = _ec_form(_EC_THREE, {"multiplier": "7"}, app="chalkboard", confirmed=False)
+    _ec.check(conn, json.loads(json.dumps(unconfirmed)), now=ENTRY_CHECK_NOW)
+    if conn.execute("SELECT COUNT(*) FROM pickem_payouts_typed").fetchone()[0] != after:
+        faults.append("the entry check kept a payout the operator did not confirm "
+                      "(reading (e))")
+    return faults
+
+
+def entry_check_arithmetic_faults() -> list[str]:
+    """THE ENTRY CHECK'S ARITHMETIC, BY ITS WORKED EXAMPLES (gate step 2): the
+    shipped check on each example, in a scratch world of its own; the shipped
+    arithmetic against the audit's own over a spread of payouts; and the
+    payouts kept as reading (e) keeps them."""
+    import tempfile
+
+    faults: list[str] = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _entry_check_world(Path(tmp) / "entry_check.db")
+        try:
+            for ex in ENTRY_CHECK_WORKED_EXAMPLES:
+                faults += _entry_check_example_faults(conn, ex)
+            faults += _entry_check_property_faults()
+            faults += _entry_check_remembered_faults(conn)
+        finally:
+            conn.close()
+    return faults
+
+
+def check_the_entry_check_is_its_own_arithmetic() -> None:
+    faults = entry_check_arithmetic_faults()
+    if faults:
+        raise LawViolation(
+            "THE ENTRY CHECK'S ARITHMETIC IS NOT ITS OWN (GRIDIRON_ENTRY_CHECK step 1, "
+            "2026-10-07: \"break-even per leg (power M^(-1/N); flex solved from the "
+            "typed table); EV per unit at coin-flip legs; the boost's value (EV with "
+            "minus without); a same-game flag on legs from one game\"; ruling D: "
+            "\"break-even comes from that payout only\"):"
+            + _NL2 + _NL2.join(faults[:10]))
+
+
+#: THE ENTRY CHECK'S OWN CODE (2026-10-07): its two modules, its route.
+ENTRY_CHECK_MODULES = ("entry_math.py", "entry_check.py")
+ENTRY_CHECK_ROUTE = "/api/entry-check"
+
+#: WHAT THE ENTRY CHECK MAY IMPORT: the standard library's arithmetic, text,
+#: time and the record's own driver -- and of this project, its constants,
+#: the record's door, the words, the one bar and its own arithmetic. NOTHING
+#: THAT CAN REACH ANOTHER MACHINE: no `urllib`, `http`, `socket`, `ssl`,
+#: `requests` or `subprocess`, and none of this project's readers of a feed
+#: or a venue (`market`, `data.sources`, `data.teams`, `live`, `notify`,
+#: `capture`, `model.llm`). The stricter default: a list of what may come in,
+#: so anything else is named.
+ENTRY_CHECK_IMPORTS_ALLOWED = frozenset({
+    "__future__", "math", "json", "sqlite3", "unicodedata", "datetime", "typing",
+    "dataclasses", "gridiron.config", "gridiron.db", "gridiron.language",
+    "gridiron.picks", "gridiron.entry_math",
+})
+
+#: CALLS THAT REACH OUT OR RUN SOMETHING ELSE, by name.
+_ENTRY_CHECK_OUTBOUND_CALLS = frozenset({
+    "urlopen", "Request", "create_connection", "getaddrinfo", "Popen", "import_module",
+    "__import__", "eval", "exec", "system", "fetch", "fetch_json", "get_json", "urlretrieve",
+})
+
+#: AN ADDRESS: a scheme, a "www.", or a host name -- any pick'em app's, or
+#: any other's -- read in the strings the code holds, never in the code (a
+#: property such as `entry.app` is not a host).
+_ENTRY_CHECK_ADDRESS = re.compile(
+    r"://|\bwww\.|\b[a-z0-9-]{2,}(?:\.[a-z0-9-]{2,})*\.(?:com|net|org|io|bet|gg|ly|ai|dev|tv)\b",
+    re.I)
+
+#: A string literal in the page's script, for the address scan.
+_JS_STRING_LITERAL = re.compile(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"|`(?:[^`\\]|\\.)*`")
+
+#: In the page's script: anything that sends a request but a `fetch` of the
+#: entry check's own route.
+_ENTRY_CHECK_OUTBOUND_JS = re.compile(
+    r"XMLHttpRequest|WebSocket|EventSource|sendBeacon|window\.open\s*\(|"
+    r"location\.(?:href|assign|replace)\b|\bimport\s*\(|fetchJSON\s*\(")
+
+#: A statement that writes, at the start of a string or after a semicolon,
+#: and the one write the entry check may make (reading (e)): a plain insert
+#: of a payout typed -- one statement, no conflict clause.
+_ENTRY_CHECK_WRITE = re.compile(
+    r"(?:^|;)\s*(?:INSERT|UPDATE|DELETE|REPLACE|UPSERT|DROP|CREATE|ALTER)\b", re.I)
+_ENTRY_CHECK_THE_WRITE = re.compile(
+    r"^\s*INSERT\s+INTO\s+pickem_payouts_typed\s*\([^;]*$", re.I)
+_ENTRY_CHECK_REPLACING = re.compile(r"\bOR\s+REPLACE\b|\bON\s+CONFLICT\b", re.I)
+
+
+def _entry_check_imports(tree, module: str) -> list[str]:
+    """Every module a file imports, at any depth of the file, resolved from
+    the package (`from . import x` in gridiron is `gridiron.x`)."""
+    found = []
+    package = module.rsplit(".", 1)[0]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found += [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".")
+                root = ".".join(parts[:len(parts) - node.level + 1])
+                base = f"{root}.{base}" if base else root
+            if node.module is None or (node.level and not node.module):
+                found += [f"{base}.{a.name}" for a in node.names]
+            else:
+                found.append(base)
+    return found
+
+
+def _entry_check_python_faults(source: str, where: str, module: str) -> list[str]:
+    """One Python file of the entry check: what it imports, calls, names as
+    an address and writes."""
+    faults = []
+    try:
+        tree = ast.parse(source, filename=where)
+    except SyntaxError as exc:
+        return [f"{where} does not parse ({exc}), so nothing says what it reaches"]
+    for name in _entry_check_imports(tree, module):
+        if name not in ENTRY_CHECK_IMPORTS_ALLOWED:
+            faults.append(f"{where} imports {name}, which the entry check may not: it could "
+                          f"reach another machine (LAW 5: Gridiron never reads, scrapes or "
+                          f"calls any pick'em app)")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if called in _ENTRY_CHECK_OUTBOUND_CALLS:
+                faults.append(f"{where}:{node.lineno} calls {called}(), which reaches out or "
+                              f"runs something else (LAW 5)")
+    docstrings = _docstring_nodes(tree)
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+            continue
+        if id(node) in docstrings:
+            continue
+        if _ENTRY_CHECK_ADDRESS.search(node.value):
+            faults.append(f"{where}:{node.lineno} names an address, "
+                          f"{node.value.strip()[:60]!r}: the entry check reads no app and "
+                          f"calls no other machine (LAW 5)")
+        if _ENTRY_CHECK_WRITE.search(node.value) and (
+                not _ENTRY_CHECK_THE_WRITE.search(node.value)
+                or _ENTRY_CHECK_REPLACING.search(node.value)):
+            faults.append(f"{where}:{node.lineno} hands SQLite a write that is not the payout "
+                          f"the operator confirmed ({node.value.strip()[:60]!r}): nothing in "
+                          f"the entry check writes an entry anywhere (LAW 5; reading (e))")
+    return faults
+
+
+def entry_check_reach_faults(root: Path | None = None, *, app_js: str | None = None,
+                             api_source: str | None = None) -> list[str]:
+    """THE ENTRY CHECK REACHES NO APP AND WRITES NO ENTRY (LAW 5, the brief's
+    forbidden half; 2026-10-07): its two modules import, call and name nothing
+    that could reach another machine and write nothing but the payout the
+    operator confirmed; its route hands the form to the check and names no
+    address; and its functions in the page's script fetch nothing but its own
+    route. `root`, `app_js` and `api_source` take a planted copy."""
+    root = Path(root) if root is not None else config.PACKAGE_ROOT
+    faults: list[str] = []
+    for name in ENTRY_CHECK_MODULES:
+        path = root / name
+        if not path.exists():
+            faults.append(f"gridiron/{name} is gone, so nothing holds the entry check to "
+                          f"what it may reach")
+            continue
+        faults += _entry_check_python_faults(path.read_text(encoding="utf-8"),
+                                             f"gridiron/{name}",
+                                             f"gridiron.{name[:-3]}")
+    api_source = (api_source if api_source is not None
+                  else (root / "api.py").read_text(encoding="utf-8"))
+    tree = ast.parse(api_source)
+    route = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for deco in node.decorator_list:
+                if (isinstance(deco, ast.Call) and deco.args
+                        and isinstance(deco.args[0], ast.Constant)
+                        and deco.args[0].value == ENTRY_CHECK_ROUTE):
+                    route = node
+    if route is None:
+        faults.append(f"api.py serves no {ENTRY_CHECK_ROUTE}, so nothing says what the "
+                      f"entry check's route reaches")
+    else:
+        segment = ast.get_source_segment(api_source, route) or ""
+        faults += [f.replace("gridiron/api.py", f"api.py `{route.name}`")
+                   for f in _entry_check_python_faults(segment, "gridiron/api.py",
+                                                       "gridiron.api")
+                   if "imports" not in f]
+        if "entry_check.check(" not in segment:
+            faults.append(f"api.py `{route.name}` does not hand the form to "
+                          f"`entry_check.check`, the one door the gate reads")
+    js = app_js if app_js is not None else (root / "web" / "app.js").read_text(encoding="utf-8")
+    for name, got in _js_function_bodies(js, ENTRY_CHECK_JS_FUNCTIONS).items():
+        if got is None:
+            faults.append(f"`{name}` is gone from app.js, so nothing says what the entry "
+                          f"check's page reaches")
+            continue
+        line, body = got
+        for literal in _JS_STRING_LITERAL.findall(body):
+            if _ENTRY_CHECK_ADDRESS.search(literal):
+                faults.append(f"app.js:{line} `{name}` names an address, {literal[:60]}: the "
+                              f"entry check reads no app and calls no other machine (LAW 5)")
+        if _ENTRY_CHECK_OUTBOUND_JS.search(body):
+            faults.append(f"app.js:{line} `{name}` sends a request by "
+                          f"{_ENTRY_CHECK_OUTBOUND_JS.search(body).group(0)!r}: the entry "
+                          f"check asks its own route and nothing else (LAW 5)")
+        for call in re.finditer(r"\bfetch\s*\(\s*([^,)]*)", body):
+            if call.group(1).strip() != "'" + ENTRY_CHECK_ROUTE + "'":
+                faults.append(f"app.js:{line} `{name}` fetches {call.group(1).strip()[:60]}: "
+                              f"the entry check asks its own route and nothing else (LAW 5)")
+    return faults
+
+
+def check_the_entry_check_reaches_no_app() -> None:
+    faults = entry_check_reach_faults()
+    if faults:
+        raise LawViolation(
+            "LAW 5: THE ENTRY CHECK REACHES SOMETHING IT MAY NOT (the brief, 2026-09-30: "
+            "\"Gridiron never logs in to, reads, scrapes or calls any pick'em app, "
+            "holds no credential for one, never places or edits an entry\"):"
+            + _NL2 + _NL2.join(faults[:8]))
+
+
+def _check_the_entry_check_scanners_can_see() -> None:
+    """PROVED AT IMPORT (2026-10-07): the reach scan names an address, a
+    network import, a call out and a write of an entry in a planted file and
+    passes a clean one; the rail scan names a tile's line drawn in it."""
+    planted = ("import urllib.request\n"
+               "APP = 'https://api.example-app.com/projections'\n"
+               "def go(conn):\n"
+               "    urllib.request.urlopen(APP)\n"
+               "    conn.execute('INSERT INTO entries_kept (leg) VALUES (1)')\n")
+    found = " ".join(_entry_check_python_faults(planted, "planted.py", "gridiron.planted"))
+    problems = [what for what, word in (("a network import", "imports urllib"),
+                                        ("an address", "names an address"),
+                                        ("a call out", "calls urlopen"),
+                                        ("a write of an entry", "hands SQLite a write"))
+                if word not in found]
+    clean = ("from . import db\n"
+             "def keep(conn):\n"
+             "    conn.execute('INSERT INTO pickem_payouts_typed (app) VALUES (?)', ('x',))\n")
+    if _entry_check_python_faults(clean, "clean.py", "gridiron.clean"):
+        problems.append("a clean file")
+    if problems:
+        raise LawViolation("THE ENTRY CHECK'S REACH SCAN CANNOT SEE: " + ", ".join(problems))
+
+
+_check_the_entry_check_fixtures()
+_check_the_entry_check_scanners_can_see()
 
 
 # ---------------------------------------------------------------------------
@@ -14387,6 +15195,12 @@ def board_words_faults(payload) -> list[str]:
                 walk(value, f"{path}[{i}]")
 
     walk(board, "board")
+    # THE ENTRY CHECK'S PANEL (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07): every
+    # string it carries but a code -- its labels, choices, sentences, the
+    # props marked and the payouts last typed -- read whole, where the keys
+    # above would read only some of them.
+    panel = ((board.get("props") or {}).get("entry_check")) or {}
+    faults += entry_check_words_faults(panel, "board.props.entry_check")
     return sorted(set(faults))
 
 

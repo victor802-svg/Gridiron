@@ -785,6 +785,17 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_priced_row_without_its_multiplier",
         "plant_a_slate_with_nothing_clearing_filled_with_picks",
         "plant_an_ungated_game_market_drawn_as_a_pick",
+        # THE ENTRY CHECK, STEP 1 (GRIDIRON_ENTRY_CHECK, built 2026-10-07):
+        # "Plantings: a wrong break-even, a boost applied twice, an unflagged
+        # same-game pair" -- step 1's three -- and the colour reading (h)
+        # gives, and LAW 5's forbidden half in the check's own code: "a
+        # planting that puts a pick'em app's address or an outbound call in
+        # the entry check is caught".
+        "plant_a_wrong_breakeven",
+        "plant_a_boost_applied_twice",
+        "plant_an_unflagged_same_game_pair",
+        "plant_an_entry_outlined_where_reading_h_gives_none",
+        "plant_a_pickem_app_reached_from_the_entry_check",
         # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second
         # set; built 2026-10-07): "Planting: a finished game's pick priced;
         # an in-play read used as a close."

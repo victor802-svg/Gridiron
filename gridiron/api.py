@@ -20,8 +20,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (audit, auth, buildinfo, calibration, config, db, language,
-               settings, views)
+from . import (audit, auth, buildinfo, calibration, config, db, entry_check,
+               language, settings, views)
 
 # WOFF2 IS NOT IN PYTHON'S MIME TABLE (operator ruling 4, 2026-09-04).
 # `mimetypes.guess_type("a.woff2")` returns (None, None) on this machine, so
@@ -119,6 +119,24 @@ def get_settings_conn() -> sqlite3.Connection:
     return conn
 
 
+def get_entry_conn() -> sqlite3.Connection:
+    """A WRITABLE handle, used only by the entry check (GRIDIRON_ENTRY_CHECK
+    step 1, 2026-10-07), whose one write is the payout the operator confirmed
+    for an app, entry type and size (`entry_check.remember`).
+
+    The same boundary as the settings and taken handles, for the same reason:
+    the record's handle stays `query_only`. A payout typed is not the record
+    and not an entry: no leg, stake or result is written, and
+    `audit.check_the_entry_check_reaches_no_app` refuses any write of the
+    check's to another table.
+    """
+    conn = getattr(_local, "entry_conn", None)
+    if conn is None:
+        conn = db.open_db(_database)
+        _local.entry_conn = conn
+    return conn
+
+
 def set_database(path: Path | str | None) -> None:
     """Point the app at a database. Used by the launcher and by tests."""
     global _database
@@ -126,6 +144,9 @@ def set_database(path: Path | str | None) -> None:
     _local.conn = None
     _local.auth_conn = None
     _local.settings_conn = None
+    # THE ENTRY CHECK'S HANDLE FOLLOWS THE DATABASE TOO (2026-10-07), so a
+    # test that points the app elsewhere never checks against the last one.
+    _local.entry_conn = None
 
 
 # ---------------------------------------------------------------------------
@@ -726,6 +747,33 @@ async def taken_package(package_id: int, request: Request) -> dict:
             status_code=403,
             detail=("This page is out of date. Reload it and try again."))
     return views.take_package(get_taken_conn(), package_id)
+
+
+@app.post("/api/entry-check")
+async def check_an_entry(request: Request) -> dict:
+    """CHECK AN ENTRY (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07): the entry the
+    operator typed on the Props page, answered with arithmetic -- the
+    break-even per leg from the payout he typed, the return per unit at coin
+    flips, a promo converted and what it adds, the legs in one game -- and the
+    colour reading (h) gives it.
+
+    A POST BECAUSE IT CARRIES A FORM, and its one write is the payout he
+    confirmed for its app, entry type and size, where it differs from the
+    last one typed (`entry_check.remember`): no leg, no entry and no result
+    is kept, nothing is read from any app and nothing is sent anywhere
+    (LAW 5; `audit.check_the_entry_check_reaches_no_app`). THE SAME TWO LOCKS
+    THE OTHER WRITE ROUTES HAVE: the session closes the route, and the CSRF
+    token closes a cross-site POST."""
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    if not auth.csrf_is_valid(session_id, request.headers.get(auth.CSRF_HEADER)):
+        raise HTTPException(
+            status_code=403,
+            detail=("This page is out of date. Reload it and try again."))
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    return entry_check.check(get_entry_conn(), body)
 
 
 @app.get("/")
