@@ -102,6 +102,18 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **THE ENTRY CHECK, STEP 1 RELEASED as d8a49bf (2026-10-07 21:38Z; gate
+  4/4 on its first run, 431/431; serving d8a49bf91ecd)** -- resumed from
+  the partial build (wf_5616f885-939), proved, committed d8a49bf: "Check an
+  entry" on the Props page, the entry rail grown into the brief's form
+  (app, entry type, legs standard/goblin/demon with their lines, the
+  payout the app shows typed and confirmed, a promo once); break-even per
+  leg, return at coin flips, the promo's value, legs in one game flagged
+  (never guessed; a game under way or undated is its own game, the
+  prover's fix); green only where every leg's break-even is 3 points
+  under 50%, red where it costs at coin flips. `pickem_payouts_typed`
+  (append-only, its three rules and index) reached the record through
+  db.init. **Next: step 2 (scratchpad wf_entry2.js).**
   **THE ENTRY CHECK, STEP 1 -- STOPPED MID-BUILD (2026-10-07 ~03:03Z; the
   session ended; found 18:40Z):** workflow wf_9563edd2-3ab (scratchpad
   wf_entry1.js), its builder partway: `gridiron/entry_math.py` and
