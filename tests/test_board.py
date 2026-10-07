@@ -602,17 +602,35 @@ def test_sort_and_filter_persist_and_the_clears_filter_speaks_when_empty(page):
         page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game", timeout=15000)
     page.wait_for_selector("#games-sort option", state="attached", timeout=15000)
+    # NEVER BY THE MODEL'S CHANCE (operator ruling B.1, 2026-10-05; built
+    # 2026-10-07): the sort offers the start time and the edge, and "edge"
+    # puts the rows a pick leads first by its edge and keeps every other row
+    # in its start order. Until then this chose "the model's chance" and held
+    # the rows to it.
+    options = page.evaluate("[...document.querySelectorAll('#games-sort option')].map(o => o.value)")
+    assert options == ["time", "edge"], options
     with wait_for_the_redraw_it_starts(page):
-        page.select_option("#games-sort", "prob")
-    probs = page.evaluate("[...document.querySelectorAll('#games-rows .game .pick-prob')].map(e => parseFloat(e.textContent))")
-    assert probs == sorted(probs, reverse=True), probs
-    assert page.evaluate("(() => { try { return localStorage.getItem('gridiron.games.sort'); } catch (e) { return 'refused'; } })()") in ("prob", "refused")
+        page.select_option("#games-sort", "edge")
+    order = page.evaluate("[...document.querySelectorAll('#games-rows .game')].map(g => g.dataset.game)")
+    want = page.evaluate(
+        "(() => { const gs = window.Gridiron.state.slate.board.games"
+        ".filter(g => (g.questions || []).length);"
+        " const e = g => (g.pick && g.pick.pick) ? g.pick.edge_points : null;"
+        " const picks = gs.filter(g => e(g) !== null).sort((a, b) => e(b) - e(a));"
+        " return picks.concat(gs.filter(g => e(g) === null)).map(g => g.game_id); })()")
+    assert order == want, (order, want)
+    assert page.evaluate("(() => { try { return localStorage.getItem('gridiron.games.sort'); } catch (e) { return 'refused'; } })()") in ("edge", "refused")
     with wait_for_the_redraw_it_starts(page):
         page.check("#games-clears")
     rows = page.evaluate("[...document.querySelectorAll('#games-rows .game')].map(g => g.querySelector('.pick').className)")
     assert all("sig-clears" in c for c in rows), rows
     if not rows:
-        assert page.text_content("#games-notes").strip(), "the filter hid every row and said nothing"
+        # "PICKS ONLY" WITH NO PICK: the page says "Nothing worth taking
+        # today" above the rows (B.4, 2026-10-07), where the notes said the
+        # old sentence.
+        said = (page.text_content("#games-nothing") or "").strip()
+        assert said or page.text_content("#games-notes").strip(), \
+            "the filter hid every row and said nothing"
     with wait_for_the_redraw_it_starts(page):
         page.uncheck("#games-clears")
     with wait_for_the_redraw_it_starts(page):
@@ -830,8 +848,9 @@ def test_an_open_card_stays_open_across_every_redraw_the_operator_starts(page):
     slate, and each leaves the row the reader opened open (operator question
     18; the checklist: "one the operator started")."""
     game = _open_the_first_row(page)
-    # THE SORT.
-    _redrawn(page, lambda: page.select_option("#games-sort", "prob"))
+    # THE SORT (by edge from ruling B, 2026-10-07: "the model's chance" is
+    # gone).
+    _redrawn(page, lambda: page.select_option("#games-sort", "edge"))
     assert page.evaluate(_OPEN, game) is True, "the sort closed the open row"
     _redrawn(page, lambda: page.select_option("#games-sort", "time"))
     assert page.evaluate(_OPEN, game) is True

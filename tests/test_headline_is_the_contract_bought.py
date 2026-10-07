@@ -42,8 +42,16 @@ def _rec117(path, **kwargs):
     wins by over 2.5" at a 51.5c mid, the model's 68.48% for New Orleans
     -2.5; the recommendation buys New Orleans -2.5."""
     from tests import test_every_number_names_its_line as step_a
+    from tests.gate_world import pass_the_gate
 
-    return step_a._world(path, "rec117", **kwargs)
+    # AS A PICK, ITS MARKET PAST B.5'S GATE (operator ruling B, 2026-10-05;
+    # built 2026-10-07): these tests hold the headline of a recommendation
+    # the page calls a pick -- sized, outlined, "Model's pick" -- so the NFL
+    # spread here has its hundred settled comparisons at the venue's price.
+    # Rec 117 itself is a number under B (`test_ranked_by_edge.py`).
+    got = step_a._world(path, "rec117", **kwargs)
+    pass_the_gate(got[0], sport="nfl", market="spread")
+    return got
 
 
 def _moneyline(path, *, price=0.30, confidence=0.57):
@@ -55,6 +63,11 @@ def _moneyline(path, *, price=0.30, confidence=0.57):
 
     conn = rec._world(path, kickoff="2099-01-01T00:00:00Z")
     pid = rec._away_pick(conn, price=price, confidence=confidence)
+    # ITS MARKET PAST B.5'S GATE (operator ruling B, 2026-10-05; 2026-10-07),
+    # as `_rec117`'s: the moneyline is held here as a pick.
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport="mlb", market="moneyline")
     return conn, pid
 
 
@@ -321,8 +334,13 @@ def test_the_words_are_plain():
     for words in said:
         assert audit.plain_words_violations(words) == [], words
         assert audit.advice_word_faults(words) == [], words
-    # the label says so only of a pick still to start
-    assert language.pick_label_words("final", "won", other_side=True) == "Model's pick · won"
+    # the label says so only of a pick still to start -- and from ruling B
+    # (2026-10-05; built 2026-10-07) a finished row is never labelled a
+    # pick at all: "Model's pick" heads only a pick still to come
+    assert language.pick_label_words("final", "won", other_side=True) == \
+        "The model's number · won"
+    assert language.pick_label_words("upcoming", "clears", pick=True, other_side=True) == \
+        "Model's pick · the other side"
 
 
 def test_the_gate_makes_the_call():

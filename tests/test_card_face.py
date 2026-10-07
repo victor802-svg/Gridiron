@@ -376,6 +376,13 @@ def test_the_floor_folds_cards_and_hides_nothing_from_the_record(tmp_path, cover
     conn = _world(tmp_path)
     pid = _pick(conn, prob=0.92)
     _claim(conn, pid, model_prob=0.92, venue_implied=0.80)   # pays 1.25x
+    # A PICK NEEDS ITS MARKET PAST B.5'S GATE (operator ruling B, 2026-10-05;
+    # built 2026-10-07): the floor folds picks, so this world's baseball
+    # moneyline is given its hundred settled comparisons at the venue's
+    # price, as the record's own has (107 on 6 October).
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport="mlb", market="moneyline")
     settings.set_value(conn, "min_payout", "1.5")
 
     entry = recommend.for_predictions(conn, [pid])[0]
@@ -655,10 +662,13 @@ def test_the_strip_says_whose_questions_it_is_counting():
     twenty-point type reads as a fact about the day rather than about a
     filter, and a reader had no way to tell which it was.
     """
+    # A PICK IS B'S FROM 2026-10-07 (operator ruling B, 2026-10-05): the
+    # count is of picks, and "that clear the bar" -- the writer's bar alone,
+    # which an ungated market's recommendation cleared -- is gone from it.
     model = language.day_strip_words(
         day_words="Tuesday 8 September", slate_words="MLB", clears=4,
         watching=11, below_floor=0, floor=1.5, forecaster="statistical")
-    assert model["counts"].startswith("the model has 4 picks that clear the bar")
+    assert model["counts"].startswith("the model has 4 picks · 11 questions")
 
     pass_ = language.day_strip_words(
         day_words="Tuesday 8 September", slate_words="MLB", clears=2,
@@ -669,11 +679,11 @@ def test_the_strip_says_whose_questions_it_is_counting():
     empty = language.day_strip_words(
         day_words="x", slate_words="MLB", clears=0, watching=15,
         below_floor=0, floor=1.5, forecaster="statistical")
-    assert empty["counts"].startswith("the model has nothing that clears")
+    assert empty["counts"].startswith("the model has no pick")
     one = language.day_strip_words(
         day_words="x", slate_words="MLB", clears=1, watching=9,
         below_floor=0, floor=1.5, forecaster="statistical")
-    assert "1 pick that clears the bar" in one["counts"]
+    assert one["counts"].startswith("the model has 1 pick ·")
     # and the floor clause survives the rewording
     floored = language.day_strip_words(
         day_words="x", slate_words="MLB", clears=2, watching=9,

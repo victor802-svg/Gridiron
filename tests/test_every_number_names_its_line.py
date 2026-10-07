@@ -222,6 +222,13 @@ def test_rec_111_reads_north_texas_plus_1_5_with_its_own_numbers(tmp_path):
 
 def test_the_released_words_beside_those_numbers_are_named(tmp_path):
     conn, pid, sport, week = _world(tmp_path / "rec111.db", "rec111")
+    # REC 111 AS A PICK, ITS MARKET PAST B.5'S GATE (operator ruling B,
+    # 2026-10-05; built 2026-10-07): the check names its words in the picks'
+    # group, which holds a recommendation only once its market has its
+    # hundred settled comparisons at the venue's price.
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport=sport, market="spread")
     payload = views.week(conn, sport, 2026, week)
     for block in _blocks(payload, pid):
         block["line_words"] = "North Texas -6.5"

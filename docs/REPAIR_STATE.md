@@ -26,6 +26,52 @@
   this item"), untouched by Q38, passing 3 of 3 alone; steps 2-4 passed,
   421/421. Its one as-is rerun: 4/4, 421/421 (23:20:06Z). **Next: B
   (scratchpad wf_b.js).**
+  **B BUILT (dated 2026-10-07 in the code; built 2026-10-06 23:20Z to
+  2026-10-07 ~01:00Z, on 4274f1d; uncommitted for its prover; FOLLOWUPS
+  "Picks are ranked by edge, never by chance"; CLAUDE.md row "PICKS ARE
+  RANKED BY EDGE, NEVER BY CHANCE"):** operator ruling B whole. MEASURED
+  FIRST on one verified copy (made 2026-10-06T23:26:25-23:27:20Z): B.5's
+  gate passes for MLB moneyline alone (107 / 108; its season over), NCAAF
+  moneyline at 95 / 95, NCAAF spread 71 / 7, MLB spread 64 / 0, NFL
+  moneyline 32 / 32, NFL spread 24 / 2, the rest under 26, UFC none; the
+  record's 72 standing recommendations are all in markets short of it; on
+  108 payloads all 1,269 rows were headed "Model's pick" (280 to come, 118
+  led by a prop) and led by the surest question where nothing cleared, 16
+  recommendations were outlined, sized and in CLEARS and six combos made of
+  them -- no row on the record is a pick under B. BUILT: the one door
+  `picks.judge` (the writer's bar, three points after fees, and B.5's gate
+  for a Kalshi game market); picks ranked by edge, everything else by
+  start, game and the declared market order -- the Today groups, a row's
+  questions and its lead, the Props tiles; "Model's pick" only over a pick,
+  "Not a pick" over the rest to come, "The model's number · won" over a
+  finished row; the outline, size, badge and combo legs a pick's alone; the
+  writer unchanged and a recommendation that is not a pick drawn with its
+  numbers and why ("Not a pick: its market has 24 of the 100 settled
+  comparisons with the venue's price it needs first."); an edge under three
+  never drawn at it ("+2.9" for 2.97); the row's face draws its edge beside
+  its chance and multiplier; "Nothing worth taking today" above the Games
+  rows and in the Today payload; the sort by the model's chance gone ("edge"
+  in its place), "picks only"; the taken rail "N marked"; the entry rail's
+  "Clears the bar" only of an entry of picks. THE GATE:
+  `audit.check_picks_are_ranked_by_edge` (step 2; the gate recounted from
+  the record by `recount.at_the_line`, the edge from each card's own
+  numbers, and the renderers read) -- 4,406 faults on 4274f1d's payloads,
+  none here. Five plantings, each escaping on 4274f1d and caught here. The
+  readings and question 41 (should the writer stop recording outside B?
+  default no) are below. **PROVED (2026-10-07 ~01:00-02:00Z; FOLLOWUPS "Picks
+  are ranked by edge", THE PROVER):** found on the change as handed and
+  fixed, each with a test failing on 4274f1d and a planting form escaping on
+  it -- a taken tile drew "taken" in its multiplier's place (B.3); the
+  recommendation lines had no multiplier and stood in the record's id order
+  (B.3, B.1); the gate's words did not say whose count it is ("its market
+  has 0 of the 100" -- one forecaster's, for UFC one card's); the sign-in
+  screen counted open questions as "picks" and the fee line said "A pick
+  with no edge" (B.2). Measured again on its own verified copy (made
+  01:09:52Z, deleted 01:19:18Z): 4,432 faults on 4274f1d's 108 payloads,
+  none here; step 2's slate rows nothing; rendered from the worlds and the
+  copy; plant.py whole 426/426 in 304 s; the full suite 2,479 passed, 4
+  skipped, 0 failed (1,180 s). Committed locally on `repair`, not pushed.
+  **Next: B's gate (detached) and release.**
   **C RELEASED as 6c54ed1 (2026-10-06 18:40Z; gate 4/4, 419/419; serving
   6c54ed1ea134)** -- C (ba27ba3), the orphan scan read once so the
   planting harness fits its 600 s (49ccb8a; ruled in the operator's
@@ -2445,6 +2491,118 @@ depend on the answer.
       it has no main line, and the leg shows "no line near an even chance".
     - **(B)** As built: the rung nearest 50¢, whatever its price.
     Default until ruled: (B), as built (no ladder is read, so nothing shows).
+
+41. **Should the writer stop recording recommendations in a market that has
+    not passed B.5's gate, or under three points? (Asked by ruling B's
+    builder, 2026-10-07, as the task's reading (d) asks it.)** Ruling B
+    changes what the PAGE calls a pick; it names no change to the writer,
+    and the closing line's measurement -- its first clean read is 15 October
+    -- rests on the rows `recommend.record_for` writes. As built, the writer
+    records exactly as before (its own bar: the fee and five per cent of the
+    side's cost; LAW 5's flat unit and "no measured edge" below a market's
+    hundred), and the page draws each such recommendation that is not a
+    pick with its numbers only -- watched, no size, no outline, no "Model's
+    pick", never in a combo -- and the words beside it ("Not a pick: its
+    market has 24 of the 100 settled comparisons with the venue's price it
+    needs first.", or "... its edge after fees is +2.9 points, under the 3 a
+    pick needs."). Measured on one verified copy of the record (2026-10-06
+    23:26Z): the record's 72 standing recommendations (NCAAF spread 14, MLB
+    spread 28, MLB total 16, NBA moneyline 2, NFL spread 11, NFL total 1)
+    are every one in a market short of B.5's gate -- only MLB moneyline has
+    passed it (107 and 108 settled comparisons), and it holds none, its
+    season over -- 68 of them at three points or more; no slate holds a B
+    pick today.
+    - **(A)** The writer stops: no recommendation in a market short of its
+      gate, or under three points (the closing line then measures picks
+      only, from the release; its count to 15 October shrinks).
+    - **(B)** As built: the writer records as now; only the page changes.
+    Default until ruled: (B), recorded as now.
+
+## Rulings taken in your absence (2026-10-07, ruling B's builder)
+
+Each the conservative reading, recorded here and in FOLLOWUPS ("Picks are
+ranked by edge, never by chance"); each reversible in a line or two.
+
+- **(a) "Every page"** is every place the app orders, labels or draws picks
+  or browse rows: the Games board (its rows, a row's questions, its lead and
+  the lead's label, the sort and the "picks only" filter, the market
+  filter's lead), the Props board (C's, its order held to B's), the Today
+  payload's groups, its heading words and the day strip's count, the
+  recommendation lines, My day, the taken rail's heading, the entry rail's
+  verdict, combos, and Results' settled tiles (drawn in the row's order).
+  The SHORTLIST RANKER is not a pick ranking and is not changed; the page
+  orders itself. Left, and named in FOLLOWUPS: the payload's `cards` list
+  (ordered by the disagreement with the media line and then the chance, as
+  `sorted_by` says; no page draws it in that order) and old wordings on
+  other pages that call a forecast a "pick" in the earlier sense ("Settle
+  picks", "the picks taken scored ...", the retired hero's line).
+- **(b) A pick is ranked by its edge after fees, best first; anything that
+  is not a pick by its start, its game, then the sport's declared market
+  order (`config.SPORT_MARKETS`; a prop by its type), its subject, line and
+  number** -- never its chance, and in an ungated market never its edge. A
+  row's lead is its best pick by edge, else the first of its questions in
+  that order. The Games page's "the model's chance" sort is gone; "edge"
+  puts the rows a pick leads first by its edge and keeps the rest in start
+  order. The page's own forecaster's questions come before the other's on
+  an open row, each in that order (never ranked against each other).
+- **(c) A Kalshi pick** is the edge after fees in points of the side bought
+  (`recommend.edge_points`, the unrounded figure of `edge_cents`), against
+  `config.PICK_MIN_EDGE` (C's three points, one bar for both venues) --
+  AND, the stricter reading of B.2's "only if", the writer's own bar still
+  in force (the fee and five per cent of the side's cost): a pick is a
+  recommendation that also clears three points and, being a game market,
+  its gate. A figure under three points that rounds to 3.0 is drawn at the
+  tenth below it (2.97 as "+2.9") on every surface -- the Today card, the
+  row and tile, the recommendation line, the taken rail and a pick'em leg.
+- **B.5's gate** is the at-the-line record's settled comparisons through
+  its one door (`at_the_line.standing_claims`: one claim per distinct bet,
+  this forecaster's, none priced across two contracts), at
+  `config.GAME_MARKET_PICK_GATE` (LAW 4's hundred); for UFC, which splits
+  below the market, ONE CARD's (the door requires a card; a bout on no
+  declared card counts nothing). A Kalshi-priced market that is not a game
+  market keeps no such record, has no gate it could pass, and is no pick
+  (none is priced today).
+- **(d) The writer is not changed** (question 41 asks whether it should
+  be): every recommendation keeps its line, the writer's numbers and no
+  size where it is not a pick, with the words saying why; Q37's headline
+  holds for it (the contract it buys, the model's own side beside it), and
+  its row is labelled "Not a pick · the other side" where it buys the other
+  side.
+- **(e) The multiplier**: every priced row and tile draws its chance, its
+  multiplier ("1.92x", the side drawn's, as step C turned it) and its edge;
+  the row's face draws the edge now. A row with no price says so where the
+  price would be (unchanged).
+- **(f) "Nothing worth taking today"** -- B.4's words exactly -- above the
+  Games rows and in the Today payload (`nothing_words`) wherever the slate
+  has a question of the page's forecaster still to come and none is a pick,
+  priced or not; the day strip's note keeps "no venue price yet" for its
+  own sentence. The Games page's old sentence ("Nothing clears the bar
+  today. Every pick below is priced ...") is gone.
+- **The label "Model's pick"** heads only a pick still to come; any other
+  question still to come is "Not a pick"; a game being played or finished
+  says "The model's number · pregame / won / lost" -- whether its question
+  was a pick at its start is not on the page (FOLLOWUPS). The colour law's
+  solid fills on settled questions are unchanged: they are the forecast's
+  verdict ("Settled: it happened"), as drawn before B.
+- **The entry rail's verdict** keeps its arithmetic (the brief: "leave its
+  arithmetic, but it may not say 'pick' below B.2"): "Clears the bar at Nx"
+  and its outline only where every leg is three points or more over the
+  entry's break-even; an entry that returns more without that says
+  "Returns more than it costs at Nx" and wears no outline.
+- **From the prover (2026-10-07), each the conservative reading and
+  reversible in a line:** (a)'s "every page" holds the recommendation lines
+  to B.1's order and B.3's multiplier ("the venue is at 52¢ (pays 1.94x)",
+  the side bought's), and the sign-in screen and the fee line to B.2's
+  word: the sign-in count says "questions" (GRIDIRON_13 P6 asked for
+  "tonight's slate size"; its example's "60 picks tonight" was that count
+  in the old word) and the fee line "A contract with no edge". The gate's
+  words name whose count it is, in the Record page's label for the curve
+  ("... (point spread at the venue's line, statistical)"; a UFC bout's its
+  card). A taken tile keeps its multiplier. CHECKED, NOT CHANGED: the colour
+  law's settled fills stay on a question that was never a pick -- the law's
+  own text gives a red outline to "a pick" that "costs the operator after
+  fees", which no pick under B can, so its word "pick" is the forecast's
+  side, the sense it was written in, and no word of the law is stretched.
 
 ## Rulings taken in your absence (2026-10-06)
 

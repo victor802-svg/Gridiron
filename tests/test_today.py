@@ -95,7 +95,11 @@ def test_today_has_two_groups_and_the_watched_rows_show_their_own_edge(tmp_path)
     # nothing clears the fee on a slate with no venue price, and the screen
     # says so rather than reaching into the other group
     assert today["n"] == 0 and today["clears"] == []
-    assert "Nothing clears" in today["clears_heading"]
+    # B.4'S WORDS FROM 2026-10-07 (operator ruling B, 2026-10-05: "When
+    # nothing clears on a slate: 'Nothing worth taking today'"); it said
+    # "Nothing clears the venue's fee today."
+    assert today["clears_heading"] == "Nothing worth taking today"
+    assert today["nothing_words"] == "Nothing worth taking today"
     # the list is never empty: every shortlisted question is watched
     assert today["watching_n"] == len(ids)
     for row in today["watching"]:
@@ -118,9 +122,11 @@ def test_a_watched_row_prints_a_negative_edge_rather_than_hiding_it():
     assert "after fees" in label
     assert audit.advice_word_faults(label) == []
     assert audit.plain_words_violations(label) == []
-    # and the heading says plainly that these do not clear the bar
+    # and the heading says plainly that none of these is a pick (from ruling
+    # B, 2026-10-07: a recommendation short of its gate is watched, so "none
+    # of which clears the venue's fee" stopped being true of all of them)
     heading = language.watching_heading(18)
-    assert "none of which clears" in heading
+    assert "none of them a pick" in heading
     assert audit.advice_word_faults(heading) == []
 
 

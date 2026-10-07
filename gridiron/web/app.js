@@ -1228,11 +1228,22 @@ const Gridiron = (function () {
       nums.appendChild(el('span', 'q-settled', q.settled_words));
     }
     mini.appendChild(nums);
+    // THE MULTIPLIER STAYS ON A TAKEN TILE (the prover of operator ruling B,
+    // 2026-10-07: B.3, "Every pick and every browse row shows its payout as a
+    // multiplier beside its chance and edge"). The slot said "taken" in its
+    // place once the operator marked the question, so a taken question off
+    // the row's face showed its chance and its edge and no multiplier; that
+    // it was taken is the filled check mark's job, and the tile's own class.
     if (q.state === 'upcoming') {
-      mini.appendChild(tip(el('span', 'pay', q.taken ? (labels.taken || '') : (q.pays_words || ABSENT)), (q.tips || {}).pays));
+      mini.appendChild(tip(el('span', 'pay', q.pays_words || ABSENT), (q.tips || {}).pays));
     }
     node.appendChild(mini);
+    // A PICK'S BADGE, AND A NUMBER'S REASON (operator ruling B, 2026-10-05;
+    // built 2026-10-07): "Pick · +4.3 after fees" beside a pick's outline; a
+    // recommendation that is not a pick says why. The server's words.
+    if (q.pick_words) node.appendChild(el('div', 'q-pick', q.pick_words));
     if (q.size_words) node.appendChild(el('div', 'q-size', q.size_words));
+    if (q.not_a_pick_words) node.appendChild(el('p', 'q-method', q.not_a_pick_words));
     // THE MODEL'S OWN SIDE, beside a tile headlining the contract its
     // recommendation buys on the other side of it (operator question 37,
     // ruled 2026-10-05). The server's words.
@@ -1313,10 +1324,14 @@ const Gridiron = (function () {
     if (g.score_words) teams.appendChild(el('span', 'game-score', g.score_words));
     head.appendChild(teams);
 
-    // THE MODEL'S PICK, the most pronounced element on the row.
+    // THE ROW'S LEAD QUESTION, the most pronounced element on the row.
+    // "MODEL'S PICK" ONLY OVER A PICK (operator ruling B, 2026-10-05; built
+    // 2026-10-07): the label is the lead's own (`lead_label_words`), so a
+    // row narrowed to one market wears its new lead's label, never the label
+    // of the question it replaced.
     const pickBox = el('div', 'pick ' + (pick ? signalClass(pick.signal) : 'pick-none'));
     if (pick) {
-      pickBox.appendChild(el('small', 'pick-label', g.pick_label_words || ''));
+      pickBox.appendChild(el('small', 'pick-label', pick.lead_label_words || g.pick_label_words || ''));
       pickBox.appendChild(tip(el('div', 'pick-line', pick.line_words || ''), (pick.tips || {}).line || pick.question));
       const under = el('div', 'pick-under');
       // A LIVE ROW SHOWS "pregame NN%" AND NOTHING ELSE about the number:
@@ -1328,6 +1343,14 @@ const Gridiron = (function () {
       if (state === 'upcoming') {
         under.appendChild(tip(el('span', 'pick-price', pick.price_words || ''), (pick.tips || {}).price));
         under.appendChild(tip(el('b', 'pick-pays', pick.pays_words || ''), (pick.tips || {}).pays));
+        // AND ITS EDGE BESIDE ITS CHANCE AND ITS MULTIPLIER (operator ruling
+        // B.3, 2026-10-05: "Every pick and every browse row shows its payout
+        // as a multiplier beside its chance and edge"; built 2026-10-07): the
+        // row's face drew the chance, the price and the payout, and its edge
+        // only on the open row's tile. The server's words.
+        // A ROW WITH NO PRICE SAYS SO ONCE, in its price slot ("THE ABSENCE
+        // IS SAID ONCE", 2026-09-08): its edge words would say it again.
+        if (pick.priced && pick.edge_words) under.appendChild(el('span', 'pick-edge', pick.edge_words));
       }
       if (state === 'live' && pick.pregame_words) {
         under.appendChild(tip(el('span', 'pick-pregame', pick.pregame_words), (pick.tips || {}).prob));
@@ -1337,6 +1360,11 @@ const Gridiron = (function () {
       }
       pickBox.appendChild(under);
       if (pick.size_words) pickBox.appendChild(el('div', 'pick-size', pick.size_words));
+      // A RECOMMENDATION THAT IS NOT A PICK SAYS WHY, on the face (operator
+      // ruling B, 2026-10-05, reading (d); built 2026-10-07): its market has
+      // not passed its gate, or its edge is under three points. The server's
+      // words.
+      if (pick.not_a_pick_words) pickBox.appendChild(el('p', 'pick-method', pick.not_a_pick_words));
       // THE MODEL'S OWN SIDE AND NUMBER, beside a pick that headlines the
       // contract its recommendation buys on the other side of it (operator
       // question 37, ruled 2026-10-05). The server's words.
@@ -1577,7 +1605,11 @@ const Gridiron = (function () {
     };
     put('day-where', today.where_words);
     put('day-counts', today.count_words);
-    put('day-note', today.no_price_words || ((data.board || {}).nothing_clears_words));
+    // "NOTHING WORTH TAKING TODAY" HAS A PLACE OF ITS OWN above the rows
+    // (operator ruling B.4, 2026-10-05; built 2026-10-07: `renderGames`),
+    // where "no venue price yet" no longer takes its place: the note says
+    // why there is no price, and nothing else.
+    put('day-note', today.no_price_words);
     put('today-fee', today.fee_line);
   }
 
@@ -1662,25 +1694,31 @@ const Gridiron = (function () {
     renderLegend(labels);
     sportPill('games-sport', board);
     // THE MARKET FILTER NARROWS EVERY ROW, not only the list: a row on a
-    // filtered slate shows that market's questions and leads with the one
-    // of them that clears the bar, else the surest. Chosen here from the
-    // payload's own signals; nothing is composed.
+    // filtered slate shows that market's questions and leads with the first
+    // of them, the page's forecaster's, in the server's order -- its picks
+    // by edge, then the declared market order (operator ruling B, 2026-10-05,
+    // reading (b); built 2026-10-07). Until then it led with the one
+    // clearing the bar, else the SUREST: a lead chosen by the model's chance.
     const narrow = (g) => {
       if (!market) return g;
       const qs = (g.questions || []).filter(q => (q.market || '') === market);
-      const lead = qs.slice().sort((a, b) =>
-        (b.signal === 'clears') - (a.signal === 'clears') ||
-        ((b.prob || 0) - (a.prob || 0)))[0] || null;
+      const lead = qs.find(q => q.forecaster === board.forecaster) || null;
       return Object.assign({}, g, { questions: qs, pick: lead });
     };
     // SORT AND FILTER (3c, 2026-09-25): the choice is the reader's and is
     // kept in the browser; the order is computed here from the payload's
     // own numbers, once, at render -- never when a score arrives.
+    // NEVER BY THE MODEL'S CHANCE (operator ruling B.1, 2026-10-05: "Chance
+    // of hitting alone never ranks anything"; built 2026-10-07): the
+    // "the model's chance" option went. "edge" puts the rows a pick leads
+    // first, by its edge, and every other row in its start order; a choice
+    // kept from before falls back to the start time.
     const sortSel = document.getElementById('games-sort');
     const clearsBox = document.getElementById('games-clears');
-    const sortBy = prefGet('games.sort', 'time');
+    let sortBy = prefGet('games.sort', 'time');
+    if (sortBy !== 'time' && sortBy !== 'edge') sortBy = 'time';
     const clearsOnly = prefGet('games.clears', '0') === '1';
-    fillSelect(sortSel, [['time', labels.sort_time], ['prob', labels.sort_prob]], sortBy);
+    fillSelect(sortSel, [['time', labels.sort_time], ['edge', labels.sort_edge]], sortBy);
     if (clearsBox) clearsBox.checked = clearsOnly;
     ['games-sort-label', 'games-market-label', 'games-clears-label'].forEach((id, i) => {
       const node = document.getElementById(id);
@@ -1695,9 +1733,28 @@ const Gridiron = (function () {
     const controlsBar = document.getElementById('games-controls');
     if (controlsBar) controlsBar.hidden = false;
     let games = (board.games || []).map(narrow).filter(g => (g.questions || []).length);
-    if (clearsOnly) games = games.filter(g => g.pick && g.pick.signal === 'clears');
-    if (sortBy === 'prob') {
-      games = games.slice().sort((a, b) => ((b.pick || {}).prob || 0) - ((a.pick || {}).prob || 0));
+    // PICKS ONLY: the rows a pick leads (ruling B, 2026-10-07).
+    if (clearsOnly) games = games.filter(g => g.pick && g.pick.pick);
+    if (sortBy === 'edge') {
+      // THE SERVER'S ROWS ARE IN START ORDER; a stable sort keeps it among
+      // the rows no pick leads, and puts the picks first by their edge.
+      const edgeOf = g => (g.pick && g.pick.pick && g.pick.edge_points !== null
+                           && g.pick.edge_points !== undefined) ? g.pick.edge_points : null;
+      games = games.slice().sort((a, b) => {
+        const x = edgeOf(a), y = edgeOf(b);
+        if (x === null && y === null) return 0;
+        if (x === null) return 1;
+        if (y === null) return -1;
+        return y - x;
+      });
+    }
+    // NO FILLING (operator ruling B.4, 2026-10-05; built 2026-10-07): the
+    // server's "Nothing worth taking today", above the rows, wherever the
+    // slate has a question still to come and none is a pick.
+    const nothing = document.getElementById('games-nothing');
+    if (nothing) {
+      nothing.textContent = board.nothing_clears_words || '';
+      nothing.hidden = !board.nothing_clears_words;
     }
     arrive(rows);
     games.forEach((g, i) => {
@@ -1706,9 +1763,6 @@ const Gridiron = (function () {
       rows.appendChild(row);
     });
     renderMyDay(board);
-    if (clearsOnly && !games.length && board.nothing_clears_words) {
-      notes.appendChild(el('div', 'empty', board.nothing_clears_words));
-    }
 
     const today = data.today || null;
     const combos = document.getElementById('combos-panel');
@@ -2091,11 +2145,29 @@ const Gridiron = (function () {
     // record among the legs beside it so the glow never stands alone.
     const verdict = el('div', 'verdict');
     if (modelLine !== null && be !== null) {
-      verdict.classList.add(modelLine > 0 ? 'sig-clears' : 'sig-costs');
+      // "CLEARS THE BAR" ONLY OF AN ENTRY WHOSE EVERY LEG IS A PICK at this
+      // payout (operator ruling B, 2026-10-05; the brief's "leave its
+      // arithmetic, but it may not say 'pick' below B.2"; built 2026-10-07):
+      // each leg three points or more over the entry's break-even, the bar
+      // the server sends (`pick_bar`). An entry that returns more without
+      // that says so in other words and wears no outline; the arithmetic
+      // beneath is unchanged.
+      const bar = props.pick_bar;
+      const everyLegAPick = typeof bar === 'number'
+        && legs.every(l => l.main_chance - be >= bar - 1e-9);
       const v = el('div', 'v');
-      v.appendChild(el('span', 'v-words', modelLine > 0 ? words.verdict_clears : words.verdict_short));
+      if (modelLine > 0 && everyLegAPick) {
+        verdict.classList.add('sig-clears');
+        v.appendChild(el('span', 'v-words', words.verdict_clears));
+      } else if (modelLine > 0) {
+        v.appendChild(el('span', 'v-words', words.verdict_returns));
+      } else {
+        verdict.classList.add('sig-costs');
+        v.appendChild(el('span', 'v-words', words.verdict_short));
+      }
       v.appendChild(el('b', 'v-mult', num(pays, 2) + 'x'));
-      verdict.appendChild(tip(v, words.verdict_tip));
+      verdict.appendChild(tip(v, (modelLine > 0 && !everyLegAPick)
+        ? words.verdict_not_every_leg : words.verdict_tip));
       const thinnest = legs.slice().sort((a, b) => (a.badge_n || 0) - (b.badge_n || 0))[0];
       if (thinnest) verdict.appendChild(badge(thinnest, labels));
     } else {

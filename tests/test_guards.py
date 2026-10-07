@@ -775,6 +775,16 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_90_percent_leg_at_91_cents_shown_as_a_pick",
         "plant_a_slate_with_nothing_clearing_drawn_with_picks",
         "plant_a_breakeven_from_an_untyped_multiplier",
+        # OPERATOR RULING B (2026-10-05; built 2026-10-07: "a pick ranked by
+        # chance ... a pick below three points ... a pick or browse row
+        # without its multiplier ... a slate with nothing clearing filled with
+        # picks ... an ungated Kalshi game market drawn with a pick badge ...
+        # or fed to a combo").
+        "plant_a_pick_ranked_by_chance",
+        "plant_a_pick_below_three_points",
+        "plant_a_priced_row_without_its_multiplier",
+        "plant_a_slate_with_nothing_clearing_filled_with_picks",
+        "plant_an_ungated_game_market_drawn_as_a_pick",
         # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second
         # set; built 2026-10-07): "Planting: a finished game's pick priced;
         # an in-play read used as a close."

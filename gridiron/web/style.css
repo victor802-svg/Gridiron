@@ -2897,6 +2897,14 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
    method note is, because it sits in the row's head, a tap target that
    stands on whole pixels. No value colour: it is a fact, not a signal. */
 .pick-own, .q-own { margin: 4px 0 0; font-size: 12px; color: var(--muted); line-height: 16px; }
+/* THE EDGE ON THE ROW'S FACE AND A PICK'S BADGE ON ITS TILE (operator ruling
+   B, 2026-10-05; built 2026-10-07): B.3 puts the edge beside the chance and
+   the multiplier on every priced row, and a pick wears "Pick · +4.3 after
+   fees" beside its outline. Ink, never a value colour -- the colour law
+   keeps green and red for the outline and the fill -- and on 16px lines,
+   since the face sits in the row's head, a tap target on whole pixels. */
+.pick-edge { color: var(--chrome); font-variant-numeric: tabular-nums; }
+.q-pick { margin-top: 6px; font: 700 12px/16px var(--body); letter-spacing: 0.04em; color: var(--chrome); }
 
 /* --- props ----------------------------------------------------------------- */
 /* `.pchips`, `.propsgrid`, `.tiles`, `.ptile`, `.ptop`, `.jsvg`, `.pwho`,

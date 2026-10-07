@@ -2802,19 +2802,25 @@ def results_caption(n: int, day: str | None) -> str:
 
 def login_glance_line(label: str, won: int, lost: int, open_now: int,
                       slate_word: str) -> str:
-    """"MLB 45-25 - 46 picks tonight". COUNTS ONLY, and never a total.
+    """"MLB 45-25 - 46 questions tonight". COUNTS ONLY, and never a total.
 
     The sign-in screen is the one place the record faces somebody who has not
     signed in, so this is written to be worth nothing to them: a win-loss
     record and how many questions are open. No side, no team, no price, no
     probability -- a count is not a tip.
+
+    QUESTIONS, NOT "PICKS" (the prover of operator ruling B, 2026-10-07: "A
+    leg is called a pick only if its edge after fees is 3 percentage points
+    or more. Below that it is shown as a number, never as a pick"). The count
+    is of every open question the record holds, and it said "46 picks
+    tonight" of them -- on 6 October none of them a pick under B.
     """
     parts = []
     if won or lost:
         parts.append(f"{won}-{lost}")
     if open_now:
         when = "tonight" if slate_word == "day" else "this week"
-        thing = "pick" if open_now == 1 else "picks"
+        thing = "question" if open_now == 1 else "questions"
         parts.append(f"{open_now} {thing} {when}")
     if not parts:
         return f"{label} nothing settled yet"
@@ -3061,7 +3067,10 @@ def no_picks_from(label: str, others: list[tuple[str, int]]) -> str:
     made none AND who made some, with the counts, rather than leaving a reader
     to guess which of the two happened.
     """
-    head = f"{label} made no picks on this slate."
+    # FORECASTS, NOT "PICKS" (operator ruling B, 2026-10-05; built
+    # 2026-10-07): B calls a leg a pick only at three points after fees, and
+    # what a forecaster made none of here is a forecast.
+    head = f"{label} made no forecasts on this slate."
     if not others:
         return head
     rest = "; ".join(f"{lab} made {n}" for lab, n in others)
@@ -3721,7 +3730,9 @@ def ranker_verdict_line(led_brier: float | None, rest_brier: float | None,
 def recommendation_line(*, words: str, fair_value: float, price: float,
                         edge_cents: float, units: float,
                         flat: bool, size_why: str | None = None,
-                        own_side: str | None = None) -> str:
+                        own_side: str | None = None,
+                        not_a_pick: str | None = None,
+                        pays: float | None = None) -> str:
     """One recommendation, in the order a reader needs it.
 
     THE SIZE CARRIES ITS OWN REASON, and there are two different ones behind a
@@ -3745,11 +3756,25 @@ def recommendation_line(*, words: str, fair_value: float, price: float,
     contract the recommendation buys; the model's own side named beside
     it"): where the side bought is not the one the model took, the line ends
     by naming the model's own side and its number (`own_side_words`).
+
+    `not_a_pick` (operator ruling B, 2026-10-05; reading (d), built
+    2026-10-07): a recommendation that is not a pick -- its market short of
+    B.5's gate, or its edge under three points -- is stated with its numbers
+    and no size, and these words say why in the size's place.
+    `edge_cents` is the edge as it may be drawn (`picks.drawn_edge`).
+
+    `pays` (the prover of ruling B, 2026-10-07: B.3, "Every pick and every
+    browse row shows its payout as a multiplier beside its chance and edge",
+    with reading (a)'s "the Today payload's ... recommendation lines"): what
+    the side bought pays, said beside its price -- "the venue is at 52¢
+    (pays 1.94x)". As built the line stated the chance, the price and the
+    edge and no multiplier.
     """
+    tail = not_a_pick if not_a_pick else _units_words(units, flat, size_why)
+    paid = f" (pays {payout_chip_words(pays)})" if pays is not None else ""
     line = (f"{words} — the model makes it {round(fair_value * 100)}¢, the "
-            f"venue is at {round(price * 100)}¢, and it is worth "
-            f"{edge_cents:+.1f}¢ a contract after the fee. "
-            f"{_units_words(units, flat, size_why)}")
+            f"venue is at {round(price * 100)}¢{paid}, and it is worth "
+            f"{edge_cents:+.1f}¢ a contract after the fee. {tail}")
     return f"{line} {own_side}." if own_side else line
 
 
@@ -4206,8 +4231,12 @@ def watching_heading(n: int) -> str:
     """The line above the group that does not clear the bar."""
     if not n:
         return "Nothing else on today's slate."
-    return (f"Watching — {n} more, none of which clears the venue's fee. The "
-            f"number beside each is what it is actually worth after that fee.")
+    # NONE OF THEM A PICK (operator ruling B, 2026-10-05; built 2026-10-07):
+    # a recommendation in a market that has not passed its gate, or under
+    # three points, is watched with its numbers and says why beside it, so
+    # "none of which clears the venue's fee" is no longer true of all of them.
+    return (f"Watching — {n} more, none of them a pick. The number beside "
+            f"each is what it is actually worth after the venue's fee.")
 
 
 def clears_the_bar_heading(n: int, folded: int = 0) -> str:
@@ -4218,12 +4247,15 @@ def clears_the_bar_heading(n: int, folded: int = 0) -> str:
     "1 more clear the bar" is a page disagreeing with itself -- which it did,
     on the first priced slate this design was rendered against.
     """
+    # THE GROUP IS THE SLATE'S PICKS (operator ruling B, 2026-10-05; built
+    # 2026-10-07): three points or more after fees in a market past its
+    # gate, beside the writer's own bar -- and B.4's words where there is none.
     if not n and not folded:
-        return "Nothing clears the venue's fee today."
+        return nothing_worth_taking_words()
     if not n:
-        return (f"Clears the bar — {folded} on today's slate, all of them "
-                f"under your payout floor.")
-    return f"Clears the bar — {n} on today's slate."
+        return (f"Picks — {folded} on today's slate, all of them under your "
+                f"payout floor.")
+    return f"Picks — {n} on today's slate."
 
 
 def fee_arithmetic_line(median_price: float | None, cents: float | None) -> str:
@@ -4231,13 +4263,18 @@ def fee_arithmetic_line(median_price: float | None, cents: float | None) -> str:
 
     ON THE SAME SCREEN AS THE TEMPTATION, every day. The fee is largest at a
     coin flip, which is exactly where a disagreement looks most attractive.
+
+    "A CONTRACT", NOT "A PICK" (the prover of operator ruling B, 2026-10-07):
+    under B a pick has three points of edge after fees or more, so "a pick
+    with no edge" is a thing the page says cannot exist; the sentence is
+    about any contract bought at that price.
     """
     if median_price is None or cents is None:
         return ("No venue price on this slate yet, so there is no fee to "
                 "quote against it.")
     return (f"At today's median venue price of {round(median_price * 100)}¢, "
-            f"the fee is {cents:.1f}¢ a contract. A pick with no edge costs "
-            f"that much before anything is right or wrong.")
+            f"the fee is {cents:.1f}¢ a contract. A contract with no edge "
+            f"costs that much before anything is right or wrong.")
 
 
 def taken_line(n: int) -> str:
@@ -4614,15 +4651,16 @@ def day_strip_words(*, day_words: str | None, slate_words: str | None,
     # error.
     who = FORECASTER_WORDS.get(forecaster or "", "")
     total = clears + below_floor
+    # A PICK IS B'S (operator ruling B, 2026-10-05; built 2026-10-07): the
+    # count is of picks -- three points after fees, in a market past its gate
+    # -- and it said "picks that clear the bar" of the writer's bar alone,
+    # which an ungated market's recommendation cleared.
     if not total:
-        count = (f"{who} has nothing that clears the bar" if who
-                 else "nothing clears the bar")
+        count = f"{who} has no pick" if who else "no pick"
     elif total == 1:
-        count = (f"{who} has 1 pick that clears the bar" if who
-                 else "1 pick clears the bar")
+        count = f"{who} has 1 pick" if who else "1 pick"
     else:
-        count = (f"{who} has {total} picks that clear the bar" if who
-                 else f"{total} picks clear the bar")
+        count = f"{who} has {total} picks" if who else f"{total} picks"
     parts = [count]
     if below_floor:
         floor_words = f"{floor:g}x" if floor else "your floor"
@@ -4869,7 +4907,11 @@ def taken_today_heading(n: int) -> str:
     """The running list's own heading. Never the word "slip"."""
     if not n:
         return "Taken today · nothing marked yet"
-    return f"Taken today · {counted(n, 'pick')}"
+    # MARKED, NOT "PICKS" (operator ruling B, 2026-10-05; built 2026-10-07):
+    # what the operator took is a question he marked, and B calls a leg a
+    # pick only at three points after fees -- the heading counted every tap
+    # as one.
+    return f"Taken today · {n} marked"
 
 
 def taken_entry_words(question: str, edge_cents: float | None, *,
@@ -5673,22 +5715,28 @@ def board_labels() -> dict:
         # THE MOCKUP'S FIXED WORDS (visual pass, 2026-09-25), placed by the
         # renderer and never composed there.
         "every_bet": "Every bet on this game",
-        "legend_clears": "clears the bar",
+        # THE GREEN OUTLINE IS A PICK (operator ruling B, 2026-10-05; built
+        # 2026-10-07): it said "clears the bar", which an ungated market's
+        # recommendation did.
+        "legend_clears": "a pick",
         "legend_costs": "costs after fees",
         "legend_won": "won",
         "legend_lost": "lost",
         "polled": "polled",
         # SORT AND FILTER (visual pass, 2026-09-25) and the detail panel.
+        # NO SORT BY THE MODEL'S CHANCE (operator ruling B.1, 2026-10-05:
+        # "Chance of hitting alone never ranks anything"; built 2026-10-07):
+        # the Games page's "the model's chance" option went, and its "edge"
+        # orders the picks by their edge and everything else by its start.
         "sort": "sort",
         "sort_time": "start time",
-        "sort_prob": "the model's chance",
         # THE PROPS PAGE SORTS BY EDGE OR BY GAME (operator ruling C,
         # 2026-10-05, with B.1's "chance of hitting alone never ranks
         # anything"): the cushion was the model's chance less one declared
         # number, so ranking by it was ranking by chance.
         "sort_edge": "edge",
         "show": "show",
-        "clears_only": "clears the bar only",
+        "clears_only": "picks only",
         "market": "market",
         "all_markets": "all markets",
         "form": "last five",
@@ -5842,17 +5890,30 @@ def factor_line_words(plain_name: str | None, factor: str) -> str:
     return plain_name or humanise(factor)
 
 
-def pick_label_words(state: str, signal: str, *, other_side: bool = False) -> str:
-    """The small label over the row's pick: whose it is, and its state.
+def pick_label_words(state: str, signal: str, *, pick: bool = False,
+                     other_side: bool = False) -> str:
+    """The small label over the row's lead question: what it is, and its state.
 
     `other_side` (operator question 37, ruled 2026-10-05): the pick headlines
     the contract the recommendation buys, and where that is the other side of
     the one the model took the label says so -- the row beneath it names the
     model's own side and number. (Short: it heads a 290px column, and the
-    render of 2026-10-05 wrapped a longer one onto two lines at 1300px.)"""
-    base = "Model's pick"
-    if other_side and state == "upcoming":
-        return base + " · the other side"
+    render of 2026-10-05 wrapped a longer one onto two lines at 1300px.)
+
+    "MODEL'S PICK" ONLY ON A PICK (operator ruling B, 2026-10-05: "A leg is
+    called a pick only if its edge after fees is 3 percentage points or more.
+    Below that it is shown as a number, never as a pick"; built 2026-10-07,
+    reading (b)). Until then every row's lead wore "Model's pick" -- 1,269
+    rows on 108 payloads of the record that day, 280 still to start and none
+    of them a pick under B -- because the lead was chosen as the surest
+    question. `pick` is the one door's answer (`picks.judge`); a question
+    still to come that is not a pick is "Not a pick", and a game being played
+    or finished says what its number is, never that it was a pick: whether it
+    was one at its start is not on the page (FOLLOWUPS)."""
+    if state == "upcoming":
+        base = "Model's pick" if pick else "Not a pick"
+        return base + " · the other side" if other_side else base
+    base = "The model's number"
     if state == "live":
         return base + " · pregame"
     if signal == "won":
@@ -5862,6 +5923,61 @@ def pick_label_words(state: str, signal: str, *, other_side: bool = False) -> st
     if signal == "withdrawn":
         return base + " · withdrawn"
     return base
+
+
+def not_a_pick_words(*, game_market: bool, n: int, gate: int, passes: bool,
+                     edge_points: float | None, under_the_bar: bool,
+                     category: str | None = None) -> str:
+    """Beside a recommendation that is not a pick, why (operator ruling B,
+    2026-10-05; reading (d), built 2026-10-07): its market has not passed
+    B.5's gate -- with how many settled comparisons at the venue's price of
+    the hundred it has -- or its edge after fees is under the three points
+    B.2 asks, or both. `edge_points` is the edge as it may be drawn
+    (`picks.drawn_edge`: never at the bar when under it).
+
+    `category` (the prover of ruling B, 2026-10-07): WHOSE COUNT IT IS, in
+    the Record page's own label for the curve the gate counts
+    (`at_the_line_category_label`: "spread at the venue's line,
+    statistical"). The gate is one forecaster's and, for UFC, one card's
+    (B.5's reading: "per forecaster"; the at-the-line record splits UFC by
+    card), and "its market has 0 of the 100" said a card's count as the
+    market's -- false wherever two cards' counts part -- and never said whose
+    (NFL spread at the venue's price: 24 the model's, 2 the reasoning pass's,
+    on 6 October)."""
+    reasons = []
+    if not game_market:
+        reasons.append("this market keeps no record against the venue's price, "
+                       "so it has no gate to pass")
+    elif not passes:
+        whose = f" ({category})" if category else ""
+        reasons.append(f"its market has {n} of the {gate} settled comparisons "
+                       f"with the venue's price it needs first{whose}")
+    if under_the_bar:
+        if edge_points is None:
+            reasons.append("it has no edge after fees to read")
+        else:
+            reasons.append(f"its edge after fees is {edge_points:+.1f} points, "
+                           f"under the 3 a pick needs")
+    if not reasons:
+        return "Not a pick."
+    return "Not a pick: " + ", and ".join(reasons) + "."
+
+
+def pick_words(edge_points: float | None) -> str:
+    """"Pick · +4.3 after fees": the badge a Kalshi pick wears beside its
+    outline (operator ruling B, 2026-10-05), its edge in points of the side
+    bought."""
+    if edge_points is None:
+        return "Pick"
+    return f"Pick · {edge_points:+.1f} after fees"
+
+
+def nothing_worth_taking_words() -> str:
+    """B.4's words, exactly (operator ruling B, 2026-10-05: "No filling. When
+    nothing clears on a slate: 'Nothing worth taking today'"): on every page
+    that draws picks for a slate with rows still to come and none a pick --
+    Games, the Today groups, Props -- and nothing drawn to look like one."""
+    return "Nothing worth taking today"
 
 
 def badge_words(n: int, gate: int) -> str:
@@ -5899,10 +6015,15 @@ def high_end_badge_tip(n: int, gate: int) -> str:
 
 def signal_tip(signal: str) -> str | None:
     """What an outline or a fill means, in words, for the tooltip on it."""
+    # THE GREEN OUTLINE IS A PICK (operator ruling B, 2026-10-05; built
+    # 2026-10-07): an edge after fees of three points or more, in a market
+    # that has passed its gate at the venue's price, beside the writer's own
+    # bar. Until then it said the fee and the five per cent alone, which an
+    # ungated market's recommendation cleared.
     return {
-        "clears": ("Clears the bar: the model's price beats the venue's by more "
-                   "than the fee, and the return on the money is at least "
-                   "five per cent."),
+        "clears": ("A pick: its edge after fees is 3 points or more, its "
+                   "market has passed its gate at the venue's price, and the "
+                   "return on the money is at least five per cent."),
         "costs": ("Costs after fees: at this price the venue's fee eats what "
                   "the model sees, so being right still loses money."),
         "won": "Settled: it happened.",
@@ -6003,8 +6124,16 @@ def games_empty_words(sport_label: str) -> str:
 
 
 def nothing_clears_words() -> str:
-    """The day strip's line when no row carries a green outline."""
-    return "Nothing clears the bar today. Every pick below is priced, and none of them beats the fee."
+    """The Games page's line when no row is a pick.
+
+    B.4'S WORDS FROM 2026-10-07 (operator ruling B, 2026-10-05: "No filling.
+    When nothing clears on a slate: 'Nothing worth taking today'"). Until then
+    it said "Nothing clears the bar today. Every pick below is priced, and
+    none of them beats the fee." -- false under B on both counts: no row
+    below it is a pick, and an unpriced row is not priced. It is drawn above
+    the rows whenever the slate has a row still to come and none is a pick,
+    priced or not (reading (f))."""
+    return nothing_worth_taking_words()
 
 
 def props_empty_words(sport_label: str) -> str:
@@ -6202,8 +6331,9 @@ def prop_pick_tip(bar: float) -> str:
 
 def props_nothing_worth_taking_words() -> str:
     """B.4's words, on the Props page from ruling C (2026-10-05): no leg on
-    the slate clears the bar, and nothing is filled in to look like one."""
-    return "Nothing worth taking today"
+    the slate clears the bar, and nothing is filled in to look like one.
+    (From ruling B, built 2026-10-07, the one composer every page asks.)"""
+    return nothing_worth_taking_words()
 
 
 def prop_own_question_words(question: str, chance_words: str) -> str:
@@ -6277,7 +6407,22 @@ def entry_words() -> dict:
         # THE VERDICT (ruling c, 2026-09-25): the one place a prop earns a
         # colour, against the multiple the operator typed. "Worth it" is an
         # advice word and stays out; the bar is the same bar the rows use.
+        # AND ONLY OF PICKS (operator ruling B, 2026-10-05; built 2026-10-07:
+        # the brief's "leave its arithmetic, but it may not say 'pick' below
+        # B.2"). "Clears the bar" and its green outline said it of any entry
+        # returning more than a dollar per dollar at the model's chances,
+        # whatever each leg's edge; they need every leg three points or more
+        # over this entry's break-even now, and an entry that returns more
+        # without that says so in other words and wears no outline.
         "verdict_clears": "Clears the bar at",
+        "verdict_returns": "Returns more than it costs at",
+        "verdict_not_every_leg": ("Not every leg is a pick at this payout: a "
+                                  "leg is one only 3 points or more over the "
+                                  "entry's break-even, after fees. From the "
+                                  "multiple you typed and the model's chances "
+                                  "at each leg's main line, the entry returns "
+                                  "more than a dollar per dollar. About the "
+                                  "app's line, check the app."),
         "verdict_short": "Falls short at",
         "verdict_untyped": "Type what the venue pays to read a verdict.",
         "verdict_no_chance": ("A leg here has no chance from the model at the "

@@ -2029,6 +2029,14 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
     buys_the_other_side = _buys_the_other_side(entry, takes, state)
     headline = (not takes) if buys_the_other_side else takes
     flip = headline is False
+    # WHETHER IT IS A PICK, AND THE EDGE AS IT MAY BE DRAWN (operator ruling
+    # B, 2026-10-05; built 2026-10-07): the one door's answer, set on the
+    # entry by `_today_block` (`picks.judge`); an entry with none -- a live
+    # or settled card, built here -- is no pick.
+    from . import picks as _picks
+
+    verdict = entry.get("pick_verdict") or {}
+    drawn_edge = _picks.drawn_edge(entry.get("edge_points"), entry.get("edge_cents"))
 
     def turned(number, what):
         return _on_the_question(number, headline, what=what, entry=entry, card=card)
@@ -2141,7 +2149,11 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
         "venue_words": language.venue_chip_words(
             price, pays_on_the_question,
             market=entry.get("market") or card.get("market")),
-        "edge_words": language.edge_chip_words(entry.get("edge_cents")),
+        # NEVER "+3.0" UNDER THE BAR (operator ruling B.2, 2026-10-05; reading
+        # (c), built 2026-10-07): the figure as drawn before, except that an
+        # edge under three points that rounds to 3.0 is drawn at the tenth
+        # below it (`picks.drawn_edge`).
+        "edge_words": language.edge_chip_words(drawn_edge),
         # THE EDGE KEEPS ITS SIGN -- it is what the better side is worth
         # either way -- and its label says "on the other side" only when the
         # better side is not the one the question names.
@@ -2307,7 +2319,23 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
             out["price_words"] = ""
     out.update({k: v for k, v in context.items() if k != "state"})
     out["edge_line_words"] = ("" if across else language.edge_line_words(
-        entry.get("edge_cents"), other_side=edge_on == "no"))
+        drawn_edge, other_side=edge_on == "no"))
+    # A PICK, OR A NUMBER (operator ruling B, 2026-10-05; built 2026-10-07):
+    # the one door's answer as a fact (`pick`), its edge unrounded in points
+    # of the side bought (`edge_points`, which the gate's check holds to the
+    # card's own numbers), B.5's gate as the page counted it, and -- beside a
+    # recommendation that is not a pick -- the words saying why (reading
+    # (d)); a pick carries its badge's words (`pick_words`).
+    out["pick"] = bool(verdict.get("pick"))
+    out["edge_points"] = entry.get("edge_points")
+    gate = verdict.get("gate") or {}
+    if gate.get("game_market"):
+        out["venue_gate_n"] = gate.get("n")
+        out["venue_gate"] = gate.get("gate")
+    if verdict.get("words") and not across:
+        out["not_a_pick_words"] = verdict["words"]
+    if out["pick"]:
+        out["pick_words"] = language.pick_words(drawn_edge)
     # A LIVE CARD CARRIES NO PRICE, NO EDGE, NO SIZE AND NO TAP. The in-game
     # rule is already law (THE_PRICED P2): a score up to ninety seconds stale
     # against a live market is adversely selected by construction, so a card
@@ -2320,7 +2348,10 @@ def _today_card(entry: dict, card: dict, *, taken: bool,
                       "model_words", "venue_words", "price", "payout",
                       # the chip's number goes with the chip (2026-09-29): a
                       # live card's one figure is its pregame words
-                      "fair_value"):
+                      "fair_value",
+                      # nor an edge, a pick's badge or a verdict on one
+                      # (ruling B, 2026-10-07)
+                      "edge_points", "pick_words", "not_a_pick_words"):
             out.pop(field, None)
         out["edge_state"] = "none"
         # A CHIP EVERY CARD IN A GROUP WOULD WEAR belongs to the heading, and
@@ -2686,7 +2717,16 @@ def _combo_block(conn: sqlite3.Connection, cards: list[dict],
                              what="a combo leg's worth", entry=entry,
                              card=by_id.get(entry["prediction_id"]) or {})
     entries = {e["prediction_id"]: e for e in priced}
-    offered = _combos.propose(priced, sport=sport) if sport else []
+    # ONLY PICKS ARE LEGS (operator ruling B, 2026-10-05: "none feeds a combo
+    # proposal, until its market passes its gate", with B.2's three points;
+    # built 2026-10-07). LAW 5's clause asks every leg to clear the bar
+    # alone, and the bar a leg clears is now the pick's: the one door's
+    # answer, set on each entry by `_today_block` (`picks.judge`). Until then
+    # every entry the writer's bar picked a side for was a leg -- six
+    # proposals on the record's 108 payloads that day, every leg in a market
+    # short of its gate.
+    offered = (_combos.propose([e for e in priced if e.get("pick")], sport=sport)
+               if sport else [])
     # NO LEG PRICED ACROSS TWO CONTRACTS, PROPOSED OR GRADED (operator ruling
     # A.2, 2026-10-05: "combos"): asked of the stored claims each leg's entry
     # was priced from, through the one place, so an engine that forgot its
@@ -2835,6 +2875,20 @@ def next_start_utc(cards: list[dict]) -> str | None:
     return min(times)[1] if times else None
 
 
+def _browse_key(card: dict) -> tuple:
+    """Reading (b)'s order for a slate card that is not a pick (operator
+    ruling B, 2026-10-05; built 2026-10-07): its start read as an instant,
+    its game, the sport's declared market order, its subject and line, its
+    number (`picks.browse_key`) -- never its chance, never an ungated edge."""
+    from . import board as _board, picks as _picks
+
+    return _picks.browse_key(
+        card.get("sport") or "", start_order=_board._start_order(card.get("kickoff_utc")),
+        game_id=card.get("game_id"), market=card.get("market") or card.get("market_type"),
+        subject=card.get("subject"), line=card.get("line_asked"),
+        prediction_id=card.get("prediction_id"))
+
+
 def _today_block(conn: sqlite3.Connection, cards: list[dict],
                  priced: list[dict], forecaster: str | None = None,
                  sport: str | None = None) -> dict:
@@ -2875,13 +2929,37 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         chips.discard(None)
         return next(iter(chips)) if len(chips) == 1 else None
 
+    # A PICK IS B'S (operator ruling B, 2026-10-05; built 2026-10-07), through
+    # the one door (`picks.judge`): the writer's bar picked its side, its edge
+    # after fees is three points or more, and its market has passed B.5's
+    # gate. Until then CLEARS held every entry the writer's bar picked a side
+    # for -- the 16 recommendations on the record's 108 payloads that day,
+    # every one in a market short of its gate, outlined, sized and fed to
+    # combos. A recommendation that is not a pick is WATCHED, with its
+    # numbers, no size, and the words saying why (reading (d)); the writer
+    # records it as before. Each entry carries the answer (`pick`), read by
+    # the combos below.
+    from . import picks as _picks
+
+    gates: dict = {}
     clears_entries, watch_entries, prices = [], [], []
     for entry in priced:
         if entry["prediction_id"] not in by_id:
             continue
         if entry.get("price") is not None:
             prices.append(entry["price"])
-        (clears_entries if entry["side"] is not None else watch_entries).append(entry)
+        row = by_id[entry["prediction_id"]]
+        verdict = _picks.judge(conn, entry, sport=row.get("sport") or sport,
+                               predictor=row.get("predictor"), cache=gates)
+        entry["pick"] = verdict["pick"]
+        entry["pick_verdict"] = verdict
+        (clears_entries if verdict["pick"] else watch_entries).append(entry)
+    # PICKS BY THEIR EDGE, BEST FIRST; EVERYTHING ELSE BY ITS START AND THE
+    # DECLARED MARKET ORDER (B.1 and S1, reading (b)) -- the groups followed
+    # the engine's order, which is the record's ids.
+    clears_entries.sort(key=lambda e: _picks.pick_key(
+        e["pick_verdict"]["edge_points"], e["prediction_id"]))
+    watch_entries.sort(key=lambda e: _browse_key(by_id[e["prediction_id"]]))
 
     clears_chip = _one_chip(clears_entries)
     watch_chip = _one_chip(watch_entries)
@@ -2915,6 +2993,10 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     for entry in watch_entries:
         # NO SIZE ON A WATCHED CARD. A size on a pick that does not clear the
         # bar is a recommendation the app is not making.
+        # AND A RECOMMENDATION THAT IS NOT A PICK IS WATCHED (operator ruling
+        # B, 2026-10-05; reading (d), built 2026-10-07): its numbers, no size,
+        # no outline, and the words beside it saying why (`not_a_pick_words`,
+        # set by `_today_card`).
         card = _today_card(
             entry, by_id[entry["prediction_id"]],
             taken=entry["prediction_id"] in already,
@@ -2941,6 +3023,13 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
     started = {r["prediction_id"] for r in _recommend.not_still_upcoming_among(
         conn, [c["prediction_id"] for c in cards])} if conn is not None else set()
     none_to_come = bool(cards) and len(started) == len(cards)
+    # NO FILLING (operator ruling B.4, 2026-10-05: "When nothing clears on a
+    # slate: 'Nothing worth taking today'"; reading (f), built 2026-10-07):
+    # a slate with a question still to come and no pick says so, priced or
+    # not, and nothing is moved into the picks to look like one.
+    still_to_come = [c for c in cards
+                     if card_state(c.get("game_status") or "") == "upcoming"
+                     and c["prediction_id"] not in started]
 
     # THE LIVE GROUP IS BUILT FROM THE CARDS, not from the priced entries.
     # `recommend.for_predictions` drops a question whose game has started --
@@ -3057,6 +3146,8 @@ def _today_block(conn: sqlite3.Connection, cards: list[dict],
         # THIRD GROUP ON UPCOMING, beneath Watching. Its heading says what the
         # venue offered and what could be done with it, which on most days is
         # the entire group.
+        "nothing_words": (language.nothing_worth_taking_words()
+                          if still_to_come and not (clears or below_floor) else None),
         "combos": _combo_block(conn, cards, priced, sport,
                                unit_dollars=unit_dollars, floor=floor,
                                day=day),
@@ -3158,12 +3249,17 @@ def taken_today(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                     own_side = language.own_side_words(
                         contract["words"], None if bought is None else 1.0 - bought,
                         clause=True)
+        # NEVER "+3.0" UNDER THE BAR (operator ruling B.2, 2026-10-05; reading
+        # (c), built 2026-10-07): the stored edge, at two places, drawn at the
+        # tenth below it where it is under three points and rounds to 3.0.
+        from . import picks as _picks
+
         entries.append({
             "prediction_id": row["prediction_id"],
             "taken_utc": row["taken_utc"],
             "words": language.taken_entry_words(
-                words, edge["edge_cents"] if edge else None, across=across,
-                own_side=own_side),
+                words, _picks.drawn_edge(None, edge["edge_cents"]) if edge else None,
+                across=across, own_side=own_side),
             # WHAT THE WORDS ARE ABOUT (operator question 37, 2026-10-05): the
             # side the recommendation bought, the line its words are asked at
             # and the model's number for that side, for the gate's check
@@ -3221,6 +3317,8 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     """
     from .market import recommend
 
+    from . import picks as _picks
+
     ids = [c["prediction_id"] for c in cards if c.get("on_shortlist")]
     # AS THE PAGE DRAWS THEM (pick-number step A, 2026-09-30): each entry's
     # numbers named by the line they belong to, and none of a claim priced
@@ -3230,6 +3328,9 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
     uncovered = 0
     no_edge = 0
     across = 0
+    picks_n = 0
+    gates: dict = {}
+    by_id = {c["prediction_id"]: c for c in cards}
     for entry in priced:
         if entry.get("across_words"):
             across += 1
@@ -3241,8 +3342,7 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                 no_edge += 1
             continue
         size = entry["size"]
-        card = next((c for c in cards
-                     if c["prediction_id"] == entry["prediction_id"]), {})
+        card = by_id.get(entry["prediction_id"]) or {}
         # A LINE ON A SIDE THAT CANNOT BE PLACED IS REFUSED (the ruling of
         # 2026-09-30): the line states the model's number and the venue's
         # beside the question's words.
@@ -3251,12 +3351,25 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
                          what="a recommendation line's numbers", entry=entry,
                          card=card)
         bought = _the_side_bought(entry, card)
+        # A PICK, OR THE WRITER'S RECOMMENDATION WITH ITS NUMBERS ONLY
+        # (operator ruling B, 2026-10-05; reading (d), built 2026-10-07):
+        # every recommendation still has its line, the writer recording it as
+        # before, and one that is not a pick -- its market short of B.5's
+        # gate, or its edge under three points -- carries no size, and its
+        # words say why where the size was.
+        verdict = _picks.judge(conn, entry, sport=card.get("sport") or entry.get("sport"),
+                               predictor=card.get("predictor"), cache=gates)
+        drawn = _picks.drawn_edge(entry.get("edge_points"), entry.get("edge_cents"))
+        picks_n += 1 if verdict["pick"] else 0
         lines.append({
             "prediction_id": entry["prediction_id"],
             "n": entry["gate_n"],
             "side": entry["side"],
             "edge_cents": entry["edge_cents"],
-            "units": size["units"],
+            "edge_points": entry.get("edge_points"),
+            "pick": verdict["pick"],
+            "not_a_pick_words": verdict["words"],
+            "units": size["units"] if verdict["pick"] else None,
             "flat": size["kind"] == "flat",
             # THE SIDE IT BUYS, AS NUMBERS AND WORDS (pick-number finding 4,
             # 2026-09-30): the model's number for that side and what that
@@ -3269,15 +3382,37 @@ def _recommendations_block(conn: sqlite3.Connection, cards: list[dict]) -> dict:
             # question 37, ruled 2026-10-05), where that is the other side of
             # the question's words.
             "buys_the_other_side": bought["buys_the_other_side"],
+            # AND WHAT THE SIDE BOUGHT PAYS, beside its price (the prover of
+            # ruling B, 2026-10-07: B.3, "Every pick and every browse row
+            # shows its payout as a multiplier beside its chance and edge",
+            # with reading (a)'s "recommendation lines"). The line stated the
+            # chance, the price and the edge, and no multiplier.
             "words": language.recommendation_line(
                 words=bought["words"], fair_value=bought["fair_value"],
-                price=bought["price"], edge_cents=entry["edge_cents"],
+                price=bought["price"], edge_cents=drawn,
                 units=size["units"], flat=size["kind"] == "flat",
-                size_why=size.get("why"), own_side=bought["own_side"]),
+                size_why=size.get("why"), own_side=bought["own_side"],
+                not_a_pick=None if verdict["pick"] else (
+                    verdict["words"] or language.not_a_pick_words(
+                        game_market=True, n=0, gate=0, passes=True,
+                        edge_points=drawn, under_the_bar=True)),
+                pays=_payout_for(bought["price"])),
         })
+    # IN B'S ORDER (the prover of ruling B, 2026-10-07: B.1, "Picks are
+    # ranked by edge", and reading (b), everything else by its start and the
+    # declared market order). The lines followed the engine's rows, which
+    # are the record's ids: two picks at +10 and +15 points were stated
+    # +10 first wherever the +10 was written first.
+    lines.sort(key=lambda x: (
+        (0, _picks.pick_key(x["edge_points"], x["prediction_id"])) if x["pick"]
+        else (1, _browse_key(by_id.get(x["prediction_id"]) or {}))))
     considered = len(priced)
     return {
         "n": len(lines),
+        # HOW MANY OF THEM ARE PICKS (operator ruling B, 2026-10-05; built
+        # 2026-10-07): the lines are every recommendation the writer would
+        # record; the picks among them are B's.
+        "picks_n": picks_n,
         "considered": considered,
         "lines": lines,
         "empty_words": language.nothing_priced_line(considered, uncovered, no_edge,
@@ -3854,7 +3989,10 @@ def login_glance(conn: sqlite3.Connection) -> dict:
     operator ruled it deliberately (GRIDIRON_13 P6): a sign-in screen that
     says "MLB 45-25 - 46 picks tonight" tells you the appliance is alive and
     working before you have typed anything, which is most of what you open it
-    to find out.
+    to find out. (From operator ruling B's prover, 2026-10-07, the count says
+    "46 questions tonight": P6's "tonight's slate size" is every open
+    question, and B calls a leg a pick only at three points after fees --
+    `language.login_glance_line`.)
 
     WHAT IT MAY NOT CARRY is everything that would make it worth reading to
     somebody who should not be reading it: no prediction, no side, no team

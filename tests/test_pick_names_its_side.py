@@ -125,9 +125,11 @@ def test_a_recommendation_line_states_the_side_it_buys_with_its_numbers(tmp_path
     assert line["side_words"] == "BBB to win"
     assert line["fair_value"] == pytest.approx(0.57)
     assert line["price"] == pytest.approx(0.515)
+    # WHAT THE SIDE BOUGHT PAYS, beside its price (ruling B's prover,
+    # 2026-10-07: B.3 on the recommendation line): 1 / 0.515.
     assert line["words"].startswith(
-        "BBB to win — the model makes it 57¢, the venue is at 52¢, and it is "
-        "worth +3.5¢ a contract after the fee."), line["words"]
+        "BBB to win — the model makes it 57¢, the venue is at 52¢ (pays 1.94x), "
+        "and it is worth +3.5¢ a contract after the fee."), line["words"]
     assert "the yes side" not in line["words"] and "the other side" not in line["words"]
     # THE LINE AND ITS CARD SAY ONE PRICE (a half-cent rounded one way).
     card = _today_card(payload, pid)
@@ -248,6 +250,11 @@ def test_the_payout_floor_reads_what_the_side_bought_pays(tmp_path, covered):
     2.06x. Under a 2.0x floor the pick was left out of the fold on the home
     side's payout; it pays 1.94x, and the fold counts it."""
     conn, pid = _priced_world(tmp_path)
+    # THE FLOOR FOLDS PICKS, so this world's baseball moneyline is past B.5's
+    # gate (operator ruling B, 2026-10-05; built 2026-10-07).
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport="mlb", market="moneyline")
     settings.set_value(conn, "min_payout", "2.0")
     entry = recommend.for_predictions(conn, [pid])[0]
     assert entry["side"] == "no" and entry["payout"] == 2.062

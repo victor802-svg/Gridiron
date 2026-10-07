@@ -1680,6 +1680,27 @@ PICKEM_POWER_ENTRIES: tuple[tuple[int, str], ...] = (
 PICK_MIN_EDGE = 0.03
 PICK_MIN_EDGE_RULED = "2026-10-05"
 
+#: ONE BAR FOR BOTH VENUES (operator ruling B, 2026-10-05; built 2026-10-07,
+#: reading (c) recorded in docs/REPAIR_STATE.md): a Kalshi game market's edge
+#: after fees is in percentage points of the side bought -- the model's chance
+#: for that side, less its price, less the fee per contract the record already
+#: applies (`recommend.edge_points`; a cent on a dollar contract is a point) --
+#: and a pick needs `PICK_MIN_EDGE` of it as a pick'em leg does.
+#:
+#: AND, FOR A GAME MARKET, ITS GATE (B.5: "Kalshi game markets (spreads,
+#: moneylines, totals) stay on the board with their numbers, but none carries
+#: a pick badge, and none feeds a combo proposal, until its market passes its
+#: gate"; the brief's reading: "a market's at-the-line record's 100 settled
+#: comparisons, per forecaster, on the distinct-bet key, after A.2's
+#: exclusion"). LAW 4's hundred, counted through the at-the-line record's one
+#: door (`at_the_line.standing_claims`), one forecaster's and -- for a sport
+#: that splits below the market -- one card's (`picks.market_gate`). Measured
+#: on a verified copy of the record, 2026-10-06T23:26Z: MLB moneyline passes
+#: for both forecasters (107 and 108); NCAAF moneyline is at 95 for both; no
+#: other market is past 72.
+GAME_MARKET_PICK_GATE = MIN_SAMPLE_FOR_EDGE_CLAIM
+GAME_MARKET_PICK_GATE_RULED = "2026-10-05"
+
 #: JERSEY NUMBERS ARE A DECLARED, DATED DATA ADDITION (operator ruling a,
 #: 2026-09-25): nflverse's roster file, the provider already used under the
 #: same licence, read at the existing NFL refresh into `player_numbers`. Not

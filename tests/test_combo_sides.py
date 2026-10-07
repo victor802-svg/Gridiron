@@ -89,6 +89,13 @@ def _world(tmp_path, legs):
             (pid, quote, game, price, price, claimed))
         ids.append(pid)
     conn.commit()
+    # A COMBO IS MADE OF PICKS (operator ruling B, 2026-10-05: no Kalshi game
+    # market "feeds a combo proposal, until its market passes its gate"; built
+    # 2026-10-07): this world's baseball moneylines are given their hundred
+    # settled comparisons at the venue's price, as the record's own has.
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport="mlb", market="moneyline")
     shortlist.rank_rows(conn, ids)
     return conn, ids
 
@@ -132,6 +139,13 @@ def _totals_world(tmp_path, games):
             (pid, quote, game, claimed))
         ids.append(pid)
     conn.commit()
+    # A COMBO IS MADE OF PICKS (operator ruling B, 2026-10-05: no Kalshi game
+    # market "feeds a combo proposal, until its market passes its gate"; built
+    # 2026-10-07): this world's baseball totals are given their hundred
+    # settled comparisons at the venue's price, as the record's own has.
+    from tests.gate_world import pass_the_gate
+
+    pass_the_gate(conn, sport="mlb", market="total")
     shortlist.rank_rows(conn, ids)
     return conn, ids
 

@@ -92,11 +92,30 @@ def edge_cents(model_prob: float | None, price: float | None,
     one. The side has no default (2026-09-26): the one caller names it, and a
     default is how the bar came to assume one.
     """
+    got = edge_points(model_prob, price, side)
+    return None if got is None else round(got, 2)
+
+
+def edge_points(model_prob: float | None, price: float | None,
+                side: str) -> float | None:
+    """`edge_cents`, unrounded: the edge after fees in percentage points of
+    the side bought -- the model's chance for that side, less what it costs,
+    less the venue's fee per contract (operator ruling B.1 and the brief's
+    reading, 2026-10-05: "after fees" is the published fee formula the record
+    already applies). A contract pays a dollar, so a cent of edge on it is a
+    point of probability.
+
+    UNROUNDED FOR THE BAR (ruling B, built 2026-10-07): B.2 calls a leg a
+    pick only at "3 percentage points or more", and the two places of
+    `edge_cents` round 2.996 up to 3.00 -- the prover of ruling C found legs
+    at 2.95-2.99999 points drawn "+3.0". `picks.judge` reads the bar on this;
+    `edge_cents` is this to two places, the same subtraction as before, so
+    nothing the writer records moves."""
     if model_prob is None or price is None or not 0 < price < 1:
         return None
     cost = _cost_of(side, price)
     worth = float(model_prob) if side == "yes" else 1.0 - float(model_prob)
-    return round((worth - cost - fee(cost)) * 100.0, 2)
+    return (worth - cost - fee(cost)) * 100.0
 
 
 def side_for(model_prob: float | None, price: float | None) -> dict:
@@ -613,6 +632,11 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int], *,
         # of pick-number step C, 2026-09-30; `side_for`): read before `chosen`
         # is replaced below, and None only where there is no figure.
         edge_cents_side = chosen.get("better_side")
+        # AND THE FIGURE UNROUNDED, for the page's bar alone (operator ruling
+        # B.2, 2026-10-05: a pick only at "3 percentage points or more";
+        # built 2026-10-07). `record_for` writes what it wrote before.
+        edge_points_worked = (None if edge_cents_side is None
+                              else edge_points(model_prob, price, edge_cents_side))
         # ON WHAT THE SIDE COSTS (GRIDIRON_REPAIR item 4, 2026-09-26). This
         # line asked the bar with the yes price whichever side the edge was
         # on; a no-side edge is now divided by the no side's cost. With no
@@ -674,6 +698,13 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int], *,
             # clears the fee, and the card then said nothing of whose figure
             # it drew. The words beside the figure read this.
             "edge_cents_side": edge_cents_side,
+            # THE SAME FIGURE UNROUNDED, in points of the side it is, and the
+            # forecaster whose market's gate a pick waits on (operator ruling
+            # B, 2026-10-05; built 2026-10-07): read by the page's one door
+            # for what a pick is (`picks.judge`) and by nothing the writer
+            # records.
+            "edge_points": edge_points_worked,
+            "predictor": row["predictor"],
             "side_why": chosen["why"],
             # WHAT THE EDGE IS WORTH PER DOLLAR RISKED, and what the contract
             # pays if it settles at a dollar. Both are arithmetic on the

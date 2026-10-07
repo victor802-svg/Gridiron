@@ -31,6 +31,17 @@ model's own question, with no break-even beside it. The venue's ladders are
 read through one place (`_venue_prop_ladders`) -- none is read today -- and
 the Kalshi ladder view lists them, every rung under its own contract and
 never a pick.
+
+PICKS ARE RANKED BY EDGE, NEVER BY CHANCE (operator ruling B, 2026-10-05;
+built 2026-10-07). A row's questions are its picks by their edge after fees,
+then the sport's declared market order (`_row_order`); its lead is the first
+of them -- never the surest, which it was -- and "Model's pick" heads only a
+pick, the one door's answer (`picks.judge`, carried on the Today card): three
+points or more after fees, the writer's own bar, and for a Kalshi game market
+its gate at the venue's price. A row's face draws its chance, its multiplier
+and its edge (B.3); a slate with a question to come and no pick says "Nothing
+worth taking today" above its rows (B.4); and a recommendation that is not a
+pick is drawn with its numbers and the words saying why (reading (d)).
 """
 
 from __future__ import annotations
@@ -474,6 +485,27 @@ def _question_block(card: dict, entry: dict | None, *, state: str, taken: bool,
         if card.get("voided"):
             out["settled_words"] = language.withdrawn_words(
                 card.get("void_reason")) or out["settled_words"]
+    # A PICK, OR A NUMBER (operator ruling B, 2026-10-05: "A leg is called a
+    # pick only if its edge after fees is 3 percentage points or more. Below
+    # that it is shown as a number, never as a pick" and B.5's gate; built
+    # 2026-10-07). The Today card carries the one door's answer
+    # (`picks.judge`), and a question still to come wears it: `pick`, its
+    # badge's words beside its outline, or -- a recommendation that is not a
+    # pick -- the words saying why, on its face (reading (d)); and the label
+    # it would wear leading its row (`lead_label_words`), which says "Model's
+    # pick" only of a pick. A game being played or finished carries none of
+    # them: nothing on it is priced.
+    is_pick = state == "upcoming" and bool((entry or {}).get("pick"))
+    out["pick"] = is_pick
+    if state == "upcoming" and entry is not None:
+        if entry.get("edge_points") is not None:
+            out["edge_points"] = entry["edge_points"]
+        if is_pick and entry.get("pick_words"):
+            out["pick_words"] = entry["pick_words"]
+        if entry.get("not_a_pick_words") and not across:
+            out["not_a_pick_words"] = entry["not_a_pick_words"]
+    out["lead_label_words"] = language.pick_label_words(
+        state, signal, pick=is_pick, other_side=bool(own_side))
     return out
 
 
@@ -552,20 +584,40 @@ def _other_forecaster_rows(conn: sqlite3.Connection, *, sport: str, season: int,
     return out
 
 
+def _row_order(blocks: list[dict], sport: str) -> list[dict]:
+    """One forecaster's questions on a row, in ruling B's order (2026-10-05;
+    readings (a) and (b), built 2026-10-07): its picks by their edge after
+    fees, best first, then everything else in the sport's declared market
+    order, then subject, line and number (`picks.browse_key`; one game, one
+    start).
+
+    NEVER THE SUREST, AND NEVER THE SHORTLIST'S ORDER. The questions came in
+    the slate's order -- the size of the disagreement with the media line,
+    then the model's chance (`views._card_order`) -- and the row's lead was
+    the one clearing the bar by the most, else the shortlist's first, else
+    the surest: 1,269 rows on the record's 108 payloads that day led by a
+    question no edge put there, 118 of them a player prop. The shortlist
+    ranker orders questions for the shortlist by its own declared inputs and
+    rulings, and is not changed; this page orders itself."""
+    from . import picks
+
+    def key(b):
+        if b.get("pick"):
+            return (0, picks.pick_key(b.get("edge_points"), b["prediction_id"]))
+        return (1, picks.browse_key(sport, start_order=(0, 0.0), game_id=None,
+                                    market=b.get("market"), subject=b.get("subject"),
+                                    line=b.get("_line"), prediction_id=b["prediction_id"]))
+
+    return sorted(blocks, key=key)
+
+
 def _pick_for(blocks: list[dict]) -> dict | None:
-    """Which question is THE pick on a row: the one that clears the bar by
-    the most, else the shortlist's first, else the surest. Never the other
-    forecaster's -- the page is one forecaster's view."""
-    if not blocks:
-        return None
-
-    def order(b):
-        clears = b["signal"] == "clears"
-        place = b.get("_place")
-        return (not clears, -(b.get("_edge") or 0.0) if clears else 0.0,
-                place if place is not None else 10 ** 6, -(b.get("prob") or 0.0))
-
-    return sorted(blocks, key=order)[0]
+    """Which question leads a row: its best pick by edge, or, with none, the
+    first in the declared market order (operator ruling B, 2026-10-05,
+    reading (b); built 2026-10-07) -- the first of `_row_order`. Never the
+    other forecaster's -- the page is one forecaster's view -- and never the
+    surest, which it was until this date."""
+    return blocks[0] if blocks else None
 
 
 def _player_club(conn: sqlite3.Connection, sport: str, player: str | None,
@@ -889,6 +941,8 @@ def _projection_of(forecast: dict | None) -> float | None:
 #: FLOAT NOISE, NOT A MARGIN (the prover of ruling C, 2026-10-06). An edge of
 #: exactly three points can be worked out as 0.029999999999999985, and that is
 #: still three points; nothing a model states is finer than a billionth.
+#: (From ruling B, 2026-10-07, the bar is one for both venues and lives in
+#: `picks`; this name is kept, the same number.)
 PICK_BAR_FLOAT_NOISE = 1e-9
 
 
@@ -898,8 +952,14 @@ def clears_the_pick_bar(edge: float | None) -> bool:
     only. Until 2026-10-06 (the prover of ruling C) the edge was rounded to
     six places first, so a leg at 2.99995 points was called a pick, and the
     gate, reading the page's rounded chance, disagreed with the builder about
-    a leg at 2.99994: B.2 says "3 percentage points or more"."""
-    return edge is not None and float(edge) >= config.PICK_MIN_EDGE - PICK_BAR_FLOAT_NOISE
+    a leg at 2.99994: B.2 says "3 percentage points or more".
+
+    ONE BAR FOR BOTH VENUES (ruling B, built 2026-10-07): a Kalshi pick is
+    read against the same bar (`picks.judge`), so the bar is asked of
+    `picks.clears_the_pick_bar`; the leg asks it through this name."""
+    from . import picks
+
+    return picks.clears_the_pick_bar(edge)
 
 
 def _leg(conn: sqlite3.Connection, card: dict, block: dict, forecast: dict | None,
@@ -972,11 +1032,18 @@ def _leg(conn: sqlite3.Connection, card: dict, block: dict, forecast: dict | Non
         clears = clears_the_pick_bar(worked)
         if clears:
             cleared.append(legs)
+        # NEVER "+3.0" UNDER THE BAR (operator ruling B.2, 2026-10-05;
+        # reading (c), built 2026-10-07: C's prover found "edge +3.0" on legs
+        # at 2.95-2.99999 points): drawn at the tenth below it.
+        from . import picks as _picks
+
+        drawn = None if worked is None else _picks.drawn_edge(worked * 100.0, edge * 100.0)
         out["entries"].append({
             "legs": legs, "kind": "power", "multiple": multiple,
             "breakeven": None if be is None else round(be, 6),
             "breakeven_words": language.pickem_breakeven_words(legs, be),
-            "edge": edge, "edge_words": language.prop_edge_words(edge),
+            "edge": edge, "edge_words": language.prop_edge_words(
+                None if drawn is None else drawn / 100.0),
             "clears": clears,
             "tip": language.pickem_breakeven_tip(legs, multiple, be, p["typed_utc"]),
         })
@@ -1062,8 +1129,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             forecaster=forecaster, n_settled=n, hours=hours,
             unit_dollars=unit_dollars,
             past_its_start=card["prediction_id"] in past_its_start)
-        block["_place"] = card.get("shortlist_place")
-        block["_edge"] = (entry or {}).get("edge_cents")
+        block["_line"] = card.get("line_asked")
         return block
 
     games = []
@@ -1079,13 +1145,16 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         from . import db as _db
 
         state = card_state(game["status"])
-        own = [block_for(c, chosen) for c in group]
-        theirs = [block_for(c, c["predictor"]) for c in others.get(game_id, [])]
+        # EACH FORECASTER'S QUESTIONS IN RULING B'S ORDER, the page's own
+        # first (never ranked against the other's): its picks by edge, then
+        # the declared market order (`_row_order`).
+        own = _row_order([block_for(c, chosen) for c in group], sport)
+        theirs = _row_order([block_for(c, c["predictor"])
+                             for c in others.get(game_id, [])], sport)
         pick = _pick_for(own)
         bets = own + theirs
         for b in bets:
-            b.pop("_place", None)
-            b.pop("_edge", None)
+            b.pop("_line", None)
         # EACH FORECASTER'S QUESTIONS ON THE GAME, COUNTED APART on question
         # 17's key (the prover of the board merge, 2026-09-29): the row's
         # count summed both forecasters' rows under the word "question".
@@ -1105,9 +1174,10 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
             # (operator question 37, ruled 2026-10-05): the row headlines the
             # contract the recommendation buys, and its own-side line names
             # the model's side beneath it.
-            "pick_label_words": language.pick_label_words(
-                state, pick["signal"] if pick else "none",
-                other_side=bool(pick and pick.get("buys_the_other_side"))),
+            # AND "MODEL'S PICK" ONLY OVER A PICK (operator ruling B,
+            # 2026-10-05; built 2026-10-07): the lead's own label.
+            "pick_label_words": (pick["lead_label_words"] if pick else
+                                 language.pick_label_words(state, "none")),
             "n": pick["badge_n"] if pick else 0,
             "away": away,
             "home": home,
@@ -1170,8 +1240,7 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
     for card in prop_cards:
         family = card.get("prop_type") or card.get("market")
         block = block_for(card, chosen)
-        block.pop("_place", None)
-        block.pop("_edge", None)
+        block.pop("_line", None)
         state = block["state"]
         # NO SIGNAL BUT A PICK'S OR A VERDICT'S. A settled tile keeps its
         # fill; an upcoming one wears the green outline only where its leg is
@@ -1258,11 +1327,17 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         edges = [e["edge"] for e in t.get("entries") or [] if e.get("edge") is not None]
         return max(edges) if edges else None
 
+    # AND THE REST BY START, THEN THE DECLARED MARKET ORDER (operator ruling
+    # B, 2026-10-05, reading (b); built 2026-10-07): C ordered them by start
+    # and player; the stat family's declared place comes before the player.
+    from . import picks as _picks
+
     state_rank = {"upcoming": 0, "live": 1, "final": 2}
     tiles.sort(key=lambda t: (state_rank.get(t["state"], 3), not t.get("pick"),
                               -(best_edge(t) or 0.0) if t.get("pick") else 0.0,
-                              _start_order(t.get("kickoff_utc")), t.get("player") or "",
-                              t["prediction_id"]))
+                              _start_order(t.get("kickoff_utc")),
+                              _picks.market_rank(sport, t.get("family")),
+                              t.get("player") or "", t["prediction_id"]))
     ladder_words = language.venue_ladder_view_words()
     ladder_rows = _ladder_rows(tiles, cards_by_id, ladders)
     chips = [{"key": "", "label": language.board_labels()["all"], "n": len(tiles)},
@@ -1295,13 +1370,24 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         "sport_label": sport_label,
         "my_day": _my_day(games, tiles),
         "games_empty_words": language.games_empty_words(sport_label) if not games else None,
-        # NOTHING CLEARS THE BAR, said once, and only on a slate that has a
-        # price to clear it against: on an unpriced slate the day strip
-        # already says the first read is still to come.
+        # NO FILLING (operator ruling B.4, 2026-10-05: "When nothing clears
+        # on a slate: 'Nothing worth taking today'"; reading (f), built
+        # 2026-10-07): said once, above the rows, wherever the slate has a
+        # question of the page's forecaster still to come and none is a pick
+        # -- priced or not. Until then it was said only on a priced slate,
+        # and in the day strip's note, where "no venue price yet" took its
+        # place; and it said "Every pick below is priced", of rows none of
+        # which is a pick.
         "nothing_clears_words": (
             language.nothing_clears_words()
-            if games and not any((g["pick"] or {}).get("signal") == "clears" for g in games)
-            and any(q.get("priced") for g in games for q in g["questions"]) else None),
+            if any(q.get("state") == "upcoming" and q["forecaster"] == chosen
+                   and q["prediction_id"] not in past_its_start
+                   for g in games for q in g["questions"])
+            and not any(q.get("pick") for g in games for q in g["questions"])
+            else None),
+        # WHOSE ROWS THESE ARE, for the page's market filter: a row's lead is
+        # the page's forecaster's question, never the other's.
+        "forecaster": chosen,
         "props": {
             "n": len(tiles),
             "tiles": tiles,

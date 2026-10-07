@@ -939,6 +939,24 @@ def step_2_guards() -> bool:
                       _record_conn(), _slate_payload(sport, forecaster))
                   for sport in _config().SPORTS
                   for forecaster in ("statistical", "llm")] and None),
+        # OPERATOR RULING B (2026-10-05: "Picks are ranked by edge, never by
+        # chance of hitting (every page)"; built 2026-10-07): a pick is three
+        # points or more after fees and, in a Kalshi game market, past B.5's
+        # gate -- its at-the-line record's hundred settled comparisons, this
+        # forecaster's, recounted from the record here -- ranked by its edge;
+        # everything else is ordered by its start and the declared market
+        # order, never by its chance or an ungated edge; every priced row
+        # draws its multiplier beside its chance and edge; a slate with
+        # nothing clearing says "Nothing worth taking today"; and only picks
+        # are a combo's legs. Every sport's slate, both forecasters, on the
+        # record's copy, held at a moment after each was built; and the
+        # renderers read for an order by the chance.
+        ("picks are ranked by edge, never by chance (ruling B)",
+         lambda: [audit.check_picks_are_ranked_by_edge(
+                      _record_conn(), _slate_payload(sport, forecaster),
+                      now=db.utcnow())
+                  for sport in _config().SPORTS
+                  for forecaster in ("statistical", "llm")] and None),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

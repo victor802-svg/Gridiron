@@ -3562,6 +3562,16 @@ def login_glance_faults(payload, path: str = "$") -> list[str]:
                     f"{path} states a percentage ({text!r}). The sign-in "
                     f"screen carries counts, not rates -- a percentage is the "
                     f"model's claim about something.")
+            # A COUNT OF OPEN QUESTIONS IS NOT A COUNT OF PICKS (the prover of
+            # operator ruling B, 2026-10-07: "A leg is called a pick only if
+            # its edge after fees is 3 percentage points or more. Below that it
+            # is shown as a number, never as a pick"). The line said "46 picks
+            # tonight" of every open question on the record.
+            if text and _A_PICK_COUNT_ON_LOGIN.search(str(text)):
+                faults.append(
+                    f"{path} counts open questions as picks ({text!r}): under "
+                    f"operator ruling B a pick is three points of edge after fees "
+                    f"or more, and this counts every question still open.")
     elif isinstance(payload, list):
         for i, value in enumerate(payload):
             faults += login_glance_faults(value, f"{path}[{i}]")
@@ -3569,8 +3579,17 @@ def login_glance_faults(payload, path: str = "$") -> list[str]:
 
 
 _A_PERCENT_ON_LOGIN = re.compile(r"[0-9]+(?:\.[0-9]+)?\s*%")
+#: "46 picks tonight" (the prover of operator ruling B, 2026-10-07).
+_A_PICK_COUNT_ON_LOGIN = re.compile(r"\b[0-9]+\s+picks?\b", re.IGNORECASE)
 
 LOGIN_FIXTURE_GOOD = {
+    "sports": [{"sport": "mlb", "label": "MLB", "settled": 70, "won": 45,
+                "lost": 25, "open": 46, "n": 70,
+                "line": "MLB 45-25 - 46 questions tonight"}],
+}
+#: AS RELEASED until ruling B's prover (2026-10-07): the open questions
+#: counted as picks.
+LOGIN_FIXTURE_PICKS_COUNTED = {
     "sports": [{"sport": "mlb", "label": "MLB", "settled": 70, "won": 45,
                 "lost": 25, "open": 46, "n": 70,
                 "line": "MLB 45-25 - 46 picks tonight"}],
@@ -3606,6 +3625,8 @@ def _check_the_login_scanner_can_see() -> None:
         problems.append("login_glance_faults misses a probability")
     if not login_glance_faults(LOGIN_FIXTURE_A_RATE):
         problems.append("login_glance_faults misses a percentage in a line")
+    if not login_glance_faults(LOGIN_FIXTURE_PICKS_COUNTED):
+        problems.append("login_glance_faults misses open questions counted as picks")
     if problems:
         raise LawViolation("A SCANNER IS BLIND:" + _NL2 + _NL2.join(problems))
 
@@ -6917,7 +6938,10 @@ def pressure_word_faults(text: str) -> list[str]:
 PRICE_SELECTORS = (".box", ".box-value", ".edge", ".face-prices",
                    ".pick-price", ".pick-pays", ".pick-prob", ".q-price", ".q-prob",
                    ".pay", ".prop-prob", ".cush", ".entry-value", ".tscore", ".game-score",
-                   ".my-chip-state", ".v-mult")
+                   ".my-chip-state", ".v-mult",
+                   # the edge on a row's face and a pick's badge with its
+                   # edge on a tile (operator ruling B, 2026-10-07)
+                   ".pick-edge", ".q-pick")
 #: THE BAR FILL may arrive once, on first load, and never on an update: the
 #: stylesheet may transition `.pbar-fill` on `opacity` alone, and the JS
 #: that patches a live score may not reach the bar or the class that starts
@@ -13547,6 +13571,669 @@ def check_the_props_board_calls_no_rung_a_pick(conn, payload, *, app_js: str | N
             + _NL2 + _NL2.join(faults[:8]))
 
 
+# ---------------------------------------------------------------------------
+# PICKS ARE RANKED BY EDGE, NEVER BY CHANCE (operator ruling B, 2026-10-05;
+# built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# "B. Picks are ranked by edge, never by chance of hitting (every page).
+# 1. Edge = model's chance minus the price (Kalshi) or minus the break-even of
+# the payout (pick'em), after fees. Chance of hitting alone never ranks
+# anything. 2. A leg is called a pick only if its edge after fees is 3
+# percentage points or more. Below that it is shown as a number, never as a
+# pick. 3. Every pick and every browse row shows its payout as a multiplier
+# beside its chance and edge ... 4. No filling. When nothing clears on a
+# slate: 'Nothing worth taking today'. 5. Kalshi game markets (spreads,
+# moneylines, totals) stay on the board with their numbers, but none carries a
+# pick badge, and none feeds a combo proposal, until its market passes its
+# gate." The brief's readings: "after fees" is the published fee formula the
+# record applies; B.5's gate is "a market's at-the-line record's 100 settled
+# comparisons, per forecaster, on the distinct-bet key, after A.2's
+# exclusion".
+#
+# EVERY PICK IS WORKED OUT AGAIN, never read off the payload's say-so: B.5's
+# gate from the record by the recount (`recount.at_the_line`, which reads the
+# claims without the at-the-line door the page counts through); the side
+# bought from the slate's own recommendation line; the edge after fees from
+# the Today card's number and price and the published fee formula
+# (`paper.fee_per_contract`); the bar and the gate held here; the order of
+# the Today groups, the rows, a row's questions and the Props tiles by B's
+# rule restated here, each question's line read off the record; and the
+# page's scripts read for an order by the model's chance
+# (`games_order_faults`).
+
+#: B.5's gate as ruled, held here so a builder that moves the constant is
+#: named rather than followed.
+GAME_MARKET_GATE_AS_RULED = 100
+
+#: The Kalshi game markets B.5 names.
+GAME_MARKETS_AS_RULED = ("spread", "total", "moneyline")
+
+#: A card's number is stored to four places, which moves an edge worked out
+#: from it by half a hundredth of a point at most; within that of the bar
+#: the card's own unrounded edge decides, where it agrees with its numbers.
+EDGE_FROM_THE_CARD_TOLERANCE = 0.006
+
+PICK_RANK_RULE = "(operator ruling B, 2026-10-05)"
+
+_FIRST_SIGNED_FIGURE = re.compile(r"([+-]\d+(?:\.\d+)?)")
+
+
+def _b_state(status) -> str:
+    """A game's state as the page reads it (`views.card_state`), restated."""
+    if status == "in":
+        return "live"
+    if status == "final":
+        return "final"
+    return "upcoming"
+
+
+def _b_start_key(stamp) -> tuple:
+    """A start read as an instant (`board._start_order`, restated): none
+    first, as the empty text did; unreadable last."""
+    from . import db
+
+    try:
+        when = db.instant(stamp)
+    except ValueError:
+        return (2, 0.0)
+    return (0, 0.0) if when is None else (1, when.timestamp())
+
+
+def _b_market_rank(sport, market) -> int:
+    order = config.SPORT_MARKETS.get(sport or "", ())
+    return order.index(market) if market in order else len(order)
+
+
+def _b_line(line) -> float:
+    try:
+        return float(line)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def _b_drawn_figure(words) -> float | None:
+    """The first signed figure a string draws ("+3.0¢", "edge +2.9"), or None."""
+    got = _FIRST_SIGNED_FIGURE.search(str(words or ""))
+    return float(got.group(1)) if got else None
+
+
+def _b_edge(card: dict, side: str) -> float | None:
+    """The edge after fees, in points of the side bought, from the Today
+    card's own number and price (the claim's fixed proposition's, as the card
+    carries them) and the published fee formula."""
+    from .market import paper
+
+    fair, price = card.get("fair_value"), card.get("price")
+    if not isinstance(fair, (int, float)) or not isinstance(price, (int, float)) \
+            or not 0.0 < float(price) < 1.0:
+        return None
+    yes = side == "yes"
+    worth = float(fair) if yes else 1.0 - float(fair)
+    cost = float(price) if yes else 1.0 - float(price)
+    return (worth - cost - paper.fee_per_contract(cost)) * 100.0
+
+
+def _b_card_tier(conn, sport, game_id):
+    """The card a bout is on, read off the record, for a sport that splits
+    below the market; None otherwise (or where the source named none)."""
+    if not config.event_tiers(sport) or conn is None:
+        return None
+    row = conn.execute(
+        "SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e ON e.id = b.event_id"
+        " WHERE b.id = ?", (game_id,)).fetchone()
+    return row[0] if row else None
+
+
+def _b_gate(conn, sport, market, predictor, game_id, cache: dict) -> int:
+    """B.5's count worked out from the record without the door: the
+    recount's settled claims for this market and forecaster (and, for a
+    sport that splits, this bout's card)."""
+    from . import recount
+
+    tier = None
+    if config.event_tiers(sport):
+        tier = _b_card_tier(conn, sport, game_id)
+        if tier is None:
+            return 0
+    key = (market, predictor, tier)
+    if key not in cache:
+        cache[key] = recount.at_the_line(conn, sport=sport, market=market,
+                                         predictor=predictor, event_tier=tier)["settled"]
+    return cache[key]
+
+
+def pick_rank_faults(conn, payload, *, now: str | None = None) -> list[str]:
+    """Every way a slate's payload can rank a pick by chance, order an
+    ungated market by its edge, call something a pick that is not one (under
+    three points, or a Kalshi game market short of B.5's gate), draw a
+    priced row without its multiplier beside its chance and edge, fill a
+    slate with nothing clearing, or feed a combo a leg that is not a pick
+    (operator ruling B, 2026-10-05).
+
+    `now` is a moment no earlier than the slate was built (the clock by
+    default, asked after the build): a slate is held to "Nothing worth
+    taking today" only where a question of it is still to come then."""
+    from . import language as _language
+    from .market import recommend as _recommend
+
+    payload = payload or {}
+    today = payload.get("today") or {}
+    board = payload.get("board") or {}
+    if not today and not board:
+        return []
+    sport = payload.get("sport") or board.get("sport_key")
+    rule = PICK_RANK_RULE
+    faults: list[str] = []
+    bar = PICK_MIN_EDGE_AS_RULED * 100.0
+    nothing = _language.nothing_worth_taking_words()
+    if abs(float(config.PICK_MIN_EDGE) - PICK_MIN_EDGE_AS_RULED) > 1e-12:
+        faults.append(f"the pick bar is {config.PICK_MIN_EDGE!r}, not the three points "
+                      f"ruled (B.2) {rule}")
+    if config.GAME_MARKET_PICK_GATE != GAME_MARKET_GATE_AS_RULED:
+        faults.append(f"B.5's gate is {config.GAME_MARKET_PICK_GATE!r}, not the "
+                      f"{GAME_MARKET_GATE_AS_RULED} settled comparisons ruled {rule}")
+    slate = {c.get("prediction_id"): c for c in (payload.get("cards") or [])
+             if isinstance(c, dict)}
+    line_list = [x for x in (((payload.get("recommendations") or {}).get("lines")) or [])
+                 if isinstance(x, dict)]
+    lines = {x.get("prediction_id"): x for x in line_list if x.get("side") in ("yes", "no")}
+    forecaster = payload.get("forecaster") or board.get("forecaster")
+    gates: dict = {}
+    today_cards: dict = {}
+    for group in ("clears", "below_floor", "watching"):
+        for i, card in enumerate(today.get(group) or []):
+            if isinstance(card, dict) and card.get("state") != "live":
+                today_cards[card.get("prediction_id")] = (group, i, card)
+    verdicts: dict = {}
+
+    def verdict(pid) -> dict:
+        """{pick, edge, n, why, decided} for a question with a Today card."""
+        if pid in verdicts:
+            return verdicts[pid]
+        got = {"pick": False, "edge": None, "n": None, "why": "no card", "decided": True}
+        held = today_cards.get(pid)
+        if held is not None:
+            _group, _i, card = held
+            f = slate.get(pid) or {}
+            side = (lines.get(pid) or {}).get("side")
+            market = f.get("market") or f.get("prop_type") or f.get("market_type")
+            if side not in ("yes", "no"):
+                got = dict(got, why="no side")
+            else:
+                edge = _b_edge(card, side)
+                own = card.get("edge_points")
+                exact, decided = edge, edge is not None and abs(edge - bar) > \
+                    EDGE_FROM_THE_CARD_TOLERANCE
+                if isinstance(own, (int, float)) and edge is not None:
+                    if abs(float(own) - edge) <= EDGE_FROM_THE_CARD_TOLERANCE:
+                        exact, decided = float(own), True
+                    else:
+                        faults.append(
+                            f"today card of question {pid} says its edge is {own!r} points "
+                            f"where its own number and price give {edge:+.4f} on the "
+                            f"{side} side {rule}")
+                if edge is None:
+                    got = dict(got, why="no price")
+                elif market not in GAME_MARKETS_AS_RULED:
+                    got = dict(got, edge=exact, why="not a game market")
+                else:
+                    whose = f.get("predictor") or forecaster
+                    n = _b_gate(conn, sport, market, whose, f.get("game_id"), gates)
+                    if n < GAME_MARKET_GATE_AS_RULED:
+                        # WHOSE COUNT IT IS (the prover, 2026-10-07): the
+                        # Record page's label for the curve the gate counts --
+                        # the market at the venue's line, the card for UFC,
+                        # the forecaster -- read off the record here.
+                        got = dict(got, edge=exact, n=n, why="gate",
+                                   category=_language.at_the_line_category_label(
+                                       market, whose,
+                                       _b_card_tier(conn, sport, f.get("game_id"))))
+                    else:
+                        clears = exact >= bar - 1e-7 if decided else bool(card.get("pick"))
+                        got = {"pick": clears, "edge": exact, "n": n,
+                               "why": "pick" if clears else "bar", "decided": decided}
+                got.setdefault("decided", True)
+        verdicts[pid] = got
+        return got
+
+    # THE TODAY GROUPS: the picks, ranked by edge; everything else watched,
+    # in the order of its start and the declared market order.
+    picks_today = 0
+    for group in ("clears", "below_floor", "watching"):
+        prev = None
+        for i, card in enumerate(today.get(group) or []):
+            if not isinstance(card, dict) or card.get("state") == "live":
+                continue
+            pid = card.get("prediction_id")
+            where = f"today.{group}[{i}] (question {pid}, {card.get('question')!r})"
+            v = verdict(pid)
+            if group in ("clears", "below_floor"):
+                if not v["pick"]:
+                    faults.append(
+                        f"{where} is grouped with the picks and is not one ({v['why']}"
+                        + (f": its market has {v['n']} of the {GAME_MARKET_GATE_AS_RULED} "
+                           f"settled comparisons at the venue's price" if v["why"] == "gate"
+                           else f": its edge after fees is {v['edge']:+.3f} points"
+                           if v["why"] == "bar" and v["edge"] is not None else "")
+                        + f") -- a pick below three points or in a market short of its "
+                          f"gate {rule}")
+                else:
+                    picks_today += 1
+                key = (-(v["edge"] if v["edge"] is not None else -1e9), pid)
+            else:
+                if v["pick"]:
+                    faults.append(f"{where} is a pick ({v['edge']:+.3f} points, its market "
+                                  f"past its gate) drawn as watched {rule}")
+                f = slate.get(pid) or {}
+                key = (_b_start_key(f.get("kickoff_utc")), str(f.get("game_id") or ""),
+                       _b_market_rank(sport, f.get("market")), str(f.get("subject") or ""),
+                       _b_line(f.get("line_asked")), pid or 0)
+            if prev is not None and key < prev:
+                faults.append(
+                    f"{where} is out of B's order in today.{group}: "
+                    + ("the picks are ranked by their edge after fees, best first"
+                       if group != "watching" else
+                       "a question that is not a pick is ordered by its start and the "
+                       "declared market order, never by its chance or an ungated edge")
+                    + f" {rule}")
+            prev = key
+            if v["decided"] and bool(card.get("pick")) != v["pick"]:
+                faults.append(f"{where} says pick={card.get('pick')!r} where it "
+                              f"{'is' if v['pick'] else 'is not'} one {rule}")
+            if not v["pick"]:
+                for field in ("size_words", "pick_words"):
+                    if card.get(field):
+                        faults.append(f"{where} is not a pick and carries {field!r} "
+                                      f"({card.get(field)!r}) {rule}")
+                if pid in lines:
+                    said = str(card.get("not_a_pick_words") or "")
+                    if v["why"] == "gate" and (
+                            f"{v['n']} of the {GAME_MARKET_GATE_AS_RULED}" not in said):
+                        faults.append(
+                            f"{where} is a recommendation in a market with {v['n']} of the "
+                            f"{GAME_MARKET_GATE_AS_RULED} settled comparisons B.5 asks, and "
+                            f"does not say so beside it ({said!r}) {rule}")
+                    # AND WHOSE COUNT IT IS (the prover, 2026-10-07): one
+                    # forecaster's, and for UFC one card's -- "its market has
+                    # 0 of the 100" said a card's count as the market's.
+                    if v["why"] == "gate" and v.get("category") and \
+                            f"({v['category']})" not in said:
+                        faults.append(
+                            f"{where} says {said!r} of the gate's count without naming "
+                            f"whose it is ({v['category']!r}): the count is one "
+                            f"forecaster's, and for UFC one card's {rule}")
+                    if v["edge"] is not None and v["edge"] < bar - 1e-7 and \
+                            "under the 3" not in said:
+                        faults.append(f"{where} is a recommendation under three points and "
+                                      f"does not say so beside it ({said!r}) {rule}")
+                if v["edge"] is not None and v["edge"] < bar - 1e-7:
+                    for field in ("edge_words", "edge_line_words"):
+                        drawn = _b_drawn_figure(card.get(field))
+                        if drawn is not None and drawn >= bar - 1e-9:
+                            faults.append(
+                                f"{where} draws {card.get(field)!r} for an edge of "
+                                f"{v['edge']:+.4f} points, under three: never drawn as a "
+                                f"pick's figure beside a non-pick (reading (c)) {rule}")
+
+    # THE RECOMMENDATION LINES: a pick, or the writer's recommendation with
+    # its numbers only and why it is not a pick.
+    for i, line in enumerate(line_list):
+        pid = line.get("prediction_id")
+        where = f"recommendations.lines[{i}] (question {pid})"
+        v = verdict(pid)
+        words = str(line.get("words") or "")
+        if pid in today_cards and v["decided"] and bool(line.get("pick")) != v["pick"]:
+            faults.append(f"{where} says pick={line.get('pick')!r} where it "
+                          f"{'is' if v['pick'] else 'is not'} one {rule}")
+        if not v["pick"]:
+            if line.get("units") or "flat unit" in words or "a quarter of Kelly" in words:
+                faults.append(f"{where} is not a pick and is sized: {words!r} {rule}")
+            if "Not a pick" not in words:
+                faults.append(f"{where} is not a pick and does not say so: {words!r} {rule}")
+            if v["why"] == "gate" and v.get("category") and f"({v['category']})" not in words:
+                faults.append(f"{where} says {words!r} of the gate's count without naming "
+                              f"whose it is ({v['category']!r}) {rule}")
+        # ITS MULTIPLIER BESIDE ITS CHANCE AND EDGE (the prover, 2026-10-07:
+        # B.3 with reading (a)'s "recommendation lines"): what the side it
+        # buys pays, worked out from its Today card's price and the side.
+        held = today_cards.get(pid)
+        side = line.get("side")
+        if held is not None and side in ("yes", "no") and \
+                isinstance(held[2].get("price"), (int, float)):
+            price = float(held[2]["price"])
+            pays = _recommend.payout_multiple(price if side == "yes" else 1.0 - price)
+            want = f"(pays {_language.payout_chip_words(pays)})"
+            if pays is not None and want not in words:
+                faults.append(f"{where} says {words!r} without what the side it buys pays "
+                              f"beside its price ({want!r}): every pick and browse row shows "
+                              f"its payout as a multiplier beside its chance and edge (B.3) "
+                              f"{rule}")
+
+    # AND IN B'S ORDER (the prover, 2026-10-07): the picks by their edge after
+    # fees, best first; the rest by start, game and the declared market order.
+    def line_key(line):
+        pid = line.get("prediction_id")
+        v = verdict(pid)
+        if v["pick"]:
+            return (0, -(v["edge"] if v["edge"] is not None else -1e9), pid or 0)
+        f = slate.get(pid) or {}
+        return (1, _b_start_key(f.get("kickoff_utc")), str(f.get("game_id") or ""),
+                _b_market_rank(sport, f.get("market")), str(f.get("subject") or ""),
+                _b_line(f.get("line_asked")), pid or 0)
+
+    keys = [line_key(x) for x in line_list]
+    if keys != sorted(keys):
+        faults.append(
+            f"recommendations.lines are in the order "
+            f"{[x.get('prediction_id') for x in line_list]!r}, where B's order is "
+            f"{[x.get('prediction_id') for _k, x in sorted(zip(keys, line_list), key=lambda t: t[0])]!r}: "
+            f"the picks ranked by their edge after fees, best first, everything else by "
+            f"its start and the declared market order -- never by the chance {rule}")
+
+    # THE FEE LINE CALLS NOTHING A PICK (the prover, 2026-10-07): "A pick with
+    # no edge costs that much" said of a thing B says cannot be a pick.
+    fee_line = str(today.get("fee_line") or "")
+    if re.search(r"\bpicks?\b", fee_line, re.IGNORECASE):
+        faults.append(f"today.fee_line says {fee_line!r}: a contract with no edge is never "
+                      f"a pick, which needs three points after fees (B.2) {rule}")
+
+    # THE DAY STRIP'S COUNT OF PICKS
+    counts = str(today.get("count_words") or "")
+    if today and ("clear the bar" in counts or "clears the bar" in counts or (
+            (picks_today == 0 and "no pick" not in counts)
+            or (picks_today == 1 and "1 pick" not in counts)
+            or (picks_today > 1 and f"{picks_today} picks" not in counts))):
+        faults.append(f"today.count_words says {counts!r} of {picks_today} picks {rule}")
+
+    # THE COMBOS: only picks are legs.
+    for i, proposal in enumerate(((today.get("combos") or {}).get("cards")) or []):
+        for j, leg in enumerate((proposal or {}).get("legs") or []):
+            pid = (leg or {}).get("prediction_id")
+            held = today_cards.get(pid)
+            if held is None or held[0] not in ("clears", "below_floor") or \
+                    not verdict(pid)["pick"]:
+                v = verdict(pid)
+                faults.append(
+                    f"today.combos.cards[{i}] leg {j} (question {pid}) is not a pick "
+                    f"({v['why']}): a combo is proposed only from picks, and a Kalshi game "
+                    f"market feeds none until its market passes its gate {rule}")
+
+    # THE ROWS AND THEIR QUESTIONS.
+    games = [g for g in (board.get("games") or []) if isinstance(g, dict)]
+    ids = [q.get("prediction_id") for g in games for q in (g.get("questions") or [])
+           if isinstance(q, dict) and q.get("prediction_id") is not None]
+    asked = {}
+    if ids and conn is not None:
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            for r in conn.execute(
+                    "SELECT id, line_asked, subject, market_type, prop_type FROM predictions"
+                    f" WHERE id IN ({','.join('?' for _ in chunk)})", chunk):
+                asked[r[0]] = {"line": r[1], "subject": r[2], "market": r[4] or r[3]}
+    prev_row = None
+    for i, game in enumerate(games):
+        row_key = (_b_start_key(game.get("kickoff_utc")), str(game.get("game_id") or ""))
+        if prev_row is not None and row_key < prev_row:
+            faults.append(f"board.games[{i}] is out of start order: the rows are ordered "
+                          f"by their start, never by a chance {rule}")
+        prev_row = row_key
+        blocks = [q for q in (game.get("questions") or []) if isinstance(q, dict)]
+        own = [q for q in blocks if q.get("forecaster") == forecaster]
+        theirs = [q for q in blocks if q.get("forecaster") != forecaster]
+        if [q.get("prediction_id") for q in blocks[:len(own)]] != \
+                [q.get("prediction_id") for q in own]:
+            faults.append(f"board.games[{i}] draws the other forecaster's question before "
+                          f"the page's own {rule}")
+
+        def b_key(q):
+            pid = q.get("prediction_id")
+            if verdict(pid)["pick"]:
+                e = verdict(pid)["edge"]
+                return (0, -(e if e is not None else -1e9), pid)
+            # THE BLOCK'S OWN MARKET (a prop's type, recovered where an early
+            # row's column is empty, as the page names it); the line it was
+            # asked at off the record.
+            a = asked.get(pid) or {}
+            return (1, _b_market_rank(sport, q.get("market") or a.get("market")),
+                    str(q.get("subject") or a.get("subject") or ""),
+                    _b_line(a.get("line")), pid or 0)
+
+        for which, group in (("own", own), ("other", theirs)):
+            keys = [b_key(q) for q in group]
+            if keys != sorted(keys):
+                faults.append(
+                    f"board.games[{i}] orders its {which} forecaster's questions "
+                    f"{[q.get('prediction_id') for q in group]!r}, where B's order is "
+                    f"{[q.get('prediction_id') for _k, q in sorted(zip(keys, group), key=lambda t: t[0])]!r}: "
+                    f"its picks by their edge, then the declared market order -- never "
+                    f"its chance, never an ungated edge {rule}")
+        lead = game.get("pick")
+        state = game.get("state")
+        if own:
+            want = sorted(own, key=b_key)[0]
+            if not isinstance(lead, dict) or lead.get("prediction_id") != want.get("prediction_id"):
+                faults.append(
+                    f"board.games[{i}] leads with question "
+                    f"{(lead or {}).get('prediction_id')!r} where B's lead is "
+                    f"{want.get('prediction_id')!r}: its best pick by edge, or the first "
+                    f"in the declared market order -- never the surest {rule}")
+        label = str(game.get("pick_label_words") or "")
+        lead_pick = isinstance(lead, dict) and verdict(lead.get("prediction_id"))["pick"] \
+            and state == "upcoming"
+        if label.startswith("Model's pick") != bool(lead_pick):
+            faults.append(f"board.games[{i}] heads its lead {label!r} where it "
+                          f"{'is' if lead_pick else 'is not'} a pick {rule}")
+        for j, q in enumerate([lead] + blocks if isinstance(lead, dict) else blocks):
+            at = f"board.games[{i}]." + ("pick" if (isinstance(lead, dict) and j == 0)
+                                         else f"questions[{j - (1 if isinstance(lead, dict) else 0)}]")
+            pid = q.get("prediction_id")
+            v = verdict(pid)
+            want_pick = v["pick"] and q.get("state") == "upcoming"
+            if bool(q.get("pick")) != want_pick and v["decided"]:
+                faults.append(f"{at} (question {pid}) says pick={q.get('pick')!r} where it "
+                              f"{'is' if want_pick else 'is not'} one {rule}")
+            if not want_pick:
+                if q.get("signal") == "clears":
+                    faults.append(f"{at} (question {pid}) wears the pick's outline and is "
+                                  f"not a pick ({v['why']}) {rule}")
+                for field in ("size_words", "pick_words"):
+                    if q.get(field):
+                        faults.append(f"{at} (question {pid}) is not a pick and carries "
+                                      f"{field!r} ({q.get(field)!r}) {rule}")
+                if str(q.get("lead_label_words") or "").startswith("Model's pick"):
+                    faults.append(f"{at} (question {pid}) would lead its row as "
+                                  f"{q.get('lead_label_words')!r} and is not a pick {rule}")
+                if v["edge"] is not None and v["edge"] < bar - 1e-7:
+                    drawn = _b_drawn_figure(q.get("edge_words"))
+                    if drawn is not None and drawn >= bar - 1e-9:
+                        faults.append(f"{at} (question {pid}) draws {q.get('edge_words')!r} "
+                                      f"for an edge of {v['edge']:+.4f} points (reading (c)) "
+                                      f"{rule}")
+            if q.get("state") == "upcoming":
+                if q.get("priced"):
+                    for field in ("prob_words", "pays_words", "edge_words"):
+                        if not q.get(field):
+                            faults.append(
+                                f"{at} (question {pid}) is priced and draws no {field!r}: "
+                                f"every pick and browse row shows its payout as a "
+                                f"multiplier beside its chance and edge (B.3) {rule}")
+                    pays = _recommend.payout_multiple(q.get("price"))
+                    if pays is not None and q.get("pays_words") and \
+                            q.get("pays_words") != _language.payout_chip_words(pays):
+                        faults.append(
+                            f"{at} (question {pid}) draws {q.get('pays_words')!r} beside a "
+                            f"price of {q.get('price')!r}, which pays "
+                            f"{_language.payout_chip_words(pays)!r}: the multiplier of "
+                            f"another side or contract than the one drawn {rule}")
+                elif not q.get("price_words"):
+                    faults.append(f"{at} (question {pid}) has no price and says nothing "
+                                  f"where it would be (B.3, reading (e)) {rule}")
+        if state != "upcoming" and "Model's pick" in label:
+            faults.append(f"board.games[{i}] is {state} and heads its lead {label!r} {rule}")
+
+    # THE PROPS TILES: the picks by edge, then the start and the declared
+    # market order; and no non-pick drawn at the bar.
+    tiles = [t for t in (((board.get("props") or {}).get("tiles")) or []) if isinstance(t, dict)]
+    rank = {"upcoming": 0, "live": 1, "final": 2}
+    prev_tile = None
+    for i, t in enumerate(tiles):
+        edges = [e.get("edge") for e in t.get("entries") or [] if e.get("edge") is not None]
+        best = max(edges) if edges else None
+        key = (rank.get(t.get("state"), 3), not t.get("pick"),
+               -(best or 0.0) if t.get("pick") else 0.0,
+               _b_start_key(t.get("kickoff_utc")), _b_market_rank(sport, t.get("family")),
+               str(t.get("player") or ""), t.get("prediction_id") or 0)
+        if prev_tile is not None and key < prev_tile:
+            faults.append(f"board.props.tiles[{i}] (question {t.get('prediction_id')}) is out "
+                          f"of B's order: the picks by edge, then the start and the declared "
+                          f"market order -- never the chance {rule}")
+        prev_tile = key
+        for e in t.get("entries") or []:
+            drawn = _b_drawn_figure(e.get("edge_words"))
+            if not e.get("clears") and drawn is not None and drawn >= bar - 1e-9:
+                faults.append(f"board.props.tiles[{i}] (question {t.get('prediction_id')}) "
+                              f"draws {e.get('edge_words')!r} beside a {e.get('legs')}-pick "
+                              f"entry it does not clear (reading (c)) {rule}")
+
+    # MY DAY AND THE TAKEN RAIL say "pick" of nothing that is not one.
+    for i, chip in enumerate(((board.get("my_day") or {}).get("entries")) or []):
+        if isinstance(chip, dict) and chip.get("signal") == "clears":
+            faults.append(f"board.my_day.entries[{i}] wears the pick's outline {rule}")
+    heading = str(((today.get("taken_today") or {}).get("heading")) or "")
+    if "pick" in heading.lower():
+        faults.append(f"today.taken_today.heading says {heading!r}: what was marked is not "
+                      f"a pick because it was marked {rule}")
+
+    # NO FILLING: a slate with a question still to come and no pick says so.
+    if conn is not None and slate:
+        gone = {r["prediction_id"] for r in _recommend.not_still_upcoming_among(
+            conn, list(slate), now=now)}
+        to_come = [pid for pid, c in slate.items()
+                   if _b_state(c.get("game_status")) == "upcoming" and pid not in gone]
+        if today:
+            if to_come and not picks_today and today.get("nothing_words") != nothing:
+                faults.append(f"today: {len(to_come)} questions still to come and none a "
+                              f"pick, and it does not say {nothing!r} "
+                              f"({today.get('nothing_words')!r}) (B.4) {rule}")
+            if picks_today and today.get("nothing_words"):
+                faults.append(f"today says {today.get('nothing_words')!r} beside "
+                              f"{picks_today} picks {rule}")
+        if board:
+            row_picks = sum(1 for g in games for q in (g.get("questions") or [])
+                            if isinstance(q, dict) and verdict(q.get("prediction_id"))["pick"])
+            own_to_come = [q for g in games for q in (g.get("questions") or [])
+                           if isinstance(q, dict) and q.get("forecaster") == forecaster
+                           and q.get("prediction_id") in set(to_come)]
+            said = board.get("nothing_clears_words")
+            if own_to_come and not row_picks and said != nothing:
+                faults.append(f"board: {len(own_to_come)} questions still to come and none "
+                              f"a pick, and the Games page does not say {nothing!r} "
+                              f"({said!r}) (B.4) {rule}")
+            if row_picks and said:
+                faults.append(f"board says {said!r} beside {row_picks} picks {rule}")
+    return faults
+
+
+#: The two renderers that order rows and tiles, read whole for an order by
+#: the model's chance (operator ruling B.1, 2026-10-05: "Chance of hitting
+#: alone never ranks anything").
+_ORDERING_RENDERERS = ("renderGames", "renderProps")
+_RENDERER_START = r"\n  (?:async )?function %s\("
+
+
+def games_order_faults(js: str | None = None) -> list[str]:
+    """The Games and Props renderers ordering or leading by the model's
+    chance: a sort option for it, or a read of a chance (`.prob`,
+    `main_chance`) inside a renderer that orders rows or tiles."""
+    if js is None:
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    js = _without_comments(js, "js")
+    faults: list[str] = []
+    for name in _ORDERING_RENDERERS:
+        start = re.search(_RENDERER_START % name, js)
+        if start is None:
+            faults.append(f"`{name}` is gone from app.js, so nothing says how it orders "
+                          f"{PICK_RANK_RULE}")
+            continue
+        after = _RAIL_NEXT_FUNCTION.search(js, start.end())
+        body = js[start.start():after.start() if after else len(js)]
+        line = js.count(chr(10), 0, start.start()) + 2
+        for pattern, what in ((r"\.prob\b", "the model's chance (`.prob`)"),
+                              (r"\bmain_chance\b", "a leg's chance (`main_chance`)"),
+                              (r"['\"]prob['\"]", "a sort by the model's chance ('prob')")):
+            if re.search(pattern, body):
+                faults.append(f"app.js:{line} `{name}` reads {what}: a page that orders or "
+                              f"leads its rows by the chance of hitting {PICK_RANK_RULE}")
+    return faults
+
+
+#: WHAT A ROW'S FACE AND A TILE DRAW (operator ruling B.3, 2026-10-05: "Every
+#: pick and every browse row shows its payout as a multiplier beside its
+#: chance and edge"; built 2026-10-07): the chance, the multiplier and the
+#: edge, each the server's words. Until then the row's face drew the chance,
+#: the price and the payout, and its edge only on the open row's tile.
+_ROW_FACES = {"gameRow": ("pick.prob_words", "pick.pays_words", "pick.edge_words"),
+              "questionTile": ("q.prob_words", "q.pays_words", "q.edge_words")}
+
+
+def row_face_faults(js: str | None = None) -> list[str]:
+    """A row's face or a tile that does not draw its chance, its multiplier
+    and its edge (B.3)."""
+    if js is None:
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    js = _without_comments(js, "js")
+    faults: list[str] = []
+    for name, fields in _ROW_FACES.items():
+        start = re.search(_RENDERER_START % name, js)
+        if start is None:
+            faults.append(f"`{name}` is gone from app.js, so nothing says what a row "
+                          f"draws {PICK_RANK_RULE}")
+            continue
+        after = _RAIL_NEXT_FUNCTION.search(js, start.end())
+        body = js[start.start():after.start() if after else len(js)]
+        line = js.count(chr(10), 0, start.start()) + 2
+        for field in fields:
+            if not re.search(r"\b" + re.escape(field) + r"\b", body):
+                faults.append(f"app.js:{line} `{name}` does not draw `{field}`: every pick "
+                              f"and browse row shows its payout as a multiplier beside its "
+                              f"chance and edge (B.3) {PICK_RANK_RULE}")
+        # NOTHING DRAWN IN THE MULTIPLIER'S PLACE (the prover, 2026-10-07): the
+        # tile's slot said "taken" instead of its payout once the operator
+        # marked the question. The statement that draws the multiplier may
+        # not choose it by whether the question was taken.
+        pays = fields[1]
+        for statement in re.split(r";", body):
+            if re.search(r"\b" + re.escape(pays) + r"\b", statement) and \
+                    re.search(r"\.taken\b", statement):
+                faults.append(f"app.js:{line} `{name}` draws `{pays}` only where the "
+                              f"question was not taken, something else in its place where "
+                              f"it was: a taken pick or row keeps its multiplier beside its "
+                              f"chance and edge (B.3) {PICK_RANK_RULE}")
+    return faults
+
+
+def check_picks_are_ranked_by_edge(conn, payload, *, now: str | None = None,
+                                   app_js: str | None = None) -> None:
+    """THE GATE'S CALL (step 2, every sport's slate, both forecasters, on the
+    record's copy): `pick_rank_faults` with B.5's gate recounted from the
+    record, and the renderers read for an order by chance and for a face
+    without its multiplier or edge (`games_order_faults`, `row_face_faults`;
+    `app_js` hands a planted one in)."""
+    faults = (pick_rank_faults(conn, payload, now=now) + games_order_faults(app_js)
+              + row_face_faults(app_js))
+    if faults:
+        raise LawViolation(
+            "A PICK IS RANKED BY CHANCE, CALLED A PICK BELOW THE BAR OR ITS GATE, "
+            "DRAWN WITHOUT ITS MULTIPLIER, OR FILLED IN (operator ruling B, "
+            "2026-10-05: \"Picks are ranked by edge, never by chance of hitting ... A "
+            "leg is called a pick only if its edge after fees is 3 percentage points "
+            "or more ... Every pick and every browse row shows its payout as a "
+            "multiplier beside its chance and edge ... No filling ... none carries a "
+            "pick badge, and none feeds a combo proposal, until its market passes its "
+            "gate\"):" + _NL2 + _NL2.join(faults[:8]))
+
+
 #: Where a hand-typed club hex would sit: the web files and the composers
 #: that hand colours to the page. The generated colour file is the one place
 #: a club's hex belongs, and `tools/measure_team_colours.py` writes it.
@@ -15970,8 +16657,15 @@ def headline_faults(payload) -> list[str]:
              for x in (((payload.get("recommendations") or {}).get("lines")) or [])
              if isinstance(x, dict) and x.get("side") in ("yes", "no")}
     cards: dict = {}
-    for group in ("clears", "below_floor"):
+    for group in ("clears", "below_floor", "watching"):
         for i, c in enumerate(today.get(group) or []):
+            # A RECOMMENDATION THAT IS NOT A PICK IS WATCHED (operator ruling
+            # B, 2026-10-05; reading (d), built 2026-10-07) and still
+            # headlines the contract it buys: a watched card is held where a
+            # recommendation line names it.
+            if group == "watching" and (not isinstance(c, dict)
+                                        or c.get("prediction_id") not in lines):
+                continue
             if isinstance(c, dict) and c.get("state") != "live":
                 cards[c.get("prediction_id")] = (f"today.{group}[{i}]", c)
 
@@ -16128,8 +16822,13 @@ def headline_faults(payload) -> list[str]:
                         f"{at} {whose} names the club {block.get('named_club')!r}, where "
                         f"the contract it buys names {want_club!r}: {rule}")
                 if at.endswith(".pick"):
+                    # "MODEL'S PICK" ONLY OVER A PICK (operator ruling B,
+                    # 2026-10-05; built 2026-10-07): the label is the pick's
+                    # or the number's, as the block says it is -- which
+                    # `pick_rank_faults` holds to the record.
                     label = _language.pick_label_words(
-                        "upcoming", block.get("signal") or "none", other_side=other)
+                        "upcoming", block.get("signal") or "none",
+                        pick=bool(block.get("pick")), other_side=other)
                     if game.get("pick_label_words") != label:
                         faults.append(
                             f"board.games[{i}] {whose} heads its pick "
@@ -16284,8 +16983,14 @@ HEADLINE_FIXTURE_GOOD = {
         "games": [{"game_id": "2026_04_ATL_NO", "state": "upcoming",
                    "home": {"tricode": "NO"}, "away": {"tricode": "ATL"},
                    "pick_label_words": "Model's pick · the other side",
+                   # A PICK'S HEADLINE, as if its market had passed B.5's gate
+                   # (operator ruling B, 2026-10-05; built 2026-10-07): ruling
+                   # B leaves rec 117 itself a number -- NFL spread at the
+                   # venue's price had 24 of its 100 settled comparisons on
+                   # 6 October -- and this fixture holds Q37's headline, which
+                   # a pick and a number share; the label is the pick's.
                    "pick": {"prediction_id": 3583, "state": "upcoming",
-                            "signal": "clears", "priced": True,
+                            "signal": "clears", "priced": True, "pick": True,
                             "line_words": "New Orleans -2.5",
                             "question": "New Orleans covers -2.5", "prob": 0.6848,
                             "prob_words": "68%",

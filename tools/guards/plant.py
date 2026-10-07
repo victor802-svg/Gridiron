@@ -9749,6 +9749,10 @@ def plant_a_payout_on_the_propositions_side() -> Result:
             _coverage.priceable = lambda conn, sport, market, **_: {
                 "priceable": True, "market": market, "why": "covered, in this planting"}
             conn, pid = _pick_side_moneyline_world(Path(tmp) / "payout.db", price=0.485)
+            # THE FLOOR FOLDS PICKS, and from ruling B (2026-10-05; built
+            # 2026-10-07) a moneyline is a pick only once its market is past
+            # B.5's gate: this world's has its hundred settled comparisons.
+            _pass_the_b_gate(conn, sport="mlb", market="moneyline")
             _settings.set_value(conn, "min_payout", "2.0")
 
             def card_of(payload):
@@ -9817,9 +9821,13 @@ def plant_a_recommendation_line_on_the_proposition() -> Result:
         0.30: ("BBB to win — the model makes it 43¢, the venue is at 30¢, and the "
                "yes side is worth +11.0¢ a contract after the fee."),
     }
+    # WITH WHAT THE SIDE BOUGHT PAYS beside its price, from ruling B's prover
+    # (2026-10-07: B.3 on the recommendation line).
     shipped_head = {
-        0.485: "BBB to win — the model makes it 57¢, the venue is at 52¢, and it is worth",
-        0.30: "AAA to win — the model makes it 43¢, the venue is at 30¢, and it is worth",
+        0.485: ("BBB to win — the model makes it 57¢, the venue is at 52¢ (pays 1.94x), "
+                "and it is worth"),
+        0.30: ("AAA to win — the model makes it 43¢, the venue is at 30¢ (pays 3.33x), "
+               "and it is worth"),
     }
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         try:
@@ -10142,6 +10150,10 @@ def _combo_side_world(path: Path, legs):
             (pid, quote, game, price, price, claimed))
         ids.append(pid)
     conn.commit()
+    # A COMBO IS MADE OF PICKS (operator ruling B, 2026-10-05: no Kalshi game
+    # market "feeds a combo proposal, until its market passes its gate";
+    # built 2026-10-07): this world's baseball moneylines are past B.5's gate.
+    _pass_the_b_gate(conn, sport="mlb", market="moneyline")
     _shortlist.rank_rows(conn, ids)
     return conn, ids
 
@@ -10354,6 +10366,9 @@ def _combo_total_world(path: Path, games):
             (pid, quote, game, claimed))
         ids.append(pid)
     conn.commit()
+    # A COMBO IS MADE OF PICKS (operator ruling B, 2026-10-05; built
+    # 2026-10-07): this world's baseball totals are past B.5's gate.
+    _pass_the_b_gate(conn, sport="mlb", market="total")
     _shortlist.rank_rows(conn, ids)
     return conn, ids
 
@@ -10872,6 +10887,10 @@ def _line_world(path: Path, kind: str):
             " outcome = ? WHERE prediction_id = ?",
             (_questions.spread_outcome(*score, claim_line), pid))
     conn.commit()
+    # A RECOMMENDATION DRAWN AS A PICK (operator ruling B, 2026-10-05; built
+    # 2026-10-07): these plantings hold a pick's words, so the world's spread
+    # market is past B.5's gate. Rec 111 itself is a number under B.
+    _pass_the_b_gate(conn, sport=sport, market="spread")
     _shortlist.rank_rows(conn, [pid])
     return conn, pid, sport, season, week
 
@@ -12113,6 +12132,11 @@ def _headline_world(path: Path):
         " 'home', 'rung_differs_margin', -9.0, 14.0, 0.6848, 0.515, 0.515, 'mid',"
         " '2026-09-30T18:05:00Z')", (pid, quote))
     conn.commit()
+    # AS A PICK, ITS MARKET PAST B.5'S GATE (operator ruling B, 2026-10-05;
+    # built 2026-10-07): this planting holds the headline of a recommendation
+    # the page calls a pick; rec 117 itself is a number under B (NFL spread
+    # at the venue's price had 24 of its 100 on 6 October).
+    _pass_the_b_gate(conn, sport="nfl", market="spread")
     _shortlist.rank_rows(conn, [pid])
     _recommend.record_for(conn, [pid])
     conn.execute("INSERT INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)",
@@ -12920,6 +12944,870 @@ def plant_a_breakeven_from_an_untyped_multiplier() -> Result:
                 _board.typed_payouts = real_reader
             conn.close()
     return _props_result(violation, missed, first)
+
+
+# ---------------------------------------------------------------------------
+# OPERATOR RULING B (2026-10-05; built 2026-10-07): picks are ranked by edge,
+# never by chance of hitting; a pick only at three points after fees; the
+# multiplier beside every chance and edge; no filling; and no Kalshi game
+# market drawn as a pick, or fed to a combo, until its market passes its gate
+# ---------------------------------------------------------------------------
+
+LAW_RANKED_BY_EDGE = "RULING B: PICKS ARE RANKED BY EDGE, NEVER BY CHANCE"
+_B_CHECK = "check_picks_are_ranked_by_edge"
+_B_GUARD = "audit.pick_rank_faults"
+_B_RULE = "operator ruling B"
+
+#: The clubs the worlds below use, named as the page names them.
+_B_CLUBS = {"NO": ("New Orleans Saints", "Saints", "New Orleans"),
+            "ATL": ("Atlanta Falcons", "Falcons", "Atlanta"),
+            "DET": ("Detroit Lions", "Lions", "Detroit"),
+            "GB": ("Green Bay Packers", "Packers", "Green Bay")}
+
+
+def _pass_the_b_gate(conn, *, sport: str, market: str, predictor: str = "statistical",
+                     n: int = 100) -> None:
+    """B.5's gate passed for one market and forecaster: a hundred settled
+    at-the-line comparisons, one distinct bet each, on one contract each --
+    finished games in a past season, a forecast before each, a near-start
+    read and a claim off it settled (`tests/gate_world.py`'s shape)."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    quantity, line, side, model_side = {
+        "spread": ("home_margin", -1.5, "home", "cover"),
+        "moneyline": ("home_win", None, "home", "win"),
+        "total": ("total", 8.5, "over", "over")}[market]
+    start = _dt(2024, 3, 1, 17, 0, tzinfo=_tz.utc)
+    stamp = lambda t: t.strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    for i in range(n):
+        gid = f"gate_{sport}_{market}_{predictor}_{i}"
+        kickoff = start + _td(days=i)
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES (?, ?, 2024, 1, 'R', 'GHA', 'GHB', ?, 'final', ?, ?, 2)",
+            (gid, sport, stamp(kickoff), kickoff.strftime("%Y-%m-%d"), 3 + i % 2))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type, subject,"
+            " line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning)"
+            " VALUES (?, ?, ?, ?, 'GHA', ?, 0.6, ?, ?, 'early', 'fs2', '{}', 'gate')",
+            (stamp(kickoff - _td(hours=6)), sport, gid, market, line, model_side,
+             predictor))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+            " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+            " VALUES ('kalshi', ?, ?, ?, ?, ?, ?, ?, ?, 0.49, 0.51, ?)",
+            (f"{gid}-t", f"{gid}-e", sport, gid, market, quantity, line, side,
+             stamp(kickoff - _td(hours=1))))
+        quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+            " game_id, market, quantity, line, side, shape, model_prob, venue_price,"
+            " venue_implied, price_basis, created_utc, resolved_utc, outcome)"
+            " VALUES (?, ?, 'kalshi', ?, ?, ?, ?, ?, ?, 'rung_matched', 0.6, 0.5, 0.5,"
+            " 'mid', ?, ?, ?)",
+            (pid, quote, sport, gid, market, quantity, line, side,
+             stamp(kickoff - _td(minutes=50)), stamp(kickoff + _td(hours=4)), i % 2))
+    conn.commit()
+
+
+def _b_world(path: Path, games, *, gated=()):
+    """NFL week 5 of 2026, its games in 2099. `games` is a list of (game id,
+    home, away, hours after 17:00 on 12 October, questions); a question is
+    (market, line asked, the model's number, its side, priced) where priced
+    is None or (the claim's line, the claim's model number, the venue's
+    price) off the home contract that sells that line. `gated` names the
+    (market, forecaster) pairs whose market is past B.5's gate. Returns
+    (conn, {(game id, market): prediction id})."""
+    import json as _json
+
+    from gridiron import shortlist as _shortlist
+
+    dist = {"quantity": "home_margin", "family": "normal", "mean": -3.0, "sd": 13.5,
+            "declared": "2026-08-31T00:00:00Z", "written_blind": True}
+    conn = db.open_db(path)
+    codes = sorted({c for _g, home, away, _h, _q in games for c in (home, away)})
+    for code in codes:
+        full, short, city = _B_CLUBS[code]
+        conn.execute(
+            "INSERT INTO teams (sport, tricode, display_name, short_name, location,"
+            " source_url, fetched_utc) VALUES ('nfl', ?, ?, ?, ?, 'planting',"
+            " '2026-09-01T00:00:00Z')", (code, full, short, city))
+    ids = {}
+    for gid, home, away, hours, questions in games:
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'nfl', 2026, 5, 'REG', ?, ?,"
+            " ?, 'scheduled', '2026-10-12')",
+            (gid, home, away, f"2099-10-12T{17 + hours:02d}:00:00Z"))
+        for market, line, prob, side, priced in questions:
+            subject = f"{away} @ {home}" if market == "total" else home
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+                " factor_set_version, factors_json, reasoning) VALUES"
+                " ('2026-10-07T15:00:00Z', 'nfl', ?, ?, ?, ?, ?, ?, 'statistical',"
+                " 'final', 'fs2', ?, 'planting')",
+                (gid, market, subject, line, prob, side,
+                 _json.dumps({"coverage": 1.0, "margin_distribution": dist})))
+            pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+            ids[(gid, market)] = pid
+            if priced is None:
+                continue
+            claim_line, model, price = priced
+            quantity = {"spread": "home_margin", "moneyline": "home_win"}[market]
+            conn.execute(
+                "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+                " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+                " VALUES ('kalshi', ?, 'e', 'nfl', ?, ?, ?, ?, 'home', ?, ?,"
+                " '2026-10-07T15:00:44Z')",
+                (f"t{pid}", gid, market, quantity, claim_line, price - 0.01, price + 0.01))
+            quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+            shape, mean, sd = (("rung_differs_margin", -3.0, 13.5) if market == "spread"
+                               else ("line_less", None, None))
+            conn.execute(
+                "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+                " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+                " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+                " VALUES (?, ?, 'kalshi', 'nfl', ?, ?, ?, ?, 'home', ?, ?, ?, ?, ?, ?,"
+                " 'mid', '2026-10-07T15:00:45Z')",
+                (pid, quote, gid, market, quantity, claim_line, shape, mean, sd, model,
+                 price, price))
+    conn.commit()
+    for market, predictor in gated:
+        _pass_the_b_gate(conn, sport="nfl", market=market, predictor=predictor)
+    _shortlist.rank_rows(conn, list(ids.values()))
+    return conn, ids
+
+
+def _b_faults(conn, payload) -> list[str] | None:
+    """The check's faults on a payload; None where the gate has no such check
+    (the release before ruling B)."""
+    scan = getattr(audit, "pick_rank_faults", None)
+    if scan is None:
+        return None
+    return scan(conn, payload)
+
+
+def _b_card(payload, pid):
+    return next((c for g in ("clears", "below_floor", "watching")
+                 for c in payload["today"][g] if c["prediction_id"] == pid), {})
+
+
+def _b_group(payload, pid):
+    return next((g for g in ("clears", "below_floor", "watching")
+                 for c in payload["today"][g] if c["prediction_id"] == pid), None)
+
+
+def _b_row(payload, gid):
+    return next((g for g in payload["board"]["games"] if g["game_id"] == gid), {})
+
+
+def _b_blocks(payload, pid):
+    return [b for g in payload["board"]["games"]
+            for b in ([g["pick"]] if g.get("pick") else []) + list(g["questions"])
+            if b["prediction_id"] == pid]
+
+
+def _b_called_a_pick(payload, pid, *, size="$15 · one flat unit"):
+    """Fill a question in as a pick on every surface: its Today card moved
+    into the picks with a size, its blocks outlined, sized and badged, its
+    row headed "Model's pick", and no "Nothing worth taking today"."""
+    card = _b_card(payload, pid)
+    group = _b_group(payload, pid)
+    if group and group != "clears":
+        payload["today"][group].remove(card)
+        payload["today"]["clears"].insert(0, card)
+    card.update(pick=True, size_words=size, pick_words="Pick")
+    card.pop("not_a_pick_words", None)
+    for b in _b_blocks(payload, pid):
+        b.update(pick=True, signal="clears", size_words=size, pick_words="Pick",
+                 lead_label_words="Model's pick")
+        b.pop("not_a_pick_words", None)
+    for g in payload["board"]["games"]:
+        if (g.get("pick") or {}).get("prediction_id") == pid:
+            g["pick_label_words"] = "Model's pick"
+    payload["today"]["nothing_words"] = None
+    payload["board"]["nothing_clears_words"] = None
+
+
+def _b_planted(conn, shipped, forms: dict, want: str, missed: list,
+               app_js: str | None = None) -> str | None:
+    """Each planted form of `shipped` must be named by the check (a fault
+    holding `want`) and make the gate's call raise. Returns the first fault."""
+    import json as _json
+
+    first = None
+    for name, put_back in forms.items():
+        planted = _json.loads(_json.dumps(shipped, default=str))
+        put_back(planted)
+        faults = [f for f in (_b_faults(conn, planted) or []) if want in f]
+        if not faults:
+            missed.append(f"{name} passed")
+            continue
+        first = first or faults[0]
+        try:
+            audit.check_picks_are_ranked_by_edge(conn, planted, app_js=app_js)
+            missed.append(f"{name}: the check raised nothing")
+        except audit.LawViolation:
+            pass
+    return first
+
+
+def _b_shipped_clean(conn, shipped, missed: list, what: str) -> bool:
+    """The shipped page passes the check, or the planting says so."""
+    faults = _b_faults(conn, shipped)
+    if faults is None:
+        missed.append("the gate has no check that a pick is ranked by edge, never by "
+                      "chance")
+        return False
+    if faults:
+        missed.append(f"the shipped page ({what}) is named: {faults[:2]}")
+        return False
+    return True
+
+
+def _b_result(violation: str, missed: list, first) -> Result:
+    if not _step_2_calls(_B_CHECK):
+        missed.append(f"the gate's step 2 does not call `audit.{_B_CHECK}`")
+    if missed:
+        return Result(LAW_RANKED_BY_EDGE, violation, _B_GUARD, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_RANKED_BY_EDGE, violation, _B_GUARD, True, first or "")
+
+
+class _NoPicksModule:
+    """The release before ruling B has no one door for a pick; a planting
+    that would put part of it back finds nothing to replace."""
+    clears_the_pick_bar = judge = market_gate = None
+
+
+def _b_picks():
+    """`gridiron.picks`, or a stand-in where the release has none."""
+    try:
+        from gridiron import picks
+    except ImportError:
+        return _NoPicksModule()
+    return picks
+
+
+def _b_covered():
+    """Every market priceable while a planting runs (the coverage list is
+    not what these plant); returns the function it replaced."""
+    from gridiron.priced import coverage as _coverage
+
+    saved = _coverage.priceable
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    return saved
+
+
+def plant_a_pick_ranked_by_chance() -> Result:
+    """B.1: "Picks are ranked by edge, never by chance of hitting (every
+    page) ... Chance of hitting alone never ranks anything", with reading
+    (b) and S1: a row's questions and its lead in the model's chance (the
+    builder's row order put back to the surest first); an ungated market's
+    watched questions ordered by their edge; and the Games page's sort by
+    "the model's chance" put back in its renderer -- each named by
+    `audit.pick_rank_faults` and the renderer scan, the gate's check raising
+    and step 2 making the call.
+
+    AS RELEASED (4274f1d): each row led with the question clearing the bar by
+    the most, else the shortlist's first, else the SUREST -- the moneyline at
+    93% over the spread on GB at NO here; the Today groups followed the
+    engine's order; the Games page offered "the model's chance" as a sort;
+    and there was no check.
+    """
+    from gridiron import board as _board, views as _views
+    from gridiron.priced import coverage as _coverage
+
+    violation = "a pick ranked by chance, or an ungated market ordered by its edge"
+    missed: list[str] = []
+    first = None
+    saved = _b_covered()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, ids = _b_world(Path(tmp) / "chance.db", [
+            ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.53, "cover", (-2.5, 0.53, 0.52)),
+                                    ("moneyline", None, 0.93, "win", None),
+                                    ("total", 44.5, 0.6, "over", None)]),
+            ("g2", "DET", "GB", 3, [("spread", -3.5, 0.6, "cover", (-3.5, 0.555, 0.52))]),
+        ])
+        real_order = getattr(_board, "_row_order", None)
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            lead = (_b_row(shipped, "g1").get("pick") or {}).get("prediction_id")
+            watched = [c["prediction_id"] for c in shipped["today"]["watching"]]
+            # BY START, THEN THE DECLARED MARKET ORDER (spread, moneyline,
+            # total), whatever each question's chance or edge.
+            if lead != ids[("g1", "spread")] or watched != [
+                    ids[("g1", "spread")], ids[("g1", "moneyline")], ids[("g1", "total")],
+                    ids[("g2", "spread")]]:
+                missed.append(f"the shipped page leads GB at NO with question {lead!r} (the "
+                              f"spread is {ids[('g1', 'spread')]}, the surest the moneyline "
+                              f"{ids[('g1', 'moneyline')]}) and watches {watched!r}")
+            if _b_shipped_clean(conn, shipped, missed, "ATL at NO and GB at DET"):
+                def by_its_edge(p):
+                    p["today"]["watching"].sort(key=lambda c: -(c.get("edge_cents") or -99))
+
+                first = _b_planted(conn, shipped, {
+                    "an ungated market's watched questions ordered by their edge": by_its_edge,
+                }, "out of B's order", missed)
+                # THE BUILDER'S ROW ORDER PUT BACK TO THE MODEL'S CHANCE: the
+                # surest first, so the lead is the surest.
+                _board._row_order = lambda blocks, sport: sorted(
+                    blocks, key=lambda b: -(b.get("prob") or 0.0))
+                surest = _views.week(conn, "nfl", 2026, 5)
+                _board._row_order = real_order
+                faults = _b_faults(conn, surest) or []
+                if not [f for f in faults if "never the surest" in f] or not [
+                        f for f in faults if "never its chance" in f]:
+                    missed.append(f"a row ordered and led by the model's chance passed: "
+                                  f"{faults[:2]}")
+                # THE SORT BY THE MODEL'S CHANCE PUT BACK IN THE RENDERER.
+                js = (Path(_board.__file__).parent / "web" / "app.js").read_text(
+                    encoding="utf-8")
+                put_back = js.replace(
+                    "fillSelect(sortSel, [['time', labels.sort_time], ['edge', "
+                    "labels.sort_edge]], sortBy);",
+                    "fillSelect(sortSel, [['time', labels.sort_time], ['prob', "
+                    "labels.sort_prob]], sortBy);\n    if (sortBy === 'prob') games = "
+                    "games.slice().sort((a, b) => ((b.pick || {}).prob || 0) - "
+                    "((a.pick || {}).prob || 0));")
+                if put_back == js:
+                    missed.append("the renderer's sort control was not found to put back")
+                elif not audit.games_order_faults(put_back):
+                    missed.append("the Games page's sort by the model's chance passed the "
+                                  "renderer scan")
+                else:
+                    try:
+                        audit.check_picks_are_ranked_by_edge(conn, shipped, app_js=put_back)
+                        missed.append("the sort by chance put back: the check raised nothing")
+                    except audit.LawViolation:
+                        pass
+            # AND THE RECOMMENDATION LINES (the prover, 2026-10-07).
+            got = _b_lines_by_chance(Path(tmp), missed)
+            first = first or got
+        finally:
+            if real_order is not None:
+                _board._row_order = real_order
+            _coverage.priceable = saved
+            conn.close()
+    return _b_result(violation, missed, first)
+
+
+def _b_lines_by_chance(tmp: Path, missed: list) -> str | None:
+    """THE RECOMMENDATION LINES IN B'S ORDER (the prover of ruling B,
+    2026-10-07; reading (a) names "the Today payload's ... recommendation
+    lines" a page): two recommendations short of their gate -- a moneyline
+    at 75% on the 20:00 game, written first, and a spread at 60% on the 17:00
+    one -- are stated by their start, the spread first; planted in the
+    model's chance, the surer first, they are named.
+
+    AS RELEASED (4274f1d, and the change as handed to its prover): the lines
+    followed the engine's rows, the record's ids -- the 20:00 moneyline at
+    75% before the 17:00 spread, the order of the chance here."""
+    from gridiron import views as _views
+
+    conn, ids = _b_world(tmp / "lines.db", [
+        ("g2", "DET", "GB", 3, [("moneyline", None, 0.75, "win", (None, 0.75, 0.60))]),
+        ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.60, "cover", (-2.5, 0.60, 0.52))])])
+    first = None
+    try:
+        spread, money = ids[("g1", "spread")], ids[("g2", "moneyline")]
+        shipped = _views.week(conn, "nfl", 2026, 5)
+        order = [x["prediction_id"] for x in shipped["recommendations"]["lines"]]
+        if order != [spread, money]:
+            missed.append(f"the shipped recommendation lines are in the order {order!r} "
+                          f"(the 17:00 spread is {spread}, the 20:00 moneyline at 75% "
+                          f"{money})")
+        if _b_shipped_clean(conn, shipped, missed, "two recommendation lines"):
+            def by_chance(p):
+                p["recommendations"]["lines"].sort(key=lambda x: -(x.get("fair_value") or 0.0))
+
+            first = _b_planted(conn, shipped, {
+                "the recommendation lines ordered by the model's chance": by_chance,
+            }, "recommendations.lines are in the order", missed)
+    finally:
+        conn.close()
+    return first
+
+
+def plant_a_pick_below_three_points() -> Result:
+    """B.2: "A leg is called a pick only if its edge after fees is 3
+    percentage points or more. Below that it is shown as a number, never as a
+    pick." A spread past its gate at 2.97 points after fees (the writer's own
+    bar clears it: 5.7% of the 52c it costs): called a pick on the Today
+    card and the row, drawn "+3.0c", and the builder's bar put back to the
+    tenth the figure is drawn at; and a pick'em leg at 2.97 points drawn
+    "edge +3.0" -- each named, the gate's check raising and step 2 making the
+    call.
+
+    AS RELEASED (4274f1d): the 2.97-point spread was a pick on every surface
+    -- in CLEARS, sized, outlined, "Model's pick" -- its edge drawn "+3.0c",
+    and there was no check.
+    """
+    from gridiron import views as _views
+
+    _picks = _b_picks()
+    violation = "a pick below three points, or a 2.97-point edge drawn +3.0"
+    missed: list[str] = []
+    first = None
+    saved = _b_covered()
+    # 0.52 + the fee at 52c (2c) + 2.97 points
+    model = 0.52 + 0.02 + 0.0297
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, ids = _b_world(Path(tmp) / "under.db", [
+            ("g1", "NO", "ATL", 0, [("spread", -2.5, model, "cover",
+                                     (-2.5, model, 0.52))])],
+            gated=[("spread", "statistical")])
+        pid = ids[("g1", "spread")]
+        real_bar = _picks.clears_the_pick_bar
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            card = _b_card(shipped, pid)
+            said = (_b_group(shipped, pid), card.get("pick"), card.get("edge_words"),
+                    card.get("size_words"))
+            if said[:3] != ("watching", False, "+2.9¢") or said[3]:
+                missed.append(f"the shipped page draws the 2.97-point spread as {said!r}")
+            if _b_shipped_clean(conn, shipped, missed, "a 2.97-point spread past its gate"):
+                def filled(p):
+                    _b_called_a_pick(p, pid)
+
+                def at_three(p):
+                    c = _b_card(p, pid)
+                    c.update(edge_words="+3.0¢", edge_line_words="+3.0¢")
+                    for b in _b_blocks(p, pid):
+                        b["edge_words"] = "+3.0¢"
+
+                first = _b_planted(conn, shipped, {
+                    "the 2.97-point spread called a pick": filled,
+                }, "is grouped with the picks and is not one", missed)
+                first = _b_planted(conn, shipped, {
+                    "the 2.97-point spread drawn +3.0": at_three,
+                }, "under three", missed) or first
+                # THE BUILDER'S BAR PUT BACK TO THE TENTH IT IS DRAWN AT.
+                _picks.clears_the_pick_bar = (
+                    lambda e: e is not None and round(float(e) * 100, 1) >= 3.0)
+                tenth = _views.week(conn, "nfl", 2026, 5)
+                _picks.clears_the_pick_bar = real_bar
+                if not _b_card(tenth, pid).get("pick") or not [
+                        f for f in _b_faults(conn, tenth) or []
+                        if "is grouped with the picks and is not one" in f]:
+                    missed.append("the bar read at a tenth passed: "
+                                  f"{_b_card(tenth, pid).get('pick')!r}")
+                # AND A PICK'EM LEG AT 2.97 POINTS: never drawn "edge +3.0".
+                got = _b_prop_leg_at_297(Path(tmp), missed)
+                first = first or got
+            # AND NO DRAWN SENTENCE CALLING A NON-PICK A PICK (the prover,
+            # 2026-10-07): the sign-in screen's count and the fee line.
+            got = _b_called_a_pick_in_words(conn, shipped, missed)
+            first = first or got
+        finally:
+            if real_bar is not None:
+                _picks.clears_the_pick_bar = real_bar
+            from gridiron.priced import coverage as _coverage
+
+            _coverage.priceable = saved
+            conn.close()
+    return _b_result(violation, missed, first)
+
+
+def _b_called_a_pick_in_words(conn, shipped, missed: list) -> str | None:
+    """B.2's "never as a pick" in two drawn sentences (the prover of ruling
+    B, 2026-10-07): the sign-in screen counted every open question as a pick
+    ("NFL 1 pick this week" of the 2.97-point spread here, "46 picks
+    tonight" in the ruling's own example of the line), and the fee line
+    beneath the day strip said "A pick with no edge costs that much" -- each
+    planted back and named, the sign-in screen's own check raising.
+
+    AS RELEASED (4274f1d, and the change as handed to its prover): both
+    said so, and nothing named either."""
+    import json as _json
+
+    from gridiron import views as _views
+
+    first = None
+    glance = _views.login_glance(conn)
+    lines = [str(s.get("line")) for s in glance.get("sports") or []]
+    if not lines or any(re.search(r"\b[0-9]+\s+picks?\b", line) for line in lines):
+        missed.append(f"the shipped sign-in screen says {lines!r}")
+    planted = _json.loads(_json.dumps(glance))
+    for s in planted.get("sports") or []:
+        s["line"] = re.sub(r"\b([0-9]+) questions?\b", r"\1 picks", str(s.get("line")))
+    named = [f for f in audit.login_glance_faults(planted)
+             if "counts open questions as picks" in f]
+    if not named:
+        missed.append(f"the sign-in screen counting open questions as picks passed: "
+                      f"{[s.get('line') for s in planted.get('sports') or []]!r}")
+    else:
+        first = named[0]
+        try:
+            audit.check_the_login_page_shows_no_pick(planted)
+            missed.append("open questions counted as picks: the sign-in screen's check "
+                          "raised nothing")
+        except audit.LawViolation:
+            pass
+    fee = str((shipped.get("today") or {}).get("fee_line") or "")
+    if "pick" in fee or not fee:
+        missed.append(f"the shipped fee line says {fee!r}")
+
+    def a_pick_with_no_edge(p):
+        p["today"]["fee_line"] = str(p["today"].get("fee_line") or "").replace(
+            "A contract with no edge", "A pick with no edge")
+
+    return _b_planted(conn, shipped, {
+        "the fee line calling a contract with no edge a pick": a_pick_with_no_edge,
+    }, "today.fee_line", missed) or first
+
+
+def _b_prop_leg_at_297(tmp: Path, missed: list) -> str | None:
+    """A pick'em leg 2.97 points over a typed 3x's break-even: drawn "edge
+    +2.9" and never "edge +3.0" (C's prover found "+3.0" on legs at
+    2.95-2.99999 points); planted at "+3.0" it is named."""
+    from gridiron import board as _board, views as _views
+
+    pconn, (goff,) = _props_world(
+        tmp / "leg297.db",
+        [("Jared Goff passing_yards", "passing_yards", 250.5, 3 ** -0.5 + 0.0297,
+          "over", {})], typed={2: "3", 3: "6"})
+    replaced = _hand_in_ladders(_board, {"Jared Goff passing_yards": [(250.5, 0.5)]})
+    first = None
+    try:
+        page = _views.week(pconn, "nfl", 2026, 5)
+        tile = _props_tile(page, goff)
+        entry = next((e for e in tile.get("entries") or [] if e.get("legs") == 2), {})
+        if entry.get("edge_words") != "edge +2.9" or entry.get("clears"):
+            missed.append(f"the shipped page draws the 2.97-point leg as "
+                          f"{entry.get('edge_words')!r} ({entry.get('clears')!r})")
+
+        def at_three(p):
+            for e in _props_tile(p, goff).get("entries") or []:
+                if e.get("legs") == 2:
+                    e["edge_words"] = "edge +3.0"
+
+        first = _b_planted(pconn, page, {
+            "a pick'em leg at 2.97 points drawn edge +3.0": at_three,
+        }, "entry it does not clear", missed)
+    finally:
+        if replaced is not None:
+            _board._venue_prop_ladders = replaced
+        pconn.close()
+    return first
+
+
+def plant_a_priced_row_without_its_multiplier() -> Result:
+    """B.3: "Every pick and every browse row shows its payout as a
+    multiplier beside its chance and edge." A priced row's face without its
+    payout or its edge, a multiplier of the other side beside the side
+    drawn, and the renderer's face put back to the price and payout alone --
+    each named, the gate's check raising and step 2 making the call.
+
+    AS RELEASED (4274f1d): the row's face drew the chance, the price and the
+    payout, and its edge only on the open row's tile; and there was no check.
+    """
+    from gridiron import board as _board, views as _views
+
+    violation = "a priced row without its multiplier beside its chance and edge"
+    missed: list[str] = []
+    first = None
+    saved = _b_covered()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, ids = _b_world(Path(tmp) / "face.db", [
+            ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.55, "cover", (-2.5, 0.55, 0.52))])])
+        pid = ids[("g1", "spread")]
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            lead = _b_row(shipped, "g1").get("pick") or {}
+            said = (lead.get("prob_words"), lead.get("pays_words"), lead.get("edge_words"))
+            js = (Path(_board.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+            if not all(said) or "pick.edge_words" not in js:
+                missed.append(f"the shipped row's face draws {said!r}"
+                              + ("" if "pick.edge_words" in js else
+                                 ", and its renderer draws no edge on it"))
+            if _b_shipped_clean(conn, shipped, missed, "a priced spread"):
+                def no_payout(p):
+                    (_b_row(p, "g1").get("pick") or {})["pays_words"] = ""
+
+                def no_edge(p):
+                    (_b_row(p, "g1").get("pick") or {}).pop("edge_words", None)
+
+                def other_sides(p):
+                    (_b_row(p, "g1").get("pick") or {})["pays_words"] = "2.08x"
+
+                first = _b_planted(conn, shipped, {
+                    "a priced row's face without its payout": no_payout,
+                    "a priced row's face without its edge": no_edge,
+                }, "(B.3)", missed)
+                first = _b_planted(conn, shipped, {
+                    "the other side's multiplier beside the side drawn": other_sides,
+                }, "another side or contract", missed) or first
+                face = js.replace(
+                    "if (pick.priced && pick.edge_words) under.appendChild(el('span', "
+                    "'pick-edge', pick.edge_words));", "")
+                if face == js:
+                    missed.append("the renderer's edge on the row's face was not found to "
+                                  "take away")
+                elif not audit.row_face_faults(face):
+                    missed.append("a face without its edge passed the renderer scan")
+                else:
+                    try:
+                        audit.check_picks_are_ranked_by_edge(conn, shipped, app_js=face)
+                        missed.append("the face without its edge: the check raised nothing")
+                    except audit.LawViolation:
+                        pass
+            # A TAKEN TILE'S MULTIPLIER (the prover, 2026-10-07): the open
+            # row's tile drew "taken" in its payout's place once the question
+            # was marked, put back in the renderer.
+            now = "el('span', 'pay', q.pays_words || ABSENT)"
+            released = ("el('span', 'pay', q.taken ? (labels.taken || '') : "
+                        "(q.pays_words || ABSENT))")
+            scan = getattr(audit, "row_face_faults", None)
+            if now not in js:
+                missed.append("the shipped tile draws "
+                              + ("'taken' in its multiplier's place once the question "
+                                 "is marked" if released in js else
+                                 "its multiplier in a form not found to put back"))
+            elif scan is not None:
+                tile = js.replace(now, released)
+                if not [f for f in scan(tile) if "only where the question was not taken" in f]:
+                    missed.append("a taken tile's multiplier replaced by 'taken' passed the "
+                                  "renderer scan")
+                else:
+                    try:
+                        audit.check_picks_are_ranked_by_edge(conn, shipped, app_js=tile)
+                        missed.append("a taken tile without its multiplier: the check "
+                                      "raised nothing")
+                    except audit.LawViolation:
+                        pass
+            # AND THE RECOMMENDATION LINE'S (the prover, 2026-10-07).
+            got = _b_lines_without_their_multiplier(Path(tmp), missed)
+            first = first or got
+        finally:
+            from gridiron.priced import coverage as _coverage
+
+            _coverage.priceable = saved
+            conn.close()
+    return _b_result(violation, missed, first)
+
+
+def _b_lines_without_their_multiplier(tmp: Path, missed: list) -> str | None:
+    """B.3 ON THE RECOMMENDATION LINE (the prover of ruling B, 2026-10-07;
+    reading (a)'s "recommendation lines", reading (e)'s "the multiplier is
+    the one the side drawn pays"): rec 117's numbers, New Orleans -2.5 at
+    51.5c, stated "the venue is at 52¢ (pays 1.94x)"; planted without it,
+    and with what the other side pays (2.06x), the line is named.
+
+    AS RELEASED (4274f1d, and the change as handed to its prover): the line
+    stated the chance, the price and the edge, and no multiplier."""
+    from gridiron import views as _views
+
+    conn, ids = _b_world(tmp / "pays.db", [
+        ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.6848, "cover", (-2.5, 0.6848, 0.515))])])
+    first = None
+    try:
+        pid = ids[("g1", "spread")]
+        shipped = _views.week(conn, "nfl", 2026, 5)
+        line = next((x for x in shipped["recommendations"]["lines"]
+                     if x["prediction_id"] == pid), {})
+        if "the venue is at 52¢ (pays 1.94x)" not in str(line.get("words")):
+            missed.append(f"the shipped recommendation line reads {line.get('words')!r}")
+        if _b_shipped_clean(conn, shipped, missed, "a recommendation line"):
+            def unpaid(p):
+                for x in p["recommendations"]["lines"]:
+                    x["words"] = re.sub(r" \(pays [0-9.]+x\)", "", x["words"])
+
+            def the_other_sides(p):
+                for x in p["recommendations"]["lines"]:
+                    x["words"] = x["words"].replace("(pays 1.94x)", "(pays 2.06x)")
+
+            first = _b_planted(conn, shipped, {
+                "a recommendation line without what its side pays": unpaid,
+                "a recommendation line saying what the other side pays": the_other_sides,
+            }, "without what the side it buys pays", missed)
+    finally:
+        conn.close()
+    return first
+
+
+def plant_a_slate_with_nothing_clearing_filled_with_picks() -> Result:
+    """B.4: "No filling. When nothing clears on a slate: 'Nothing worth taking
+    today'" -- on Games and in the Today groups. A slate past its gate whose
+    best edge is 2.4 points: the best of the rest filled in as a pick on the
+    Today card and on the row, "Nothing worth taking today" left off Today
+    and off Games, and the builder made to fill (its one door calling the
+    best edge a pick) -- each named, the gate's check raising and step 2
+    making the call.
+
+    AS RELEASED (4274f1d): the Today groups said nothing, and the Games page
+    said "Nothing clears the bar today. Every pick below is priced, and none
+    of them beats the fee." -- of rows none of which was a pick; and there
+    was no check.
+    """
+    from gridiron import views as _views
+
+    _picks = _b_picks()
+    violation = "a slate with nothing clearing filled with picks"
+    missed: list[str] = []
+    first = None
+    saved = _b_covered()
+    nothing = "Nothing worth taking today"
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, ids = _b_world(Path(tmp) / "filled.db", [
+            ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.555, "cover", (-2.5, 0.555, 0.52))]),
+            ("g2", "DET", "GB", 3, [("spread", -3.5, 0.564, "cover", (-3.5, 0.564, 0.52))]),
+        ], gated=[("spread", "statistical")])
+        best = ids[("g2", "spread")]
+        real_judge = _picks.judge
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            said = (shipped["today"].get("nothing_words"),
+                    shipped["board"].get("nothing_clears_words"),
+                    len(shipped["today"]["clears"]))
+            if said != (nothing, nothing, 0):
+                missed.append(f"the shipped page says {said!r} of a slate with nothing "
+                              f"clearing")
+            if _b_shipped_clean(conn, shipped, missed, "two spreads under three points"):
+                def filled(p):
+                    _b_called_a_pick(p, best)
+
+                def today_unsaid(p):
+                    p["today"]["nothing_words"] = None
+
+                def games_unsaid(p):
+                    p["board"]["nothing_clears_words"] = None
+
+                first = _b_planted(conn, shipped, {
+                    "the best of the rest filled in as a pick": filled,
+                }, "is not one", missed)
+                first = _b_planted(conn, shipped, {
+                    "\"Nothing worth taking today\" left off Today": today_unsaid,
+                    "\"Nothing worth taking today\" left off Games": games_unsaid,
+                }, "(B.4)", missed) or first
+                # THE BUILDER MADE TO FILL: its one door calling the best edge
+                # on the slate a pick when nothing clears.
+                def filling(conn_, entry, **kw):
+                    got = real_judge(conn_, entry, **kw)
+                    if entry.get("prediction_id") == best:
+                        got = dict(got, pick=True, why="pick", words=None)
+                    return got
+
+                _picks.judge = filling
+                made = _views.week(conn, "nfl", 2026, 5)
+                _picks.judge = real_judge
+                if not made["today"]["clears"] or not [
+                        f for f in _b_faults(conn, made) or [] if "is not one" in f]:
+                    missed.append("the builder filling the slate passed: "
+                                  f"{[c['prediction_id'] for c in made['today']['clears']]}")
+        finally:
+            if real_judge is not None:
+                _picks.judge = real_judge
+            from gridiron.priced import coverage as _coverage
+
+            _coverage.priceable = saved
+            conn.close()
+    return _b_result(violation, missed, first)
+
+
+def plant_an_ungated_game_market_drawn_as_a_pick() -> Result:
+    """B.5: "Kalshi game markets (spreads, moneylines, totals) stay on the
+    board with their numbers, but none carries a pick badge, and none feeds
+    a combo proposal, until its market passes its gate." Two recommendations
+    in markets short of the gate (an NFL spread at +15 points, a moneyline at
+    +10): drawn with the outline, the size and "Model's pick" as released,
+    fed to a combo, its row headed "Model's pick", and the builder's gate put
+    back to passing -- each named, the gate's check raising and step 2
+    making the call.
+
+    AS RELEASED (4274f1d): every recommendation was a pick on every surface
+    whatever its market's record at the venue's price -- 16 on the record's
+    108 payloads, none past its gate -- and two of them made a combo; and
+    there was no check.
+    """
+    from gridiron import views as _views
+
+    _picks = _b_picks()
+    violation = "an ungated Kalshi game market drawn as a pick or fed to a combo"
+    missed: list[str] = []
+    first = None
+    saved = _b_covered()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn, ids = _b_world(Path(tmp) / "ungated.db", [
+            ("g1", "NO", "ATL", 0, [("spread", -2.5, 0.6848, "cover",
+                                     (-2.5, 0.6848, 0.515))]),
+            ("g2", "DET", "GB", 3, [("moneyline", None, 0.62, "win", (None, 0.62, 0.50))]),
+        ])
+        spread, money = ids[("g1", "spread")], ids[("g2", "moneyline")]
+        real_gate = _picks.market_gate
+        try:
+            shipped = _views.week(conn, "nfl", 2026, 5)
+            card = _b_card(shipped, spread)
+            said = (_b_group(shipped, spread), card.get("size_words"),
+                    _b_row(shipped, "g1").get("pick_label_words"),
+                    len(shipped["today"]["combos"]["cards"]), card.get("not_a_pick_words"))
+            if said[:4] != ("watching", None, "Not a pick", 0) or "0 of the 100" not in str(
+                    said[4]):
+                missed.append(f"the shipped page draws the ungated spread as {said!r}")
+            if _b_shipped_clean(conn, shipped, missed, "two ungated recommendations"):
+                def as_released(p):
+                    _b_called_a_pick(p, spread)
+
+                def in_a_combo(p):
+                    p["today"]["combos"]["cards"] = [{"legs": [
+                        {"prediction_id": spread, "words": "New Orleans covers -2.5"},
+                        {"prediction_id": money, "words": "Detroit to win"}]}]
+
+                def headed_a_pick(p):
+                    _b_row(p, "g1")["pick_label_words"] = "Model's pick"
+
+                first = _b_planted(conn, shipped, {
+                    "the ungated spread outlined, sized and called the model's pick":
+                        as_released,
+                }, "short of its gate", missed)
+                first = _b_planted(conn, shipped, {
+                    "two ungated legs fed to a combo": in_a_combo,
+                }, "a combo is proposed only from picks", missed) or first
+                first = _b_planted(conn, shipped, {
+                    "the ungated row headed \"Model's pick\"": headed_a_pick,
+                }, "where it is not a pick", missed) or first
+
+                # THE GATE'S WORDS NOT SAYING WHOSE COUNT IT IS (the prover,
+                # 2026-10-07): as handed, "its market has 0 of the 100" -- one
+                # forecaster's count, and for UFC one card's, said as the
+                # market's.
+                def whose_unsaid(p):
+                    for c in [_b_card(p, spread), _b_card(p, money)] + list(
+                            p["recommendations"]["lines"]):
+                        for key in ("not_a_pick_words", "words"):
+                            if c.get(key):
+                                c[key] = re.sub(r" \([a-z ]+ at the venue's line, [^)]*\)",
+                                                "", c[key])
+
+                got = _b_planted(conn, shipped, {
+                    "the gate's words not saying whose count it is": whose_unsaid,
+                }, "without naming whose it is", missed)
+                first = first or got
+                # THE BUILDER'S GATE PUT BACK TO PASSING: every market past it.
+                _picks.market_gate = lambda conn_, **kw: dict(
+                    real_gate(conn_, **kw), passes=True, n=100)
+                passed = _views.week(conn, "nfl", 2026, 5)
+                _picks.market_gate = real_gate
+                faults = _b_faults(conn, passed) or []
+                if not passed["today"]["clears"] or not [
+                        f for f in faults if "short of its gate" in f] or not [
+                        f for f in faults if "a combo is proposed only from picks" in f]:
+                    missed.append("the gate put back to passing passed: "
+                                  f"{[c['prediction_id'] for c in passed['today']['clears']]} "
+                                  f"{faults[:2]}")
+        finally:
+            if real_gate is not None:
+                _picks.market_gate = real_gate
+            from gridiron.priced import coverage as _coverage
+
+            _coverage.priceable = saved
+            conn.close()
+    return _b_result(violation, missed, first)
 
 
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
@@ -26689,6 +27577,15 @@ def main() -> int:
     results.append(plant_a_90_percent_leg_at_91_cents_shown_as_a_pick())
     results.append(plant_a_slate_with_nothing_clearing_drawn_with_picks())
     results.append(plant_a_breakeven_from_an_untyped_multiplier())
+    # OPERATOR RULING B (2026-10-05; built 2026-10-07): picks ranked by edge,
+    # never by chance; a pick only at three points after fees; the multiplier
+    # beside every chance and edge; no filling; and no Kalshi game market
+    # drawn as a pick or fed to a combo until its market passes its gate.
+    results.append(plant_a_pick_ranked_by_chance())
+    results.append(plant_a_pick_below_three_points())
+    results.append(plant_a_priced_row_without_its_multiplier())
+    results.append(plant_a_slate_with_nothing_clearing_filled_with_picks())
+    results.append(plant_an_ungated_game_market_drawn_as_a_pick())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())
