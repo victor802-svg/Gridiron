@@ -12,6 +12,17 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **B RELEASED as 5383e63 (2026-10-07 02:22Z; gate 4/4 on its first run,
+  426/426; serving 5383e63972cb)** -- B (07fd849): picks ranked by edge,
+  never by chance, on every page; a pick only at three points after fees
+  (and the writer's own bar; for a Kalshi game market, its gate of 100
+  settled comparisons -- only MLB moneyline has passed it, its season
+  over, so no game-market row is a pick today); the multiplier beside
+  every chance and edge; "Nothing worth taking today"; the writer
+  unchanged (question 41). Question 42 (the colour law's fills on a
+  settled question that was never a pick) put to the operator with its
+  default as built (5383e63). **Next: the entry check, step 1
+  (scratchpad wf_entry1.js, updated for D, C and B).**
   **Q38 RELEASED as 1b5e7f6 (2026-10-06 23:20Z; serving 1b5e7f676b67)** --
   a game starts at the earlier of its listed start and the first poll
   that sees it truly under way (`live_first_under_way`, written by the
