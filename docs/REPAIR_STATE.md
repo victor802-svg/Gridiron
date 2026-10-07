@@ -2518,6 +2518,31 @@ depend on the answer.
     - **(B)** As built: the writer records as now; only the page changes.
     Default until ruled: (B), recorded as now.
 
+42. **The colour law's solid fills on a settled question that was never a
+    pick under B. (Raised by ruling B's prover as a reading it checked,
+    2026-10-07; put to the operator because it is a reading of a law's word
+    -- "Who reads a law".)** The colour law (amended 2026-09-24): "A green
+    OUTLINE glow means a pick clears the bar. A red OUTLINE glow means it
+    costs the operator after fees. A SOLID green fill means a pick won. A
+    SOLID red fill means it lost." Ruling B.2 (2026-10-05): "A leg is called
+    a pick only if its edge after fees is 3 percentage points or more. Below
+    that it is shown as a number, never as a pick." B as built changes no
+    fill: a settled question is filled green or red by the forecast's own
+    verdict as before, and its label now reads "The model's number · won /
+    lost", never "Model's pick" (whether it was a pick at its start is not
+    on the page; FOLLOWUPS).
+    - **(A)** The law's "pick" is the forecast's side, the sense it was
+      written in (its red outline goes to "a pick" that "costs the operator
+      after fees", which no pick under B can): the fills stay on every
+      settled question, as built and as drawn before B.
+    - **(B)** The law's "pick" is B's pick: a solid fill only on a question
+      that was a pick at its start (its edge three points or more and, for a
+      game market, its gate passed, as of its last claim before the start);
+      every other settled question is drawn with its verdict in words and
+      no fill.
+    Default until ruled: (A), as built -- nothing new is drawn in reliance
+    on it; B released with it.
+
 ## Rulings taken in your absence (2026-10-07, ruling B's builder)
 
 Each the conservative reading, recorded here and in FOLLOWUPS ("Picks are
