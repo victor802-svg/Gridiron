@@ -189,6 +189,16 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **THE ENTRY CHECK, STEP 4 RELEASED as 372eeab (2026-10-08 03:47Z; gate
+  4/4 on its first run, 440/440; serving 372eeabf6924)** -- a deposit
+  match beside "Check an entry": per unit of bonus, the stake the
+  playthrough asks, its expected cost or gain at coin flips (step 1's
+  arithmetic of the entry typed), the bonus after it, and "read the
+  offer's terms; this assumes the numbers you typed"; kept nowhere (no
+  table, setting or browser storage; the reach and no-ledger scans name
+  any write), units only. The entry check: steps 1, 2 and 4 released;
+  step 3 held for question 45. **Next: Q33 + Q34 (scratchpad
+  wf_q33q34.js).**
   **THE ENTRY CHECK, STEP 2 RELEASED as baf6797 (2026-10-08 01:07Z; gate
   4/4 on its first run, 435/435; serving baf679748449)** -- the model as
   a veto: each typed leg's M4 chance at its line, flagged where under its
