@@ -4056,3 +4056,92 @@ BEGIN
         'GRIDIRON: a payout the operator typed is append-only and is never '
         || 'deleted');
 END;
+
+-- ---------------------------------------------------------------------------
+-- HOW FAR A STAT STRAYS FROM THE MODEL'S PROJECTION: THE FITS OF M4 v1
+-- (GRIDIRON_ENTRY_CHECK step 2; ruling D of 2026-10-05: "Step 2 needs the
+-- model's chance at any line: a first version of M4, P(stat over x) from the
+-- model's projection and a per-stat spread fitted on settled history.
+-- Written inactive; shown as 'not yet proven' until its record clears 100
+-- graded legs."; built 2026-10-07)
+-- ---------------------------------------------------------------------------
+--
+-- ONE ROW PER FIT OF ONE STAT: the spread of the declared form (a count about
+-- the model's projection, its variance the spread times the projection; a
+-- spread of one or less read as a Poisson, the record's own rule in
+-- `model.counts.p_over`), worked out by `m4.spread_of` -- the mean, over the
+-- stat's settled standing forecasts that carry a projection, one per player
+-- and game, of the actual stat less the projection, squared, over the
+-- projection -- with the forecasts it was worked from (their ids, so a
+-- reader can work it out again), how many, the form and the day the form was
+-- declared, and the words saying how.
+--
+-- WRITTEN INACTIVE, AND NOTHING ACTIVATES ONE (the activation gate's
+-- precedent, 2026-09-24; ruling D's "Written inactive"): no row here is ever
+-- in force, and no table holds an activation of one. M4 reads the latest fit
+-- of a stat to state a chance, and every chance it states is drawn "not yet
+-- proven" with its count of graded legs -- 0 of 100 until step 3 grades a
+-- leg -- and never makes a pick, a badge, an outline or a verdict.
+--
+-- OUTSIDE THE PREDICTION CLOSURE (LAW 1): the prediction path may not name
+-- this table or import `gridiron.m4` (`audit.check_prediction_closure`, which
+-- names M4 by name). A line the operator types reaches M4 and nothing that
+-- forecasts.
+--
+-- APPEND-ONLY, LIKE `model_fits` AND `calibration_corrections`: a refit is a
+-- new row, and a row written is never edited, deleted or written over. A
+-- plain insert, never an upsert (the frozen register, operator question 15).
+CREATE TABLE IF NOT EXISTS prop_spread_fits (
+    id             INTEGER PRIMARY KEY,
+    -- an instant, to the second, as `db.utcnow` stamps it
+    fitted_utc     TEXT    NOT NULL CHECK (julianday(fitted_utc) IS NOT NULL
+                                           AND length(fitted_utc) = 20),
+    -- the sport, as `calibration_corrections` holds it: no list of sports
+    -- here, so a sport declared later widens nothing (`db.widen_sport_checks`
+    -- rebuilds the tables that carry one; the suite found the list here,
+    -- 2026-10-07)
+    sport          TEXT    NOT NULL CHECK (length(sport) BETWEEN 2 AND 8),
+    -- the prop type the fit is for, as the record names it
+    stat           TEXT    NOT NULL CHECK (length(stat) BETWEEN 1 AND 40),
+    -- the declared form, and the day it was declared (`m4.FORM`,
+    -- `m4.FORM_DECLARED`)
+    form           TEXT    NOT NULL CHECK (form = 'count_about_the_projection'),
+    form_declared  TEXT    NOT NULL CHECK (julianday(form_declared) IS NOT NULL),
+    -- the spread: the variance over the mean, about the projection
+    spread         REAL    NOT NULL CHECK (typeof(spread) = 'real'
+                                           AND spread > 0 AND spread < 100),
+    -- how many player-games it was worked from, and their forecasts' ids
+    n              INTEGER NOT NULL CHECK (typeof(n) = 'integer' AND n >= 1),
+    forecasts      TEXT    NOT NULL CHECK (json_valid(forecasts)
+                                           AND json_array_length(forecasts) = n),
+    method         TEXT    NOT NULL CHECK (length(method) >= 20)
+);
+CREATE INDEX IF NOT EXISTS prop_spread_fits_stat
+    ON prop_spread_fits (sport, stat, id);
+
+CREATE TRIGGER IF NOT EXISTS prop_spread_fits_never_replaced
+BEFORE INSERT ON prop_spread_fits
+FOR EACH ROW
+WHEN EXISTS (SELECT 1 FROM prop_spread_fits f WHERE f.id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fit of how far a stat strays from its projection is '
+        || 'append-only; a refit is a new row, and a row already written is '
+        || 'never written over');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prop_spread_fits_no_update
+BEFORE UPDATE ON prop_spread_fits
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fit of how far a stat strays from its projection is '
+        || 'what it was when it was fitted; a refit is a new row');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prop_spread_fits_no_delete
+BEFORE DELETE ON prop_spread_fits
+BEGIN
+    SELECT RAISE(ABORT,
+        'GRIDIRON LAW 3: a fit of how far a stat strays from its projection is '
+        || 'append-only and is never deleted');
+END;

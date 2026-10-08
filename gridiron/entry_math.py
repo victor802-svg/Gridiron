@@ -186,6 +186,35 @@ def with_a_profit_promo(payout: dict, *, percent: float,
     return {"multiplier": raised(payout["multiplier"])}
 
 
+def return_at_chances(payout: dict, chances: list[float]) -> float:
+    """THE RETURN PER UNIT, LESS THE UNIT, WITH EACH LEG AT ITS OWN CHANCE
+    (the entry check's step 2, 2026-10-07: "Show model EV beside coin-flip
+    EV"). THE LEGS INDEPENDENT (LAW 2: no correlation nobody declared is
+    estimated -- legs in one game are flagged, and the arithmetic is the
+    same payout's with its legs in different games).
+
+    POWER: every leg right, M times the product of the chances, less one.
+    FLEX: the chance of exactly k legs right, built leg by leg (the
+    distribution of a count of independent legs, each its own chance), times
+    what k right pays, summed, less one. With every chance an even one these
+    are `power_return` and `flex_return` at a coin flip."""
+    chances = [float(p) for p in chances]
+    if payout.get("table") is None:
+        product = 1.0
+        for p in chances:
+            product *= p
+        return float(payout["multiplier"]) * product - 1.0
+    right = [1.0]                      # right[k]: the chance of exactly k right
+    for p in chances:
+        nxt = [0.0] * (len(right) + 1)
+        for k, w in enumerate(right):
+            nxt[k] += w * (1.0 - p)
+            nxt[k + 1] += w * p
+        right = nxt
+    table = payout["table"]
+    return sum(w * float(table.get(k, 0.0) or 0.0) for k, w in enumerate(right)) - 1.0
+
+
 def edge_at_a_coin_flip(breakeven_per_leg: float) -> float:
     """How far an even chance sits above the break-even per leg, as a share
     of a dollar (0.03 is three points): the edge of a leg at a coin flip,

@@ -962,6 +962,46 @@ def clears_the_pick_bar(edge: float | None) -> bool:
     return picks.clears_the_pick_bar(edge)
 
 
+def _at_your_line(conn: sqlite3.Connection, card: dict, forecast: dict | None,
+                  family: str | None, family_words: str, *, sport: str) -> dict | None:
+    """WHETHER THE MODEL CAN STATE ITS CHANCE AT THE OPERATOR'S LINE for this
+    player and stat (the entry check's step 2, 2026-10-07; ruling D's M4): by
+    the statistical model's standing forecast of him in this game
+    (`m4.standing_forecast`, the one clause) -- its projection, and a fit of
+    the stat -- said in words with "not yet proven" and the count of graded
+    legs, NEVER A CHANCE, AN EDGE OR A PICK ON THE TILE: no line on a tile is
+    one only M4 can price (the venue's main line is read by the model's own
+    rules, `_chance_at`, and the tile's own question is the model's own), and
+    an unproven M4 makes no pick (reading (d)). NFL only (scope v1): None
+    elsewhere, and the row is not drawn."""
+    from . import m4
+
+    if sport != m4.SPORT or not family:
+        return None
+    try:
+        question = (json.loads((forecast or {}).get("factors_json") or "{}") or {}).get(
+            "question") or {}
+    except ValueError:
+        question = {}
+    player_id = question.get("player_id")
+    standing = (m4.standing_forecast(conn, game_id=card["game_id"], stat=family,
+                                     player_id=player_id, sport=sport)
+                if player_id else None)
+    projection = m4.projection_of(standing)
+    fitted = m4.latest_fit(conn, family, sport=sport) if projection is not None else None
+    state = ("no_projection" if projection is None
+             else "priced" if fitted is not None else "no_fit")
+    graded = m4.graded_legs(conn, sport=sport)
+    unproven = language.m4_unproven_words(graded, m4.PROVEN_AT)
+    return {"state": state,
+            "words": language.prop_m4_words(state, stat_words=family_words,
+                                            unproven=unproven),
+            "tip": language.prop_m4_tip(
+                state, stat_words=family_words, projection=projection,
+                fit_n=None if fitted is None else fitted["n"],
+                unproven_tip=language.m4_unproven_tip(graded, m4.PROVEN_AT))}
+
+
 def _leg(conn: sqlite3.Connection, card: dict, block: dict, forecast: dict | None,
          game: dict | None, ladder: list[dict] | None, payouts: list[dict],
          *, sport: str) -> dict:
@@ -993,6 +1033,12 @@ def _leg(conn: sqlite3.Connection, card: dict, block: dict, forecast: dict | Non
     }
     tips = {"projection": language.prop_projection_tip(projection, family_words),
             "main": language.prop_main_absent_tip()}
+    # THE MODEL AT THE OPERATOR'S LINE (the entry check's step 2, 2026-10-07):
+    # words only, never a number the tile acts on (`_at_your_line`).
+    at = _at_your_line(conn, card, forecast, family, family_words, sport=sport)
+    out["m4_words"] = None if at is None else at["words"]
+    if at is not None:
+        tips["m4"] = at["tip"]
     rung = _main_rung(ladder or [])
     chance = None
     if rung is not None and forecast is not None and game is not None:

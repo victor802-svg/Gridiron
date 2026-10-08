@@ -14220,6 +14220,401 @@ def plant_a_pickem_app_reached_from_the_entry_check() -> Result:
                       guard="audit.entry_check_reach_faults")
 
 
+# ---------------------------------------------------------------------------
+# THE ENTRY CHECK, STEP 2: THE MODEL AS A VETO (the brief of 2026-09-30 with
+# ruling D of 2026-10-05; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# The brief: "The model only flags; it never raises a verdict." -- and its
+# planting for this step, "a model flag raising a verdict". Ruling D: M4,
+# "Written inactive; shown as 'not yet proven' until its record clears 100
+# graded legs." And LAW 1 above all: M4 sits outside the prediction closure.
+# Each planting runs on the shipped code, swapping one door at a time, and the
+# gate's step 2 must make the call (`audit.check_the_model_only_flags`, which
+# works every M4 number and flag out again on its own worked examples; the
+# closure's own scan for M4 on the prediction path). Each ESCAPES on 6395fb4
+# (no model beside the entry check, no check, and a closure scan that does
+# not know M4) and is caught here.
+
+LAW_M4 = "THE ENTRY CHECK, STEP 2: THE MODEL ONLY FLAGS, NOT YET PROVEN, OUTSIDE LAW 1'S CLOSURE"
+_M4_CHECK = "check_the_model_only_flags"
+_M4_GUARD = "audit.model_flag_faults"
+
+
+def _m4_modules():
+    """`gridiron.entry_check`, `gridiron.m4` and `gridiron.language`, or None on
+    a release with no model beside the entry check (6395fb4 and every one
+    before it)."""
+    try:
+        from gridiron import entry_check, language, m4
+    except ImportError:
+        return None
+    if not hasattr(entry_check, "the_model"):
+        return None
+    return entry_check, m4, language
+
+
+def _m4_shipped_clean(missed: list) -> bool:
+    """The model stands beside the entry check, the gate has its check, and
+    the shipped code passes it -- or the planting says which is missing."""
+    if _m4_modules() is None:
+        missed.append("there is no model beside the entry check on this release: no leg is "
+                      "read at its typed line, no leg is flagged, no discount is priced or "
+                      "refused, and nothing is said not yet proven")
+        return False
+    scan = getattr(audit, "model_flag_faults", None)
+    if scan is None:
+        missed.append("the gate has no check that the model only flags")
+        return False
+    faults = scan()
+    if faults:
+        missed.append(f"the shipped model is named: {faults[:2]}")
+        return False
+    return True
+
+
+def _m4_planted(forms: dict, want: str, missed: list) -> str | None:
+    """Each form plants (handing back its undo); the gate's check that the
+    model only flags must name it in a fault holding `want`."""
+    first = None
+    for what, plant in forms.items():
+        undo = plant()
+        try:
+            faults = audit.model_flag_faults()
+        finally:
+            undo()
+        hit = [f for f in faults if want in f]
+        if not hit:
+            missed.append(f"{what} passed the check: {faults[:2]}")
+        else:
+            first = first or f"{what}: {hit[0]}"
+    return first
+
+
+def _m4_result(violation: str, missed: list, first, *, check: str = _M4_CHECK,
+               guard: str = _M4_GUARD) -> Result:
+    if not _step_2_calls(check):
+        missed.append(f"the gate's step 2 does not call `audit.{check}`")
+    if missed:
+        return Result(LAW_M4, violation, guard, False, "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_M4, violation, guard, True, first or "")
+
+
+def plant_a_model_flag_raising_a_verdict() -> Result:
+    """THE BRIEF'S PLANTING FOR STEP 2: "a model flag raising a verdict". The
+    entry check's outline is reading (h)'s at coin flips -- green where every
+    leg's break-even is three points or more under an even chance, red where
+    the entry returns less than it costs -- and the model, beside it, may only
+    flag a leg: "The model only flags; it never raises a verdict." Planted
+    three ways: the entry turned green where the model gives every leg three
+    points or more over its break-even (4.5x on two legs, 2.86 points under
+    the bar at coin flips, the model at 66.09% and 55.78% over 47.14%), the
+    red outline removed where the return at the model's chances is above its
+    cost (6x on three legs, -0.25 at coin flips and +0.041 at the model's),
+    and the page drawing the verdict's outline from the model's part of the
+    answer -- each named by the gate's check, and step 2 making the call.
+
+    AND FROM ITS PROVER (2026-10-07), three forms that passed the gate's check
+    as first built: a green outline taken off where the model leans against a
+    leg, and a green entry turned red where the return at its chances is
+    under the cost (5x on two legs is green at coin flips, 5.28 points under
+    an even chance, and the model gives 19.12% and 33.91%; the check's
+    examples were none of them green, so a verdict the model took away went
+    unseen), and M4's read of a forecast put back to a bare `json_extract`,
+    which raised on a forecast row that is not JSON in a leg's game and took
+    the coin flips' verdict with it -- each caught now on the check's own
+    examples (three green at coin flips) and its world (one such row).
+
+    AS RELEASED (6395fb4): there is no model beside the entry check, and no
+    check of one.
+    """
+    violation = "a model flag raising a verdict"
+    missed: list[str] = []
+    first = None
+    if _m4_shipped_clean(missed):
+        ec, _m4, _lang = _m4_modules()
+        real = ec.check
+
+        def green_by_the_model(conn, body, **kw):
+            out = real(conn, body, **kw)
+            legs = ((out.get("model") or {}).get("numbers") or {}).get("legs") or []
+            if legs and all(leg.get("edge") is not None and leg["edge"] >= 0.03
+                            for leg in legs):
+                out["signal"] = "clears"
+            return out
+
+        def red_removed_by_the_model(conn, body, **kw):
+            out = real(conn, body, **kw)
+            back = ((out.get("model") or {}).get("numbers") or {}).get("expected")
+            if out.get("signal") == "costs" and back is not None and back >= 0.0:
+                out["signal"] = "none"
+            return out
+
+        # A VERDICT TAKEN AWAY (its prover, 2026-10-07): a green outline taken
+        # off where the model leans against a leg, and a green entry turned
+        # red where the return at its chances is under the cost -- each passed
+        # the gate's check as first built, whose worked examples were none of
+        # them green at coin flips (reading (c): "step 1's outline and verdict
+        # come from coin flips alone").
+        def green_taken_off_by_the_model(conn, body, **kw):
+            out = real(conn, body, **kw)
+            flagged = ((out.get("model") or {}).get("numbers") or {}).get("flagged")
+            if out.get("signal") == "clears" and flagged:
+                out["signal"] = "none"
+            return out
+
+        def turned_red_by_the_model(conn, body, **kw):
+            out = real(conn, body, **kw)
+            back = ((out.get("model") or {}).get("numbers") or {}).get("expected")
+            if back is not None and back < 0.0:
+                out["signal"] = "costs"
+            return out
+
+        first = _m4_planted({
+            "an entry turned green where the model gives every leg three points over "
+            "its break-even": lambda: _ec_swap(ec, "check", green_by_the_model),
+            "a red outline removed where the return at the model's chances is above "
+            "its cost": lambda: _ec_swap(ec, "check", red_removed_by_the_model),
+            "a green outline taken off where the model leans against a leg":
+                lambda: _ec_swap(ec, "check", green_taken_off_by_the_model),
+            "a green entry turned red where the return at the model's chances is under "
+            "its cost": lambda: _ec_swap(ec, "check", turned_red_by_the_model),
+        }, "the model raised a verdict", missed)
+
+        # THE VERDICT TAKEN WITH A ROW THE MODEL CANNOT READ (its prover,
+        # 2026-10-07): M4's read of a forecast's player put back to a bare
+        # `json_extract`, which raised "malformed JSON" on a row of the leg's
+        # game and stat whose stored factors are not JSON -- the whole check
+        # raised, the coin flips' verdict with it. The gate's world holds such
+        # a row.
+        from gridiron import calibration as _calibration
+
+        def standing_without_its_json_check(conn, *, game_id, stat, player_id,
+                                            sport=_m4.SPORT):
+            row = conn.execute(
+                "SELECT p.id, p.game_id, p.prop_type, p.subject, p.line_asked,"
+                "       p.model_prob, p.model_side, p.pass_kind, p.created_utc,"
+                "       p.factors_json"
+                "  FROM predictions p JOIN games g ON g.id = p.game_id"
+                " WHERE p.sport = ? AND p.game_id = ? AND p.market_type = 'prop'"
+                "   AND p.prop_type = ? AND p.predictor = ?"
+                "   AND json_extract(p.factors_json, '$.question.player_id') = ?"
+                f"{_calibration.standing_row_clause(False)}"
+                " ORDER BY p.id DESC LIMIT 1",
+                (sport, game_id, stat, _m4.FORECASTER, player_id)).fetchone()
+            return None if row is None else dict(row)
+
+        first = _m4_planted({
+            "the model's read of a forecast put back to a bare json_extract, the "
+            "verdict taken with a row that is not JSON":
+                lambda: _ec_swap(_m4, "standing_forecast", standing_without_its_json_check),
+        }, "raised OperationalError", missed) or first
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        anchor = "const verdict = el('div', 'verdict ' + signalClass(r.signal));"
+        if anchor not in js:
+            missed.append("the entry check's verdict moved; the planting must follow it")
+        else:
+            put_back = js.replace(anchor, "const verdict = el('div', 'verdict ' + signalClass("
+                                          "model && model.signal ? model.signal : r.signal));")
+            hit = [f for f in audit.model_flag_faults(js=put_back) if "draws an outline" in f]
+            if not hit:
+                missed.append("the page drawing the verdict's outline from the model passed")
+            else:
+                first = first or f"the page drawing the outline from the model: {hit[0]}"
+    return _m4_result(violation, missed, first)
+
+
+def plant_m4_read_in_the_prediction_closure() -> Result:
+    """LAW 1 ABOVE ALL: M4 SITS OUTSIDE THE PREDICTION CLOSURE (the entry
+    check's step 2, 2026-10-07; the at-the-line claim writer's precedent: the
+    model's frozen numbers read at a number it never saw). Planted in a copy
+    of the package two ways: M4 imported by a module on the prediction path
+    (`factors/context.py`), and M4's fits read there (`data/repo.py`, a query
+    of `prop_spread_fits`) -- each must be refused by
+    `audit.check_prediction_closure` naming M4, and the gate's step 2 must
+    walk every closure. On a release with no M4 the copy is given one, so the
+    import is real.
+
+    AS RELEASED (6395fb4): the closure scan knows nothing of M4 -- the import
+    passes, and so does the read of its fits.
+    """
+    import shutil as _shutil
+
+    violation = "M4 read in the prediction closure"
+    missed: list[str] = []
+    first = None
+    forms = {
+        "M4 imported on the prediction path": (
+            Path("factors") / "context.py",
+            chr(10) + chr(10) + "# PLANTED VIOLATION" + chr(10)
+            + "from .. import m4 as _m4  # noqa" + chr(10)),
+        "M4's fits read on the prediction path": (
+            Path("data") / "repo.py",
+            chr(10) + chr(10) + "# PLANTED VIOLATION" + chr(10)
+            + "def sneak_a_spread(conn, stat):" + chr(10)
+            + "    return conn.execute(" + chr(10)
+            + "        'SELECT spread FROM prop_spread_fits WHERE stat = ?', (stat,)).fetchone()"
+            + chr(10)),
+    }
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        _shutil.copytree(config.PACKAGE_ROOT, root,
+                         ignore=_shutil.ignore_patterns("__pycache__", "*.db", "fonts", "web"))
+        if not (root / "m4.py").exists():
+            (root / "m4.py").write_text('"""M4, given to a release that has none."""' + chr(10),
+                                        encoding="utf-8")
+        try:
+            audit.check_prediction_closure(root=root)
+        except audit.LawViolation as exc:
+            missed.append(f"the shipped closure is refused before anything is planted: {exc}")
+        for what, (victim, code) in forms.items():
+            path = root / victim
+            shipped = path.read_text(encoding="utf-8")
+            path.write_text(shipped + code, encoding="utf-8")
+            try:
+                audit.check_prediction_closure(root=root)
+                missed.append(f"{what} passed `audit.check_prediction_closure`")
+            except audit.LawViolation as exc:
+                if "M4" not in str(exc):
+                    missed.append(f"{what} was refused without naming M4: {str(exc)[:200]}")
+                else:
+                    first = first or f"{what}: {str(exc).splitlines()[0]}"
+            finally:
+                path.write_text(shipped, encoding="utf-8")
+    if not _step_2_calls("check_all_prediction_closures"):
+        missed.append("the gate's step 2 does not walk the prediction closures")
+    if missed:
+        return Result("LAW 1", violation, "audit.check_prediction_closure", False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result("LAW 1", violation, "audit.check_prediction_closure", True, first or "")
+
+
+def plant_an_unproven_number_drawn_as_proven() -> Result:
+    """RULING D: "Written inactive; shown as 'not yet proven' until its record
+    clears 100 graded legs" -- and reading (d): an unproven M4 makes no pick,
+    no badge and no outline. Every number M4 states is drawn with "not yet
+    proven" and its count of graded legs ("0 of 100 graded legs": the record
+    of graded legs is step 3's). Planted five ways: the words dropped from
+    every number, the count dropped from them, a leg's chance drawn without
+    them, a leg the model favours called a pick, and the Props tile saying
+    the model can price the operator's line without them -- each named by the
+    gate's check, and step 2 making the call. And from its prover
+    (2026-10-07) a sixth: the page drawing a leg's chance off the answer's
+    numbers, bare, which the check as first built did not read.
+
+    AS RELEASED (6395fb4): no model number is drawn anywhere, and there is no
+    check of one.
+    """
+    violation = "an M4 number drawn without 'not yet proven' or its count, or as a pick"
+    missed: list[str] = []
+    first = None
+    if _m4_shipped_clean(missed):
+        ec, _m4, lang = _m4_modules()
+        real_leg_words, real_model = lang.entry_check_m4_leg_words, ec.the_model
+
+        def leg_words_bare(state, **kw):
+            said = real_leg_words(state, **kw)
+            return said.replace(f" ({kw.get('unproven', '')})", "")
+
+        def a_pick_by_the_model(conn, form, placed, **kw):
+            out = real_model(conn, form, placed, **kw)
+            for entry, n in zip(out["legs"], out["numbers"]["legs"]):
+                if n["state"] == "priced" and not n["flag"]:
+                    entry["pick_words"] = "Pick by the model"
+            return out
+
+        first = _m4_planted({
+            "every model number drawn without the words":
+                lambda: _ec_swap(lang, "m4_unproven_words", lambda graded, gate: ""),
+            "every model number drawn without its count of graded legs":
+                lambda: _ec_swap(lang, "m4_unproven_words",
+                                 lambda graded, gate: "not yet proven"),
+        }, "M4 is said to be", missed)
+        first = _m4_planted({
+            "a leg's chance drawn without the words":
+                lambda: _ec_swap(lang, "entry_check_m4_leg_words", leg_words_bare),
+        }, "drawn without", missed) or first
+        first = _m4_planted({
+            "a leg the model favours called a pick":
+                lambda: _ec_swap(ec, "the_model", a_pick_by_the_model),
+        }, "a pick, a badge, an outline or a verdict", missed) or first
+        first = _m4_planted({
+            "the Props tile saying the model can price his line without the words":
+                lambda: _ec_swap(lang, "prop_m4_words",
+                                 lambda state, **kw: ("in Check an entry" if state == "priced"
+                                                      else "none")),
+        }, "can price the operator's line without", missed) or first
+        # THE PAGE DRAWING A LEG'S CHANCE OFF THE ANSWER'S NUMBERS (its prover,
+        # 2026-10-07): every number the model states reaches the page inside
+        # the server's words, each with "not yet proven" and its count; drawn
+        # from the numbers it would be bare, and the check as first built read
+        # the page only for the outline.
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        anchor = ("row.appendChild(tip(el('span', 'entry-read-model', said.model_words || ''), "
+                  "said.model_tip));")
+        if anchor not in js:
+            missed.append("the model's words on a leg moved in the page; the planting must "
+                          "follow them")
+        else:
+            put_back = js.replace(anchor, "row.appendChild(el('span', 'entry-read-model', "
+                                          "(model.numbers.legs[i].chance * 100).toFixed(2) "
+                                          "+ '%'));")
+            hit = [f for f in audit.model_flag_faults(js=put_back)
+                   if "reads the answer's numbers" in f]
+            if not hit:
+                missed.append("the page drawing a leg's chance off the answer's numbers, "
+                              "bare, passed the check")
+            else:
+                first = first or f"the page drawing a leg's chance bare: {hit[0]}"
+    return _m4_result(violation, missed, first)
+
+
+def plant_a_discount_priced_where_m4_cannot() -> Result:
+    """THE BRIEF: "at a discounted line only if the model can state a
+    probability at any line, otherwise 'can't price this discount'". A
+    passing-yards leg discounted from 250.5 -- the model's own question asked
+    at 250.5, its forecast storing no projection (reading (a)) -- says "Can't
+    price this discount." and carries no chance. Planted two ways: the line
+    before the discount priced at a chance where M4 states none, and a
+    projection implied for the leg from its own line where the model stored
+    none -- each named by the gate's check, and step 2 making the call.
+
+    AS RELEASED (6395fb4): no discount is priced or refused, and there is no
+    check.
+    """
+    violation = "a discounted line priced where M4 cannot state a chance"
+    missed: list[str] = []
+    first = None
+    if _m4_shipped_clean(missed):
+        _ec, m4mod, lang = _m4_modules()
+        real_discount, real_reading = lang.entry_check_m4_discount_words, m4mod.reading
+
+        def priced_anyway(before, original_line, side, unproven=""):
+            if before is None:
+                return (f"Before the discount, at {side} {original_line:g}, the model gives "
+                        f"it 60.00% ({unproven}).")
+            return real_discount(before, original_line, side, unproven)
+
+        def projection_implied(conn, **kw):
+            got = real_reading(conn, **kw)
+            if got["state"] != "no_projection" or kw.get("original_line") is None:
+                return got
+            mean, side = float(kw["original_line"]), kw["side"]
+            return dict(got, state="priced", projection=mean, spread=1.0, fit_n=1,
+                        chance=m4mod.chance_on_side(mean, kw["line"], side, 1.0),
+                        chance_before=m4mod.chance_on_side(mean, mean, side, 1.0))
+
+        first = _m4_planted({
+            "the line before a discount priced where the model states no chance":
+                lambda: _ec_swap(lang, "entry_check_m4_discount_words", priced_anyway),
+        }, "a discounted line priced where the model states no chance", missed)
+        first = _m4_planted({
+            "a projection implied from the leg's own line where the model stored none":
+                lambda: _ec_swap(m4mod, "reading", projection_implied),
+        }, "where it is 'no_projection'", missed) or first
+    return _m4_result(violation, missed, first)
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -28006,6 +28401,15 @@ def main() -> int:
     results.append(plant_an_unflagged_same_game_pair())
     results.append(plant_an_entry_outlined_where_reading_h_gives_none())
     results.append(plant_a_pickem_app_reached_from_the_entry_check())
+    # THE ENTRY CHECK, STEP 2 (the brief of 2026-09-30 with ruling D of
+    # 2026-10-05; built 2026-10-07): the brief's planting, "a model flag
+    # raising a verdict" -- and M4 read in the prediction closure (LAW 1), an
+    # M4 number drawn without "not yet proven" or its count or as a pick, and
+    # a discounted line priced where M4 cannot state a chance.
+    results.append(plant_a_model_flag_raising_a_verdict())
+    results.append(plant_m4_read_in_the_prediction_closure())
+    results.append(plant_an_unproven_number_drawn_as_proven())
+    results.append(plant_a_discount_priced_where_m4_cannot())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

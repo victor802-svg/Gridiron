@@ -3094,6 +3094,16 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .entry-said, .entry-ask { margin: 0; font-size: 13px; line-height: 18px; color: var(--chrome); }
 .entry-read-leg { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; line-height: 16px; color: var(--muted); }
 .entry-read-words { font: 700 14px/18px var(--cond); color: var(--chrome); overflow-wrap: anywhere; }
+/* THE MODEL AS A VETO (step 2, 2026-10-07): its words sit beside the verdict
+   and under each leg in ink only -- never an outline, a badge, a fill or the
+   colours of a pick (the model only flags; the colour law). The flag is
+   words in the warning ink with a rule beside them, nothing more. Whole-pixel
+   line heights; nothing here is a tap target. */
+.entry-model { margin: 0; padding: 8px 10px; border-left: 3px solid var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; line-height: 18px; }
+.entry-line-model .entry-label { color: var(--chrome); }
+.entry-read-model { color: var(--chrome); overflow-wrap: anywhere; }
+.entry-read-record { color: var(--muted); overflow-wrap: anywhere; }
+.entry-read-lean { justify-self: start; padding: 2px 8px; border-left: 3px solid var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); font: 700 13px/18px var(--cond); letter-spacing: 0.04em; text-transform: uppercase; }
 
 /* THE FAMILY HUE on a chip's dot and its pressed state, and on the tile's tag. */
 .chip-btn[style*="--family"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--family); display: inline-block; }

@@ -114,6 +114,94 @@
   under 50%, red where it costs at coin flips. `pickem_payouts_typed`
   (append-only, its three rules and index) reached the record through
   db.init. **Next: step 2 (scratchpad wf_entry2.js).**
+  **THE ENTRY CHECK, STEP 2 PROVED (2026-10-07 ~23:10Z to 2026-10-08; ONE
+  LOCAL COMMIT on `repair` holding exactly the step's files, not pushed, for
+  its gate; FOLLOWUPS "Check an entry, step 2", THE PROVER):** M4's
+  arithmetic held -- 1,056 chances against a `Decimal` pmf at 60 digits,
+  worst 2.7e-13; both stored spreads worked again by hand on the copy to the
+  last digit; the eight legs the record can price today typed into the
+  check, each chance within 1e-6 of the hand arithmetic -- and the veto held
+  on every path (eight entries, green, red and none, promo, flex, a
+  discounted leg: the verdict word for word with the model and without).
+  FOUND AND FIXED, each failing first on the change as handed: A VERDICT
+  TAKEN AWAY WENT UNSEEN by the gate (no worked example was green at coin
+  flips, so a model taking a green outline off or turning a green entry red
+  passed; three green examples added); A FORECAST ROW THAT IS NOT JSON in a
+  leg's game made the whole check raise, the coin flips' verdict with it,
+  and the Props slate (a bare `json_extract`; `json_valid` first now; none
+  on the record); and A PAGE DRAWING A LEG'S CHANCE OFF THE ANSWER'S NUMBERS,
+  bare, passed the gate (it reads the page's numbers now). MEASURED on ONE
+  verified copy (23:49:32Z to 23:50:26Z, integrity ok, 66 tables, none
+  mismatched; deleted with its scratch copy 2026-10-08T00:00:29Z): db.init
+  REHEARSED on a scratch copy of it on the table's FINAL definition --
+  exactly the table, its index and its three rules, no checksum moved, 0
+  differences from a fresh build (9 cosmetic); the fitting tool on it: 1.208
+  on 8 and 0.619 on 7, written once, nothing else moved; every NFL prop
+  slate (4 slates, both forecasters, as held and read as still to start: 16
+  payloads) HEAD against the tree: 290 values move, all the new words (121
+  tiles' "at your line" words and tooltips, the label, the note), nothing
+  else; gate step 2's rows on the scratch copy: 127, 126 pass, none fails,
+  one not run (the release comparison reads the record itself). RENDERED at
+  1300 and 390 (six states, a green entry the model leans against among
+  them) and read; every tap target 44px or more, whole pixels, at 390.
+  Plantings: the four ESCAPE on 6395fb4 and are CAUGHT here, four forms
+  added (a green outline taken off, a green entry turned red, the bare
+  `json_extract`, the page's bare number); plant.py whole 435/435 caught in
+  340 s (detached, `entry2\p_detached.ps1`, a dummy token; the four
+  step-2 plantings about 8 s of it); the full suite (detached) 2,578
+  passed, 4 skipped, 0 failed, in 1,308 s, the planting harness inside its
+  600 s. `prose_reaching_the_raw_side()` is `[]`. Nothing joins
+  the queue. **Next: the step's gate and release; then, after the release,
+  the record's first fit by the tool, dry first.**
+  **THE ENTRY CHECK, STEP 2 BUILT (2026-10-07 ~21:40-23:30Z, on 6395fb4;
+  UNCOMMITTED for its prover; FOLLOWUPS "Check an entry, step 2"; CLAUDE.md
+  row "CHECK AN ENTRY, STEP 2" and the colour law's "BUILT 2026-10-07"):**
+  the brief's step 2 with ruling D. M4 v1 (`gridiron/m4.py`, outside the
+  prediction closure): the projection the model STORED with its forecast
+  (`expected_count`: receptions and passing touchdowns; none for yardage,
+  so nothing there -- question 43) read in a declared form (a count about
+  the projection, a negative binomial above a spread of one, a Poisson at
+  one or less, through `model.counts.p_over`) with a per-stat spread fitted
+  on settled history (`m4.spread_of`: the mean of (actual - projection)^2 /
+  projection); its fits in `prop_spread_fits` (append-only, three rules),
+  written inactive by `tools/fit_prop_spreads.py`, nothing activating one,
+  every number drawn "not yet proven · 0 of 100 graded legs". THE VETO
+  (`entry_check.the_model`): each leg's chance at its typed line, the line
+  before a discount only where M4 states one ("Can't price this discount."
+  otherwise), the legs under the break-even of the entry as offered flagged
+  ("The model leans against this leg."), the record for the stat with its
+  N, the return at the model's chances beside the coin flips'; the verdict
+  and its outline the coin flips' alone. The Props tile's "at your line"
+  row (never a chance or a pick). The gate: `audit.check_the_model_only_flags`
+  (step 2), `check_prediction_closure` naming M4 first. MEASURED on ONE
+  verified copy (21:43:08Z to 21:44:04Z, integrity ok, 66 tables, none
+  mismatched; deleted 22:29:26Z): NFL props are the statistical model's
+  alone; projections on receptions (32 of 40) and passing touchdowns (25 of
+  33) only; a spread rests on 8 and 7 settled player-games (1.208 and
+  0.619); an entry typed today finds a forecast for 23 players and stats in
+  week 5's 14 games, 8 with a projection. DB.INIT REHEARSED on the copy:
+  exactly the table, its index and its three rules, no checksum moved, 0
+  differences from a fresh build (9 cosmetic) -- on the table's first
+  definition, whose `sport` column held a list of sports the suite's first
+  run found a later sport would have to widen; the list is gone (a length
+  check), the copy was already deleted, and the world test holds the final
+  definition to the same property: the prover's copy rehearses it again.
+  RENDERED at 1300 and 390
+  (five states, read; three wording defects fixed); every tap target 44px
+  or more at 390. Plantings: `plant_a_model_flag_raising_a_verdict` (the
+  brief's), `plant_m4_read_in_the_prediction_closure`,
+  `plant_an_unproven_number_drawn_as_proven`,
+  `plant_a_discount_priced_where_m4_cannot`, each ESCAPING on 6395fb4
+  (`git archive`, this plant.py) and CAUGHT here; plant.py whole 435/435
+  caught in 337 s (detached, `entry2\run_detached.ps1`, a dummy token); the
+  full suite (detached) 2,573 passed, 4 skipped, 0 failed, in 1,291 s, the
+  planting harness inside its 600 s -- on its second run: the first (2,572
+  passed, 1 failed) found the fit table's `sport` list, which a sport
+  declared later would have to widen (`test_rebuild.py`'s sixth sport); the
+  list is gone. Every zero-argument step-2 check: 72 of 72. Readings below ("Rulings taken in your absence (2026-10-07, the entry
+  check's step 2)"); questions 43 and 44 put, neither blocking. Nothing new
+  joins the queue. **Next: its prover; then the step's gate and release;
+  then, after the release, the record's first fit by the tool, dry first.**
   **THE ENTRY CHECK, STEP 1 -- STOPPED MID-BUILD (2026-10-07 ~03:03Z; the
   session ended; found 18:40Z):** workflow wf_9563edd2-3ab (scratchpad
   wf_entry1.js), its builder partway: `gridiron/entry_math.py` and
@@ -2667,6 +2755,154 @@ depend on the answer.
       no fill.
     Default until ruled: (A), as built -- nothing new is drawn in reliance
     on it; B released with it.
+
+43. **May M4 imply a projection for a stat whose forecast stores none?
+    (Asked by the entry check's step 2 builder, 2026-10-07, as the task's
+    reading (a) asks it.)** Ruling D: "a first version of M4, P(stat over x)
+    from the model's projection and a per-stat spread fitted on settled
+    history." The model STORES a projection (`expected_count`) only for the
+    counting stats -- NFL receptions and passing touchdowns -- and none for
+    the three yardage stats, which it answers as a yes-or-no question at its
+    own line (passing yards 50 forecasts, receiving yards 29, rushing yards
+    32 on the record; measured 2026-10-07 on one verified copy). As built
+    (reading (a)), M4 states nothing for a yardage leg ("The model has no
+    projection for passing yards yet, so it states no chance at your line."
+    -- and a discounted one "Can't price this discount."); of the 23 players
+    and stats an entry typed today could find a forecast for, 15 are
+    yardage.
+    - **(A)** Imply one: the projection that, read in a declared form with
+      the stat's fitted spread, gives back the model's own stated chance at
+      its own line. It would need a form declared for a yardage stat (a
+      skewed continuous one; no count form fits yards), a spread fitted on
+      settled history against those implied projections, and its own words
+      saying the projection was implied, never stored.
+    - **(B)** As built: no projection is implied; a yardage leg says the
+      model has none yet.
+    Default until ruled: (B), nothing implied.
+
+44. **How M4's fits are made on the record after the first. (Asked by the
+    step 2 builder, 2026-10-07, as the task asks: "by the existing weekly
+    task only if a ruling allows, else a tool after the release, recorded as
+    a question if the words do not settle it".)** Ruling D's words settle
+    that a fit is made on settled history and written inactive; they name no
+    task and no cadence. As built, `tools/fit_prop_spreads.py` makes one
+    dated row per stat whose fit differs from its latest (dry first; refused
+    on the record without `--live`), and the record's FIRST fit is that
+    tool's, run after the release that carries the table (a ruling taken in
+    your absence, below). Measured on the copy: receptions 1.208 on 8 settled
+    player-games, passing touchdowns 0.619 on 7 (a Poisson), so each fit
+    rests on very little and moves with each week's games.
+    - **(A)** The weekly recalibration task (`Gridiron-Recalibrate`, Mondays
+      13:00Z) also runs M4's fitting run after it fits the corrections,
+      appending a dated fit per stat where it differs -- written inactive,
+      as now.
+    - **(B)** As built: the tool, by hand, after a release or on your word.
+    Default until ruled: (B).
+
+## Rulings taken in your absence (2026-10-07, the entry check's step 2)
+
+The brief's step 2 (docs/briefs/2026-09-30-entry-check.md) with ruling D's
+amendments (docs/briefs/2026-10-05-rulings.md; D governs where they differ).
+Each the conservative reading, recorded here and in FOLLOWUPS ("Check an
+entry, step 2"); each reversible in a line or two. Two questions are put
+(43, 44); neither blocks the step.
+
+- **(a) "The model's projection"** is a number the model STORED with its
+  forecast before any line (LAW 1): `expected_count`, on the statistical
+  model's standing forecast of the leg's player and stat in the leg's game --
+  the player by the record's own id from step 1's placement, the forecast
+  through the one clause (`calibration.standing_row_clause`: the final pass
+  before the start first). Where it stored none (the yardage stats today) M4
+  states nothing, and no projection is implied from the model's chance at its
+  own question (question 43, default no). The model's own answer at its own
+  asked line is not used by the veto either: D's "the model's chance at any
+  line" is M4's, one source for every leg (the tile keeps saying the
+  model's own question as its own). Reversal: `m4.reading` reading the asked
+  line's answer where the typed line is the asked one.
+- **(b) M4 v1's declared form** (`m4.FORM`, declared 2026-10-07): a count
+  about the projection whose variance is the spread times the projection --
+  a negative binomial where the spread is above one, a Poisson at one or
+  less -- read through the record's own arithmetic (`model.counts.p_over`).
+  WHY: the record's counting form is the precedent (counts modelled as
+  rates, measured 2026-09-03), and its own rule reads a variance ratio of
+  one or less as a Poisson ("UNDER-dispersed ... a Poisson is the honest
+  form"). Strictly over or strictly under the line; a whole line landed on
+  exactly is counted as not won (the stricter reading; an app's push rule is
+  not read). THE SPREAD, per stat, by `m4.spread_of`: the mean of (actual -
+  projection)^2 / projection over the stat's settled standing forecasts
+  carrying a projection, one per player and game (two rungs of one game
+  share one projection), the actual read as the resolver reads it -- the
+  Pearson estimate of a variance that is the spread times the mean. No
+  minimum count: every fit carries its n, and every number read from it is
+  "not yet proven". Reversal: the form's constant and `spread_of`.
+- **(c) Written inactive.** Each fit is a dated, append-only row of
+  `prop_spread_fits` (its three rules; CHECKs), nothing activates one (no
+  activation row; no table holds one), and every number M4 states is drawn
+  "not yet proven · 0 of 100 graded legs" -- the record of graded legs is
+  step 3's, so `m4.graded_legs` is 0 here and says so. THE RECORD'S FIRST
+  FIT: `tools/fit_prop_spreads.py --database var/gridiron.db --live` (dry)
+  and then with `--write`, after the release that carries the table -- the
+  void tools' precedent; no ruling lets the weekly task fit M4 (question
+  44). Until a fit is written every leg with a projection says "Nothing has
+  been fitted yet ...", and the Props tile "none yet".
+- **(c) The veto.** Each placed leg's M4 chance at its typed line on its
+  side; a discounted leg's chance before the discount only where M4 states
+  a chance, else "Can't price this discount."; the gap to the break-even of
+  the entry AS OFFERED (its promo in -- the break-even reading (h)'s verdict
+  reads; the words say "with the promo"); THE FLAG where the chance is under
+  it, less float noise ("The model leans against this leg."); the model's
+  record for the stat -- the blind record's own questions of that prop type,
+  the statistical forecaster's, right k of n settled and how many more are
+  needed (LAW 4); the return at the model's chances, the legs independent
+  (LAW 2), beside the return at coin flips (and with a promo beside that
+  one), only where every leg has a chance -- else the words say which legs
+  have none. Nothing of the model is worked out from a payout not
+  confirmed. A stat is matched only by the record's own words for it (the
+  words the form offers) or its key, folded by case and spacing -- an app's
+  abbreviation ("Pass TDs") is matched to nothing and the leg says so.
+  THE MODEL NEVER RAISES A VERDICT: `signal` and the verdict are worked out
+  before the model is asked, from the coin flips alone; the model's part
+  carries no signal, pick, badge or outline; its words are ink only (the
+  flag in the warning ink), and the page draws the outline from `r.signal`
+  alone.
+- **(d) D's ranking.** The entry's legs stay in the order typed -- the model
+  orders nothing -- and are labelled by edge (chance less break-even), never
+  by chance; an unproven M4 makes no pick (B.5's spirit): its edge is a
+  number "not yet proven", never a badge or an outline. THE PROPS TILES: an
+  "at your line" row says whether the model can state its chance at the
+  line typed in Check an entry, with "not yet proven" and its count, or why
+  not -- never a chance, edge or pick on the tile, because no line on a tile
+  is one only M4 can price: the venue's main line is read by the model's own
+  rules (C's `_chance_at`, which reads a counting stat's stored rate there
+  already), and the tile's own question is the model's own. Should question
+  43 or 39 make such a line exist, the tile would draw M4's chance there as a
+  number "not yet proven" (FOLLOWUPS).
+- **(e) The plantings**: `plant_a_model_flag_raising_a_verdict` (the brief's),
+  `plant_m4_read_in_the_prediction_closure`,
+  `plant_an_unproven_number_drawn_as_proven`,
+  `plant_a_discount_priced_where_m4_cannot` -- each ESCAPING on 6395fb4 and
+  caught here, the gate's step 2 making the call through
+  `audit.check_the_model_only_flags` (every M4 number and flag worked out
+  again) and `check_all_prediction_closures` (which now names M4 first).
+- **Outside the closure, held to reach no app.** `gridiron/m4.py` is held by
+  the entry check's reach scan with its other modules (its one write the
+  fit; its imports allowed: the record's one clause in `calibration`, the
+  record's counting arithmetic in `model.counts`, never `gridiron.model`
+  whole), and the LAW 1 scan refuses it and its table on the prediction path
+  by name.
+- **"It never raises a verdict" holds it to never TAKING one away either
+  (the step's prover, 2026-10-07).** The task's reading (c): "step 1's
+  outline and verdict come from coin flips alone; the model may only add a
+  flag beside it". A green outline taken off where the model leans against
+  a leg, or a green entry turned red where its return is under the cost, is
+  a verdict the model changed; the gate now holds the outline to the coin
+  flips on three examples green at coin flips as well, and the plantings
+  plant both. Nothing shipped did either. Reversal: the three examples.
+- **A forecast row whose stored factors are not JSON is no forecast of
+  anyone here (the step's prover).** M4 reads a forecast's player only from
+  a row that is JSON (`json_valid` first, the prompt record's precedent),
+  so such a row neither stops the check nor the Props slate; none is on the
+  record.
 
 ## Rulings taken in your absence (2026-10-07, the entry check's step 1)
 

@@ -755,7 +755,11 @@ async def check_an_entry(request: Request) -> dict:
     operator typed on the Props page, answered with arithmetic -- the
     break-even per leg from the payout he typed, the return per unit at coin
     flips, a promo converted and what it adds, the legs in one game -- and the
-    colour reading (h) gives it.
+    colour reading (h) gives it. FROM STEP 2 (2026-10-07) the model stands
+    beside it (`entry_check.the_model`: each leg's chance at its typed line by
+    M4, not yet proven, the legs it leans against, the return at its
+    chances), reading the record and writing nothing, and never raising the
+    verdict.
 
     A POST BECAUSE IT CARRIES A FORM, and its one write is the payout he
     confirmed for its app, entry type and size, where it differs from the

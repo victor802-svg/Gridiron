@@ -5695,6 +5695,10 @@ def board_labels() -> dict:
         "projection": "projection",
         "main_line": "main line",
         "breakeven": "break-even",
+        # AND A FOURTH (the entry check's step 2, 2026-10-07): whether the
+        # model can state its chance at the line the operator types for this
+        # player and stat, never a chance on the tile itself.
+        "at_your_line": "at your line",
         "save": "Save",
         "venue": "venue line",
         "not_read": "not read yet",
@@ -6482,11 +6486,17 @@ def entry_check_panel_words() -> dict:
         "entry_units_first": ("Type the entry in units: the promo's cap is in "
                               "units, so nothing is worked out until it is "
                               "there."),
-        "note": ("Arithmetic only: every leg is put at an even chance. No model "
-                 "and no record is behind these numbers, and nothing is read "
-                 "from any app. Every number comes from the payout you typed "
+        # STEP 2 (2026-10-07): the verdict stays the arithmetic at coin flips;
+        # the model's chance at each line stands beside it, marked not yet
+        # proven, and may flag a leg, never the verdict.
+        "note": ("The verdict is arithmetic only: every leg is put at an even "
+                 "chance, and no model and no record is behind it. Beside it, "
+                 "where the model forecast a leg's player and stat, its chance "
+                 "at your line, not yet proven, may flag a leg and never "
+                 "changes the verdict. Nothing is read from any app. Every "
+                 "number but the model's comes from the payout you typed "
                  "for this entry — a goblin or demon leg changes what the app "
-                 "pays, and a discounted line counts like any other here. Units "
+                 "pays, and a discounted line counts like any other in it. Units "
                  "only, never dollars. Nothing is placed, and nothing about the "
                  "entry is kept but the payout you confirm, offered next time "
                  "for its app and size, to confirm again."),
@@ -6835,6 +6845,199 @@ def entry_check_one_game_words(groups: list[tuple[list[int], str | None]],
                    f"so {'it was' if one else 'they were'} not checked against "
                    f"the others for a game they share.")
     return out
+
+
+# ---------------------------------------------------------------------------
+# THE MODEL AS A VETO (GRIDIRON_ENTRY_CHECK step 2, the brief of 2026-09-30
+# with ruling D of 2026-10-05; built 2026-10-07): "each leg's model
+# probability at the typed line if the model forecasts that player and stat;
+# at a discounted line only if the model can state a probability at any line,
+# otherwise 'can't price this discount'. Show model EV beside coin-flip EV and
+# flag legs below their break-even, with the model's record for that stat in
+# plain words. The model only flags; it never raises a verdict." Ruling D:
+# "Written inactive; shown as 'not yet proven' until its record clears 100
+# graded legs." The internal name M4 never reaches a reader (PLAIN WORDS): it
+# is "the model's chance at your line", read from its projection.
+# ---------------------------------------------------------------------------
+
+def m4_unproven_words(graded: int, gate: int) -> str:
+    """"not yet proven · 0 of 100 graded legs": beside every number the model
+    states at a line it was never asked (ruling D; reading (c))."""
+    legs = "leg" if gate == 1 else "legs"
+    return f"not yet proven · {int(graded)} of {int(gate)} graded {legs}"
+
+
+def m4_unproven_tip(graded: int, gate: int) -> str:
+    """Why the model's chance at your line is not yet proven, and why its
+    count is what it is."""
+    return (f"A first version of the model's chance at any line, written "
+            f"inactive: it counts as proven only once {int(gate)} legs it priced "
+            f"have been graded, and {int(graded)} have been, because no checked "
+            f"entry is kept and graded yet (the check's next step). Until then it "
+            f"only flags a leg, and never makes a pick, an outline or a verdict.")
+
+
+def entry_check_model_words() -> dict:
+    """The fixed words of the model's part of the entry check."""
+    return {
+        "heading": "The model at your lines",
+        "line_model_return": "With the model's chances, per unit",
+        "line_model_promo_return": "With the model's chances and the promo, per unit",
+        "model_return_tip": ("What the entry returns per unit with each leg at the "
+                             "model's chance at your line, the legs taken as "
+                             "independent, less the unit. Not yet proven."),
+        # "THE VERDICT", NEVER "THE OUTLINE" (the render of 2026-10-07): an
+        # entry with no outline was told of "the outline above".
+        "only_flags": ("It only flags: the verdict above is the arithmetic at "
+                       "coin flips, and the model never changes it."),
+        "nothing_asked": ("The model states a chance on none of these legs, so it "
+                          "flags nothing."),
+    }
+
+
+def entry_check_m4_leg_words(state: str, *, player: str = "", stat_words: str = "",
+                             typed_stat: str = "", side: str = "", line: float | None = None,
+                             chance: float | None = None,
+                             projection: float | None = None, unproven: str = "") -> str:
+    """What the model says of one leg, at the line typed: its chance and what
+    it is read from, or why it says nothing (the states of `m4.reading`, and
+    "unplaced" and "not_a_stat" of the check's own)."""
+    if state == "priced":
+        out = (f"The model: {chance * 100:.2f}% {side} {line:g}, from its "
+               f"projection of {projection:.2f} {stat_words} ({unproven}).")
+        if line is not None and float(line) == int(float(line)):
+            out += (f" A line of {line:g} can be landed on exactly; that is counted "
+                    f"here as not won.")
+        return out
+    if state == "no_forecast":
+        return (f"The model made no forecast of {player}'s {stat_words} for this "
+                f"game, so it says nothing of this leg.")
+    if state == "no_projection":
+        return (f"The model has no projection for {stat_words} yet, so it states "
+                f"no chance at your line.")
+    if state == "no_fit":
+        return (f"Nothing has been fitted yet for how far {stat_words} stray from "
+                f"the model's projections, so it states no chance at your line.")
+    if state == "not_a_stat":
+        return (f"The model forecasts no stat it can match to “{typed_stat}”: "
+                f"choose one of the stats offered to ask it.")
+    return "This leg was not placed in a game, so the model was not asked."
+
+
+def entry_check_m4_discount_words(chance_before: float | None, original_line: float,
+                                  side: str, unproven: str = "") -> str:
+    """A discounted leg: the model's chance at the line before the discount,
+    where it can state one at any line -- else the brief's own words."""
+    if chance_before is None:
+        return "Can't price this discount."
+    return (f"Before the discount, at {side} {original_line:g}, the model gives it "
+            f"{chance_before * 100:.2f}% ({unproven}).")
+
+
+def entry_check_m4_gap_words(points: float, *, raw: float, promo: bool,
+                             unproven: str = "") -> str:
+    """"By the model, this leg is 6.47 points over its break-even": the
+    model's chance at the line typed against the chance each leg needs (the
+    entry as offered, its promo in) -- an edge, drawn as a number with "not
+    yet proven", never a pick, a badge or an outline (reading (d))."""
+    with_it = " with the promo" if promo else ""
+    return (f"By the model, this leg is {entry_check_gap_words(points, raw=raw)}"
+            f"{with_it} ({unproven}).")
+
+
+def entry_check_m4_lean_words() -> str:
+    """THE FLAG (the brief: "flag legs below their break-even"): beside a leg
+    whose chance by the model is under its break-even. Words only, never a
+    colour or an outline (the model only flags)."""
+    return "The model leans against this leg."
+
+
+def entry_check_m4_record_words(stat_words: str, n: int, right: int, gate: int) -> str:
+    """THE MODEL'S RECORD FOR THE STAT IN PLAIN WORDS, WITH ITS N (LAW 4): the
+    blind record's own questions of the stat, at the model's own lines."""
+    head = f"Its record on its own {stat_words} questions: "
+    if n == 0:
+        return head + f"none settled yet; {gate} are needed before it says anything."
+    said = f"right {right} of {n} settled"
+    if n < gate:
+        return head + f"{said}; {gate - n} more are needed before that record says anything."
+    return head + f"{said}."
+
+
+def entry_check_m4_tip(projection: float, stat_words: str, fit_n: int,
+                       unproven_tip: str) -> str:
+    """How the model's chance at your line was read."""
+    places = "player-game" if fit_n == 1 else "player-games"
+    return (f"Read from the model's projection of {projection:.2f} {stat_words} for "
+            f"this player and game, written with its forecast before any line, "
+            f"and from how far {stat_words} have strayed from its projections on "
+            f"{fit_n} settled {places}. {unproven_tip}")
+
+
+def entry_check_m4_summary_words(flagged: list[int], priced: list[int], n_legs: int,
+                                 unproven: str) -> str:
+    """Beside the verdict: which legs the model leans against, in its words,
+    and that it only flags."""
+    words = entry_check_model_words()
+    if not priced:
+        return words["nothing_asked"]
+    if flagged:
+        out = f"The model leans against {_entry_leg_list(flagged).lower()} ({unproven})."
+    elif len(priced) == 1:
+        # ONE LEG PRICED (the render of 2026-10-07): "none of the leg" was
+        # drawn.
+        out = f"The model does not lean against the one leg it can price ({unproven})."
+    else:
+        out = (f"The model leans against none of the {len(priced)} legs it can price "
+               f"({unproven}).")
+    unpriced = [i for i in range(n_legs) if i not in priced]
+    if unpriced:
+        one = len(unpriced) == 1
+        out += (f" {_entry_leg_list(unpriced)} {'has' if one else 'have'} no chance "
+                f"from it.")
+    return out + " " + words["only_flags"]
+
+
+def entry_check_m4_return_missing_words(unpriced: list[int]) -> str:
+    """No return at the model's chances unless every leg has one."""
+    one = len(unpriced) == 1
+    return (f"The return at the model's chances needs its chance on every leg: "
+            f"{_entry_leg_list(unpriced).lower()} {'has' if one else 'have'} none.")
+
+
+def prop_m4_words(state: str, *, stat_words: str, unproven: str = "") -> str:
+    """ON A PROPS TILE (2026-10-07): whether the model can state a chance at the
+    line the operator types for this player and stat in Check an entry --
+    never a chance here, because no line on the tile is one only this reading
+    can price (the venue's main line is read by the model's own rules, and
+    the tile's own question is the model's own). Short: its tooltip says
+    how."""
+    if state == "priced":
+        return f"type it in Check an entry · {unproven}"
+    if state == "no_fit":
+        return f"none yet: nothing fitted for {stat_words}"
+    return f"none: no projection for {stat_words}"
+
+
+def prop_m4_tip(state: str, *, stat_words: str, projection: float | None = None,
+                fit_n: int | None = None, unproven_tip: str = "") -> str:
+    """How the model would read the app's line for this player and stat, or
+    why it cannot."""
+    if state == "priced":
+        places = "player-game" if fit_n == 1 else "player-games"
+        return (f"Type the app's line for this player and stat in Check an entry: the "
+                f"model states its chance there from its projection of "
+                f"{projection:.2f} {stat_words} and how far {stat_words} have "
+                f"strayed from its projections on {fit_n} settled {places}. "
+                f"{unproven_tip}")
+    if state == "no_fit":
+        return (f"The model has a projection here, but nothing has been fitted yet "
+                f"for how far {stat_words} stray from its projections on settled "
+                f"games, so it states no chance at another line.")
+    return (f"The model stored no projection of this player's {stat_words} with its "
+            f"forecast (it answers a yardage stat as a yes-or-no question at its own "
+            f"line), so it states no chance at the app's line. None is implied from "
+            f"its own answer.")
 
 
 # ---------------------------------------------------------------------------

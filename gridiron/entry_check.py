@@ -36,6 +36,18 @@ instant -- the live poll follows no NFL game, so a listed start is an NFL
 game's start, question 38) and exactly one player of its typed name played
 his latest game this season for that club. A leg that cannot be placed says
 why, and the one-game check says it could not check it.
+
+STEP 2, THE MODEL AS A VETO (2026-10-07; the brief's step 2 with ruling D):
+`the_model` -- each placed leg's chance at its typed line by M4
+(`gridiron.m4`: the projection the model stored with its forecast of that
+player and stat in that game, read in a declared form with a spread fitted
+on settled history), drawn "not yet proven" with its count of graded legs; a
+discount priced only where M4 states a chance, else "Can't price this
+discount"; the legs it leans against (its chance under the break-even); the
+return at its chances beside the return at coin flips; and the model's
+record for the stat. The model only flags: the outline stays reading (h)'s
+at coin flips. M4 is outside the prediction closure (LAW 1), and the line
+the operator types goes no further than it.
 """
 
 from __future__ import annotations
@@ -46,7 +58,7 @@ import sqlite3
 import unicodedata
 from datetime import datetime
 
-from . import config, db, entry_math, language, picks
+from . import config, db, entry_math, language, m4, picks
 
 #: THE APPS THE BRIEF NAMES (scope v1, 2026-09-30), each as the form sends it
 #: and as a reader reads it. No address, no account and nothing about any of
@@ -450,7 +462,10 @@ def game_of_leg(conn: sqlite3.Connection, leg: dict, *, now: datetime,
     found = players.get(normalise(leg.get("player")), {})
     on_club = [pid for pid, c in found.items() if c == club]
     if len(on_club) == 1:
-        return {"game": game, "why": None}
+        # THE PLAYER, BY THE RECORD'S OWN ID (step 2, 2026-10-07): the one
+        # player of the typed name on the club, the id the model's forecast
+        # of him carries (`m4.standing_forecast`), never his name again.
+        return {"game": game, "why": None, "player_id": on_club[0]}
     if len(on_club) > 1:
         return {"game": None, "why": language.entry_check_unplaced_words(
             "two_players", player=leg.get("player"), club=club_words)}
@@ -578,19 +593,180 @@ def _drawn_points(points: float) -> float:
     return 0.0 if drawn == 0 else drawn
 
 
+# ---------------------------------------------------------------------------
+# the model as a veto (step 2)
+# ---------------------------------------------------------------------------
+
+def stat_of(typed: str) -> str | None:
+    """THE STAT A LEG IS TYPED IN, AS THE RECORD NAMES IT (step 2, 2026-10-07):
+    one of the sport's prop stats by the record's own words for it -- the
+    words the form offers -- or its key, folded by case and spacing alone.
+    Anything else is no stat the model forecasts, and nothing is guessed: an
+    app's abbreviation ("Pass Yds") is matched to nothing, and the leg says
+    so and asks for one of the stats offered."""
+    folded = " ".join(str(typed or "").lower().replace("_", " ").split())
+    if not folded:
+        return None
+    for key in config.SPORT_PROP_MARKETS.get(SPORT, ()):
+        said = " ".join(language.market_words(SPORT, key).lower().split())
+        if folded in (said, key.replace("_", " ")):
+            return key
+    return None
+
+
+def the_model(conn: sqlite3.Connection, form: dict, placed: list[dict], *,
+              typed: dict, offered: dict, offered_breakeven: float) -> dict:
+    """THE MODEL AS A VETO (the brief, step 2: "each leg's model probability at
+    the typed line if the model forecasts that player and stat; at a
+    discounted line only if the model can state a probability at any line,
+    otherwise 'can't price this discount'. Show model EV beside coin-flip EV
+    and flag legs below their break-even, with the model's record for that
+    stat in plain words. The model only flags; it never raises a verdict.";
+    ruling D: M4, "Written inactive; shown as 'not yet proven' until its record
+    clears 100 graded legs."). Built 2026-10-07, readings (a)-(d) recorded in
+    docs/REPAIR_STATE.md.
+
+    EACH LEG: the model's chance at the line typed, on the side typed, read by
+    M4 (`m4.reading`) from the projection the model stored with its forecast
+    of that player and stat in that game, or why it states none; a discounted
+    leg's chance at the line before the discount only where M4 states one,
+    else "Can't price this discount"; the gap to the break-even of the entry
+    AS OFFERED (its promo in, the break-even reading (h)'s verdict reads); THE
+    FLAG where the chance is under it; and the model's record for the stat
+    (its own questions at its own lines, with their N; LAW 4). EVERY NUMBER IS
+    DRAWN "not yet proven" WITH ITS COUNT OF GRADED LEGS. THE RETURN at the
+    model's chances, the legs independent (LAW 2), only where every leg has
+    one -- beside the return at coin flips (`check` puts it there).
+
+    IT NEVER RAISES A VERDICT: nothing here reads or writes `signal`, and
+    nothing here is a pick, a badge or an outline; `check`'s outline is
+    reading (h)'s at coin flips alone (`audit.model_flag_faults` works every
+    number and flag out again, and holds the outline to the coin flips)."""
+    words = language.entry_check_model_words()
+    graded, gate = m4.graded_legs(conn, sport=SPORT), m4.PROVEN_AT
+    unproven = language.m4_unproven_words(graded, gate)
+    unproven_tip = language.m4_unproven_tip(graded, gate)
+    promo = form["promo"]["kind"] != "none"
+    legs_out: list[dict] = []
+    numbers: list[dict] = []
+    chances: list[float | None] = []
+    records: dict[str, dict] = {}
+    for leg, where in zip(form["legs"], placed):
+        key = stat_of(leg["stat"])
+        stat_words = language.market_words(SPORT, key) if key else leg["stat"]
+        if where["game"] is None:
+            got = {"state": "unplaced"}
+        elif key is None:
+            got = {"state": "not_a_stat"}
+        else:
+            # THE PLAYER'S ID AS PLACEMENT GAVE IT (`game_of_leg`); a placement
+            # handed in without one (a planted door) finds no forecast.
+            got = m4.reading(conn, game_id=where["game"]["id"],
+                             player_id=where.get("player_id"), stat=key, line=leg["line"],
+                             side=leg["side"], original_line=leg["original_line"],
+                             sport=SPORT)
+        state = got["state"]
+        chance = got.get("chance") if state == "priced" else None
+        before = got.get("chance_before") if state == "priced" else None
+        entry = {
+            "model_words": language.entry_check_m4_leg_words(
+                state, player=leg["player"], stat_words=stat_words,
+                typed_stat=leg["stat"], side=leg["side"], line=leg["line"],
+                chance=chance, projection=got.get("projection"), unproven=unproven),
+            "model_tip": None, "model_gap_words": None, "lean_words": None,
+            "record_words": None, "discount_words": None,
+        }
+        edge = None
+        flag = False
+        if state == "priced":
+            entry["model_tip"] = language.entry_check_m4_tip(
+                got["projection"], stat_words, got["fit_n"], unproven_tip)
+            edge = chance - offered_breakeven
+            # THE FLAG: under the break-even, less float noise only -- a chance
+            # exactly at it is not under it (`entry_math.FLOAT_NOISE`).
+            flag = edge < -entry_math.FLOAT_NOISE
+            entry["model_gap_words"] = language.entry_check_m4_gap_words(
+                _drawn_points(edge * 100.0), raw=edge * 100.0, promo=promo,
+                unproven=unproven)
+            if flag:
+                entry["lean_words"] = language.entry_check_m4_lean_words()
+            if key not in records:
+                records[key] = m4.record_of(conn, key, sport=SPORT)
+            rec = records[key]
+            entry["record_words"] = language.entry_check_m4_record_words(
+                stat_words, rec["n"], rec["right"], rec["gate"])
+        if leg["original_line"] is not None:
+            # A DISCOUNTED LINE IS PRICED ONLY WHERE THE MODEL CAN STATE A
+            # CHANCE AT ANY LINE (the brief): else the brief's own words.
+            entry["discount_words"] = language.entry_check_m4_discount_words(
+                before, leg["original_line"], leg["side"], unproven)
+        legs_out.append(entry)
+        chances.append(chance)
+        numbers.append({
+            "state": state,
+            "chance": None if chance is None else round(chance, 6),
+            "chance_before": None if before is None else round(before, 6),
+            "edge": None if edge is None else round(edge, 6),
+            "flag": flag,
+            "projection": got.get("projection"),
+            "spread": got.get("spread"),
+            "fit_id": got.get("fit_id"),
+            "forecast_id": got.get("forecast_id"),
+        })
+    priced = [i for i, n in enumerate(numbers) if n["state"] == "priced"]
+    flagged = [i for i, n in enumerate(numbers) if n["flag"]]
+    expected = offered_expected = None
+    lines: list[dict] = []
+    missing_words = None
+    if priced and len(priced) == len(numbers):
+        expected = entry_math.return_at_chances(typed, chances)
+        lines.append({"label": f"{words['line_model_return']} ({unproven})",
+                      "value_words": language.entry_check_return_words(expected),
+                      "tip": words["model_return_tip"], "after": "line_return"})
+        if promo:
+            offered_expected = entry_math.return_at_chances(offered, chances)
+            lines.append({"label": f"{words['line_model_promo_return']} ({unproven})",
+                          "value_words": language.entry_check_return_words(offered_expected),
+                          "tip": words["model_return_tip"], "after": "line_promo_return"})
+    elif priced:
+        missing_words = language.entry_check_m4_return_missing_words(
+            [i for i in range(len(numbers)) if i not in priced])
+    return {
+        "heading": words["heading"],
+        "unproven_words": unproven,
+        "unproven_tip": unproven_tip,
+        "summary_words": language.entry_check_m4_summary_words(
+            flagged, priced, len(numbers), unproven),
+        "return_missing_words": missing_words,
+        "lines": lines,
+        "legs": legs_out,
+        "numbers": {
+            "legs": numbers, "graded": graded, "gate": gate,
+            "priced": priced, "flagged": flagged,
+            "expected": None if expected is None else round(expected, 6),
+            "offered_expected": (None if offered_expected is None
+                                 else round(offered_expected, 6)),
+        },
+    }
+
+
 def check(conn: sqlite3.Connection, body, *, now=None, remember_it: bool = True) -> dict:
     """THE ENTRY CHECK: the form read, each leg placed in its game where the
     record can say, and -- once the payout is confirmed -- the break-even per
     leg, the expected return per unit at coin flips, a promo's payout and
-    what it adds, the legs in one game, and reading (h)'s outline. Every
-    sentence is `language`'s. Writes the payout confirmed (`remember`) and
-    nothing else, and only when `remember_it`."""
+    what it adds, the legs in one game, and reading (h)'s outline -- and,
+    from step 2 (2026-10-07), the model as a veto beside them (`the_model`:
+    each leg's chance at its line by M4, the legs it leans against, the
+    return at its chances), which never raises the verdict. Every sentence
+    is `language`'s. Writes the payout confirmed (`remember`) and nothing
+    else, and only when `remember_it`."""
     words = language.entry_check_panel_words()
     out = {"open": True, "refused_words": None, "ask_words": None,
            "computed": False, "signal": "none", "verdict_words": None,
            "verdict_tip": None, "lines": [], "promo_words": None,
            "one_game_words": [], "legs": [], "note": words["note"],
-           "remembered": [], "remembered_now_words": None, "numbers": None}
+           "remembered": [], "remembered_now_words": None, "numbers": None,
+           "model": None}
     try:
         form = read_form(body)
     except EntryRefused as exc:
@@ -700,6 +876,19 @@ def check(conn: sqlite3.Connection, body, *, now=None, remember_it: bool = True)
     lines.append({"label": words["line_promo_gap" if promo["kind"] != "none" else "line_gap"],
                   "value_words": language.entry_check_gap_words(points, raw=edge * 100.0),
                   "tip": words["gap_tip"]})
+    # STEP 2, THE MODEL AS A VETO (2026-10-07): each leg's chance at its typed
+    # line by M4, the legs it leans against, and the return at its chances --
+    # BESIDE the return at coin flips, each under its own, labelled "not yet
+    # proven". IT NEVER RAISES A VERDICT: `signal` and the verdict above are
+    # reading (h)'s at coin flips, worked out before the model is asked, and
+    # nothing the model says reaches them.
+    model = the_model(conn, form, placed, typed=typed, offered=offered,
+                      offered_breakeven=offered_be)
+    for extra in model.pop("lines"):
+        at = next(i for i, line in enumerate(lines) if line["label"] == words[extra["after"]])
+        lines.insert(at + 1, {"label": extra["label"], "value_words": extra["value_words"],
+                              "tip": extra["tip"], "model": True})
+    out["model"] = model
     out["lines"] = lines
     out["numbers"] = {
         "breakeven": round(be, 6), "expected": round(ev, 6),

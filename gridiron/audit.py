@@ -121,6 +121,18 @@ FORBIDDEN_IDENTIFIERS = (
 )
 
 
+#: M4 SITS OUTSIDE THE PREDICTION CLOSURE (the entry check's step 2, ruling D
+#: of 2026-10-05; built 2026-10-07). M4 v1 reads the model's frozen
+#: projection at a line the operator typed -- the at-the-line claim writer's
+#: precedent, the model's numbers read at a number it never saw -- and its
+#: fits are made from settled stats. Nothing it reads or writes may reach the
+#: prediction path: the module and its fit table are refused there BY NAME,
+#: as M4, with their own words (`check_prediction_closure`), so a planting
+#: that puts either on the path is named for what it is.
+M4_MODULE = "gridiron.m4"
+M4_IDENTIFIERS = ("prop_spread_fits",)
+
+
 class LawViolation(AssertionError):
     """A law is broken in the source. The message names which and where."""
 
@@ -230,8 +242,11 @@ def _docstring_nodes(tree: ast.AST) -> set[int]:
     return ids
 
 
-def market_identifiers_in(path: Path) -> list[tuple[str, int]]:
-    """Every forbidden identifier or string literal in one file, with its line."""
+def market_identifiers_in(path: Path, words: tuple[str, ...] | None = None) -> list[tuple[str, int]]:
+    """Every forbidden identifier or string literal in one file, with its line.
+    `words` defaults to `FORBIDDEN_IDENTIFIERS`; M4's own (`M4_IDENTIFIERS`)
+    are asked for apart, so the error names M4 (2026-10-07)."""
+    words = FORBIDDEN_IDENTIFIERS if words is None else words
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     exempt = _docstring_nodes(tree)
     hits: list[tuple[str, int]] = []
@@ -250,7 +265,7 @@ def market_identifiers_in(path: Path) -> list[tuple[str, int]]:
             text = node.name
         if not text:
             continue
-        for word in FORBIDDEN_IDENTIFIERS:
+        for word in words:
             if word in text:
                 hits.append((word, getattr(node, "lineno", 0)))
     return hits
@@ -274,6 +289,21 @@ def check_prediction_closure(
     """Raise `LawViolation` if this prediction path can reach market data."""
     report = import_closure(entrypoint, root)
 
+    # M4 BY NAME, FIRST (the entry check's step 2, 2026-10-07): the model's
+    # chance at a line it never saw, outside the closure (`M4_MODULE`). Asked
+    # before every other module, because what M4 imports would otherwise be
+    # named in its place.
+    for module in sorted(report.modules):
+        if module == M4_MODULE or module.startswith(M4_MODULE + "."):
+            chain = " -> ".join(report.path_to(module)) or module
+            raise LawViolation(
+                f"GRIDIRON LAW 1 VIOLATED: {entrypoint} can reach {module!r}, M4 -- the "
+                f"model's chance at a line the operator typed (the entry check's step "
+                f"2, ruling D of 2026-10-05).\n  import chain: {chain}\n"
+                "  M4 reads the model's frozen projection at a number it never saw, and "
+                "its fits are made from settled stats; nothing it reads or writes may "
+                "reach the prediction path, and a line typed into the entry check may "
+                "never reach a forecast.")
     for module in sorted(report.modules):
         if module == CLOSURE_EXEMPT_PACKAGE or module.startswith(
                 CLOSURE_EXEMPT_PACKAGE + "."):
@@ -296,6 +326,17 @@ def check_prediction_closure(
                 )
 
     for module, path in sorted(report.modules.items()):
+        # M4'S FIT TABLE BY NAME (2026-10-07), before the market's words.
+        hits = market_identifiers_in(path, M4_IDENTIFIERS)
+        if hits:
+            listed = ", ".join(f"{word!r} at line {line}" for word, line in hits[:6])
+            raise LawViolation(
+                f"GRIDIRON LAW 1 VIOLATED: {module} names M4's fits ({listed}) -- how far "
+                f"a stat strays from the model's projections, fitted on settled stats and "
+                f"read at a line the operator typed (the entry check's step 2).\n"
+                f"  file: {path}\n"
+                "  M4 sits outside the prediction closure: nothing it writes may reach "
+                "the prediction path.")
         hits = market_identifiers_in(path)
         if hits:
             listed = ", ".join(f"{word!r} at line {line}" for word, line in hits[:6])
@@ -13168,7 +13209,10 @@ LADDER_PICK_FIELDS = ("pick", "pick_words", "edge", "edge_words", "entries",
 
 #: A leg still to start carries these; a live or settled tile none of them.
 LEG_FIELDS = ("entries", "pick", "pick_words", "main_line", "main_chance",
-              "main_note_words", "leg_words")
+              "main_note_words", "leg_words",
+              # the entry check's step 2 (2026-10-07): the model at the
+              # operator's line, said of a leg still to start only
+              "m4_words")
 
 #: FLOAT NOISE ON THE BAR, held here as the builder holds its own (the prover
 #: of ruling C, 2026-10-06): an edge worked out as 0.029999999999999985 is
@@ -13341,6 +13385,21 @@ def props_board_faults(payload, *, typed: dict[int, float | None],
                                   f"on {rule}")
             continue
         upcoming += 1
+        # THE MODEL AT THE OPERATOR'S LINE (the entry check's step 2,
+        # 2026-10-07; ruling D's M4): words only -- "not yet proven" with its
+        # count of graded legs where it can price his line -- never a chance
+        # or a pick on the tile (reading (d)).
+        m4_said = tile.get("m4_words")
+        if m4_said is not None:
+            if "Check an entry" in m4_said and not re.search(
+                    r"not yet proven · \d+ of \d+ graded legs", m4_said):
+                faults.append(f"{where} says the model can price the operator's line "
+                              f"without \"not yet proven\" and its count of graded legs "
+                              f"({m4_said!r}; ruling D, 2026-10-05)")
+            if re.search(r"\d+(?:\.\d+)?%|\bpicks?\b", m4_said, re.I):
+                faults.append(f"{where} draws a chance or a pick from the model at a line "
+                              f"it was never asked ({m4_said!r}; reading (d) of the entry "
+                              f"check's step 2)")
         card = cards.get(pid)
         if card is not None and tile.get("question") != card.get("phrase"):
             faults.append(
@@ -14167,8 +14226,11 @@ def check_the_entry_check_is_its_own_arithmetic() -> None:
             + _NL2 + _NL2.join(faults[:10]))
 
 
-#: THE ENTRY CHECK'S OWN CODE (2026-10-07): its two modules, its route.
-ENTRY_CHECK_MODULES = ("entry_math.py", "entry_check.py")
+#: THE ENTRY CHECK'S OWN CODE (2026-10-07): its modules, its route. FROM STEP 2
+#: (2026-10-07) M4's module too (`gridiron/m4.py`): it reads the model's
+#: stored forecasts and its own fits at a line the operator typed, and is held
+#: to reach nothing the check may not -- its one write the fit of a stat.
+ENTRY_CHECK_MODULES = ("entry_math.py", "entry_check.py", "m4.py")
 ENTRY_CHECK_ROUTE = "/api/entry-check"
 
 #: WHAT THE ENTRY CHECK MAY IMPORT: the standard library's arithmetic, text,
@@ -14183,6 +14245,12 @@ ENTRY_CHECK_IMPORTS_ALLOWED = frozenset({
     "__future__", "math", "json", "sqlite3", "unicodedata", "datetime", "typing",
     "dataclasses", "gridiron.config", "gridiron.db", "gridiron.language",
     "gridiron.picks", "gridiron.entry_math",
+    # STEP 2 (2026-10-07): M4 itself; the record's one clause for which
+    # forecast stands, and its settled rows (`calibration.standing_row_clause`,
+    # `calibration.resolved`), which read the record and nothing else; and the
+    # record's own counting arithmetic (`model.counts`, the standard library
+    # only). Never `gridiron.model` whole: `model.llm` calls another machine.
+    "gridiron.m4", "gridiron.calibration", "gridiron.model.counts",
 })
 
 #: CALLS THAT REACH OUT OR RUN SOMETHING ELSE, by name.
@@ -14214,6 +14282,12 @@ _ENTRY_CHECK_WRITE = re.compile(
     r"(?:^|;)\s*(?:INSERT|UPDATE|DELETE|REPLACE|UPSERT|DROP|CREATE|ALTER)\b", re.I)
 _ENTRY_CHECK_THE_WRITE = re.compile(
     r"^\s*INSERT\s+INTO\s+pickem_payouts_typed\s*\([^;]*$", re.I)
+#: EACH MODULE'S ONE WRITE (2026-10-07): the check's is the payout typed, and
+#: M4's the fit of a stat (`m4.record_fit`) -- a plain insert each, and never
+#: the other's.
+_ENTRY_CHECK_WRITES_BY_MODULE = {
+    "gridiron.m4": re.compile(r"^\s*INSERT\s+INTO\s+prop_spread_fits\s*\([^;]*$", re.I),
+}
 _ENTRY_CHECK_REPLACING = re.compile(r"\bOR\s+REPLACE\b|\bON\s+CONFLICT\b", re.I)
 
 
@@ -14268,8 +14342,9 @@ def _entry_check_python_faults(source: str, where: str, module: str) -> list[str
             faults.append(f"{where}:{node.lineno} names an address, "
                           f"{node.value.strip()[:60]!r}: the entry check reads no app and "
                           f"calls no other machine (LAW 5)")
+        the_write = _ENTRY_CHECK_WRITES_BY_MODULE.get(module, _ENTRY_CHECK_THE_WRITE)
         if _ENTRY_CHECK_WRITE.search(node.value) and (
-                not _ENTRY_CHECK_THE_WRITE.search(node.value)
+                not the_write.search(node.value)
                 or _ENTRY_CHECK_REPLACING.search(node.value)):
             faults.append(f"{where}:{node.lineno} hands SQLite a write that is not the payout "
                           f"the operator confirmed ({node.value.strip()[:60]!r}): nothing in "
@@ -14377,6 +14452,666 @@ def _check_the_entry_check_scanners_can_see() -> None:
 
 _check_the_entry_check_fixtures()
 _check_the_entry_check_scanners_can_see()
+
+
+# ---------------------------------------------------------------------------
+# THE ENTRY CHECK, STEP 2: THE MODEL AS A VETO (the brief of 2026-09-30 with
+# ruling D of 2026-10-05; built 2026-10-07)
+# ---------------------------------------------------------------------------
+#
+# The brief: "Step 2, the model as a veto: each leg's model probability at
+# the typed line if the model forecasts that player and stat; at a discounted
+# line only if the model can state a probability at any line, otherwise
+# 'can't price this discount'. Show model EV beside coin-flip EV and flag legs
+# below their break-even, with the model's record for that stat in plain
+# words. The model only flags; it never raises a verdict." Ruling D: M4, "P(stat
+# over x) from the model's projection and a per-stat spread fitted on settled
+# history. Written inactive; shown as 'not yet proven' until its record
+# clears 100 graded legs." The brief's planting: "a model flag raising a
+# verdict".
+#
+# BY WORKED EXAMPLES ON A SCRATCH WORLD, NOT ON THE RECORD (the record holds
+# no entry): `model_flag_faults` builds the entry check's world with a played
+# game's settled forecasts and the forecasts still to come -- projections the
+# audit declares (`M4_WORLD_PROJECTIONS`) -- runs the shipped fitting run on
+# it and the shipped check on each example worked by hand, and works EVERY M4
+# number and flag out again by its own arithmetic (a Poisson or a negative
+# binomial tail written apart from `model.counts`), from the stored forecast
+# and the stored fit the check names. It names a verdict the model raised (an
+# entry turned green, or a red outline removed) or took away (a green outline
+# taken off, or a green entry turned red: its prover, 2026-10-07, on three
+# examples green at coin flips), a number drawn without "not yet proven" or
+# its count of graded legs, a pick, a badge or an outline from the model, a
+# discount priced where M4 states no chance, a flag that is not the chance
+# under the break-even, a return at the model's chances that is not its own
+# arithmetic, a fit whose spread is not the arithmetic declared, the page
+# drawing the outline from anything but the server's verdict or reading the
+# answer's numbers (its prover), a Props tile's words without "not yet
+# proven", and -- the world holding a forecast row that is not JSON in a
+# leg's game (its prover) -- a check or a tile the model's read takes down.
+
+#: THE CLOCK AND THE FIT'S INSTANT ON THE SCRATCH WORLD.
+M4_NOW = ENTRY_CHECK_NOW
+M4_FITTED = "2099-09-30T00:00:00Z"
+
+#: THE WORLD'S SETTLED HISTORY (2026-10-07): a forecast of each player and
+#: stat on the played game, its projection and what he recorded. The spread
+#: worked out by hand: receptions ((6-4)^2/4 + (4-2)^2/2) / 2 = (1 + 2) / 2 =
+#: 1.5 (a negative binomial), passing touchdowns ((3-2)^2/2 + (1-2)^2/2) / 2 =
+#: 0.5 (one or less: a Poisson).
+M4_WORLD_SETTLED = (
+    ("ec-stb", "Amon-Ra St. Brown", "DET", "receptions", 5.5, "over", 4.0, 6, 1),
+    ("ec-da", "Davante Adams", "KC", "receptions", 2.5, "over", 2.0, 4, 1),
+    ("ec-pm", "Patrick Mahomes", "KC", "passing_tds", 1.5, "over", 2.0, 3, 1),
+    ("ec-goff", "Jared Goff", "DET", "passing_tds", 1.5, "over", 2.0, 1, 0),
+)
+M4_WORLD_SPREADS = {"receptions": 1.5, "passing_tds": 0.5}
+
+#: THE FORECASTS STILL TO COME, each with the projection it stores (None: a
+#: yardage stat, none stored). St. Brown's early pass stores 9.9 and his final
+#: pass 6.0: the final pass stands (the one clause), so 6.0 is read.
+M4_WORLD_PROJECTIONS = (
+    ("ec_gb_det", "ec-stb", "Amon-Ra St. Brown", "receptions", 5.5, "early", 9.9),
+    ("ec_gb_det", "ec-stb", "Amon-Ra St. Brown", "receptions", 5.5, "final", 6.0),
+    ("ec_gb_det", "ec-goff", "Jared Goff", "passing_yards", 250.5, "final", None),
+    ("ec_gb_det", "ec-love", "Jordan Love", "passing_tds", 1.5, "final", 2.0),
+    ("ec_kc_buf", "ec-pm", "Patrick Mahomes", "passing_tds", 1.5, "final", 1.5),
+)
+
+
+def _m4_leg(player: str, club: str, stat: str, line: float, *, side: str = "over",
+            original: str = "") -> dict:
+    return _ec_leg(player, club, line=line, side=side, original=original, stat=stat)
+
+
+_M4_STB = _m4_leg("Amon-Ra St. Brown", "DET", "receptions", 4.5)
+_M4_PM = _m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 1.5)
+_M4_PM_UNDER = _m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 1.5, side="under")
+_M4_LOVE = _m4_leg("Jordan Love", "GB", "passing touchdowns", 1.5)
+
+#: THE WORKED EXAMPLES (2026-10-07), each by hand: a Poisson tail in closed
+#: form (mean 1.5: over 0.5 is 1 - e^-1.5 = 0.776870; over 1.5 is
+#: 1 - 2.5e^-1.5 = 0.442175; under 1.5 is 0.557825; over 2, a whole line, is
+#: 3 or more, 1 - 3.625e^-1.5 = 0.191153; mean 2: over 1.5 is 1 - 3e^-2 =
+#: 0.593994), and the negative binomial of mean 6 and spread 1.5 (r = 12,
+#: p = 2/3: 4 or fewer is the sum over k of C(k+11, k) (2/3)^12 (1/3)^k,
+#: 0.339123, so over 4.5 is 0.660877 and under 5 is 0.339123); each leg's
+#: state, chance, chance before a discount and flag; the return at the
+#: model's chances (power M times the product less one; flex the chance of
+#: k right, leg by leg, times its row); and the outline, which is the coin
+#: flips' alone. Held to the audit's own arithmetic at import
+#: (`_check_the_m4_fixtures`).
+M4_WORKED_EXAMPLES = (
+    {"name": "a 3-leg power entry at 6x, the model leaning against leg 2",
+     "form": _ec_form([_M4_STB, _M4_PM, _M4_LOVE], {"multiplier": "6"}),
+     "power": (6.0, 3), "signal": "costs",
+     "legs": (("priced", 0.660877, None, False), ("priced", 0.442175, None, True),
+              ("priced", 0.593994, None, False)),
+     "expected": 0.041472,
+     "words": ("The model leans against leg 2", "Its record on its own receptions "
+               "questions: right 2 of 2 settled", "With the model's chances, per unit")},
+    # THE MODEL FAVOURS EVERY LEG BY MORE THAN THREE POINTS, AND THE OUTLINE IS
+    # STILL NONE: 4.5x on two legs is 2.86 points under the bar at coin flips.
+    {"name": "a 2-leg power entry at 4.5x the model favours, with no outline",
+     "form": _ec_form([_M4_STB, _M4_PM_UNDER], {"multiplier": "4.5"}),
+     "power": (4.5, 2), "signal": "none",
+     "legs": (("priced", 0.660877, None, False), ("priced", 0.557825, None, False)),
+     "expected": 0.658942,
+     "words": ("The model leans against none of the 2 legs it can price",
+               "never changes it")},
+    {"name": "a discount the model prices, and one it cannot",
+     "form": _ec_form([_m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 0.5,
+                               original="1.5"),
+                       _m4_leg("Jared Goff", "DET", "passing yards", 240.5,
+                               original="250.5")], {"multiplier": "3"}),
+     "power": (3.0, 2), "signal": "costs",
+     "legs": (("priced", 0.776870, 0.442175, False), ("no_projection", None, None, False)),
+     "expected": None,
+     "words": ("Before the discount, at over 1.5, the model gives it 44.22%",
+               "Can't price this discount.", "no projection for passing yards",
+               "needs its chance on every leg")},
+    {"name": "legs the model says nothing of",
+     "form": _ec_form([_m4_leg("Jared Goff", "DET", "passing yards", 240.5),
+                       _m4_leg("Josh Allen", "BUF", "receptions", 1.5),
+                       _m4_leg("Jordan Love", "GB", "Pass TDs", 1.5),
+                       _m4_leg("Nobody Atall", "KC", "receptions", 3.5)],
+                      {"multiplier": "10"}),
+     "power": (10.0, 4), "signal": "costs",
+     "legs": (("no_projection", None, None, False), ("no_forecast", None, None, False),
+              ("not_a_stat", None, None, False), ("unplaced", None, None, False)),
+     "expected": None,
+     "words": ("no forecast of Josh Allen's receptions", "Pass TDs",
+               "was not placed in a game, so the model was not asked",
+               "states a chance on none of these legs")},
+    {"name": "a 3-leg flex entry at the model's chances",
+     "form": _ec_form([_M4_STB, _M4_PM_UNDER, _M4_LOVE], _EC_FLEX3, entry_type="flex",
+                      app="underdog"),
+     "flex": ({3: 2.25, 2: 1.25}, 3), "signal": "costs",
+     "legs": (("priced", 0.660877, None, False), ("priced", 0.557825, None, True),
+              ("priced", 0.593994, None, False)),
+     "expected": 0.037227, "words": ("The model leans against leg 2",)},
+    {"name": "a raised payout, each leg read against the entry as offered",
+     "form": _ec_form([_M4_STB, _M4_PM], {"multiplier": "3"},
+                      promo={"kind": "raised", "payout": {"multiplier": "3.5"}}),
+     "power": (3.0, 2), "offered_power": (3.5, 2), "signal": "costs",
+     "legs": (("priced", 0.660877, None, False), ("priced", 0.442175, None, True)),
+     "expected": -0.123331, "offered_expected": 0.022780,
+     "words": ("with the promo", "With the model's chances and the promo, per unit")},
+    {"name": "whole-number lines, landed on exactly",
+     "form": _ec_form([_m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 2),
+                       _m4_leg("Amon-Ra St. Brown", "DET", "receptions", 5, side="under")],
+                      {"multiplier": "3"}),
+     "power": (3.0, 2), "signal": "costs",
+     "legs": (("priced", 0.191153, None, True), ("priced", 0.339123, None, True)),
+     "expected": -0.805527,
+     "words": ("A line of 2 can be landed on exactly",
+               "The model leans against legs 1 and 2")},
+    # GREEN AT COIN FLIPS, THE MODEL LEANING AGAINST LEGS (its prover,
+    # 2026-10-07): every example above was red or had no outline at coin
+    # flips, so a model that took a green outline off where it leans against
+    # a leg, or turned a green entry red where its return is under the cost,
+    # passed this check -- a verdict the model changed, which reading (c)
+    # forbids as it forbids one raised ("step 1's outline and verdict come
+    # from coin flips alone"). By hand: 5x on two legs breaks even at
+    # 5^(-1/2) = 44.72%, 5.28 points under an even chance, green; the model
+    # gives 19.12% and 33.91%, both under it, and 5 x 0.191153 x 0.339123 - 1
+    # = -0.675878. A promo raising 3x to 5x is green as offered (3ab - 1 =
+    # -0.805527 typed, -0.675878 offered). A flex table of 4x for three right
+    # and 2x for two breaks even at 44.21% (4p^3 + 6p^2(1-p) = 1), 5.79
+    # points under, green; St. Brown under 5 (33.91%) is under it, the
+    # discounted Mahomes over 0.5 (77.69%, 44.22% at 1.5) and Love (59.40%)
+    # are not, and the return at the model's chances, every way of k right, is
+    # +0.539715. Each stays green.
+    {"name": "a 2-leg power entry at 5x, green at coin flips, the model leaning against both",
+     "form": _ec_form([_m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 2),
+                       _m4_leg("Amon-Ra St. Brown", "DET", "receptions", 5, side="under")],
+                      {"multiplier": "5"}),
+     "power": (5.0, 2), "signal": "clears",
+     "legs": (("priced", 0.191153, None, True), ("priced", 0.339123, None, True)),
+     "expected": -0.675878,
+     "words": ("The model leans against legs 1 and 2", "never changes it")},
+    {"name": "a promo raising 3x to 5x, green as offered, the model leaning against both",
+     "form": _ec_form([_m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 2),
+                       _m4_leg("Amon-Ra St. Brown", "DET", "receptions", 5, side="under")],
+                      {"multiplier": "3"},
+                      promo={"kind": "raised", "payout": {"multiplier": "5"}}),
+     "power": (3.0, 2), "offered_power": (5.0, 2), "signal": "clears",
+     "legs": (("priced", 0.191153, None, True), ("priced", 0.339123, None, True)),
+     "expected": -0.805527, "offered_expected": -0.675878,
+     "words": ("The model leans against legs 1 and 2",)},
+    {"name": "a 3-leg flex entry green at coin flips, a discounted leg among them",
+     "form": _ec_form([_m4_leg("Amon-Ra St. Brown", "DET", "receptions", 5, side="under"),
+                       _m4_leg("Patrick Mahomes", "KC", "passing touchdowns", 0.5,
+                               original="1.5"),
+                       _M4_LOVE], {"table": {"3": "4", "2": "2"}}, entry_type="flex",
+                      app="underdog"),
+     "flex": ({3: 4.0, 2: 2.0}, 3), "signal": "clears",
+     "legs": (("priced", 0.339123, None, True), ("priced", 0.776870, 0.442175, False),
+              ("priced", 0.593994, None, False)),
+     "expected": 0.539715,
+     "words": ("The model leans against leg 1", "Before the discount, at over 1.5")},
+)
+
+#: The projection and spread behind each priced leg of the examples, by its
+#: player and stat, for the import-time check.
+_M4_HAND = {("Amon-Ra St. Brown", "receptions"): (6.0, 1.5),
+            ("Patrick Mahomes", "passing touchdowns"): (1.5, 0.5),
+            ("Jordan Love", "passing touchdowns"): (2.0, 0.5)}
+
+
+def _own_count_pmf(mean: float, k: int, spread: float) -> float:
+    """The audit's own chance of exactly k, written apart from `model.counts`:
+    a negative binomial of this mean whose variance is the spread times the
+    mean where the spread is above one (r = mean / (spread - 1), p = 1 /
+    spread, by log-gamma), else a Poisson."""
+    if spread > 1.0:
+        r = mean / (spread - 1.0)
+        p = 1.0 / spread
+        return math.exp(math.lgamma(k + r) - math.lgamma(r) - math.lgamma(k + 1)
+                        + r * math.log(p) + k * math.log(1.0 - p))
+    return math.exp(-mean + k * math.log(mean) - math.lgamma(k + 1))
+
+
+def _own_count_chance(mean: float, line: float, side: str, spread: float) -> float:
+    """The audit's own chance a leg wins: strictly over or strictly under."""
+    if side == "over":
+        need = math.floor(float(line)) + 1
+        return 1.0 - sum(_own_count_pmf(mean, k, spread) for k in range(max(need, 0)))
+    below = math.ceil(float(line))
+    return sum(_own_count_pmf(mean, k, spread) for k in range(max(below, 0)))
+
+
+def _own_return_at(payout: dict, chances: list[float]) -> float:
+    """The audit's own return at given chances, the legs independent: power
+    the product, flex every way of k right (written apart from
+    `entry_math.return_at_chances`)."""
+    n = len(chances)
+    if payout.get("table") is None:
+        return float(payout["multiplier"]) * math.prod(chances) - 1.0
+    total = 0.0
+    for mask in range(1 << n):
+        w = 1.0
+        for i, p in enumerate(chances):
+            w *= p if mask >> i & 1 else 1.0 - p
+        total += w * float(payout["table"].get(bin(mask).count("1"), 0.0))
+    return total - 1.0
+
+
+def _own_payout(ex: dict, which: str = "") -> dict | None:
+    power, flex = ex.get(f"{which}power"), ex.get(f"{which}flex")
+    if power is not None:
+        return {"multiplier": power[0]}
+    if flex is not None:
+        return {"table": dict(flex[0])}
+    return None
+
+
+def _check_the_m4_fixtures() -> None:
+    """THE HAND-WORKED NUMBERS HELD AT IMPORT: each priced leg's chance (and
+    before a discount), each flag, and the return at the model's chances
+    agree with the audit's own arithmetic, and the declared spreads with the
+    settled history's own."""
+    problems = []
+    for stat, spread in M4_WORLD_SPREADS.items():
+        rows = [(proj, got) for (_p, _n, _c, s, _l, _side, proj, got, _o) in M4_WORLD_SETTLED
+                if s == stat]
+        own = sum((got - proj) ** 2 / proj for proj, got in rows) / len(rows)
+        if abs(own - spread) > 1e-12:
+            problems.append(f"the {stat} spread {spread} is {own} by its rows")
+    for ex in M4_WORKED_EXAMPLES:
+        legs = ex["form"]["legs"]
+        own = _own_entry_numbers(ex, "offered_") or _own_entry_numbers(ex)
+        chances = []
+        for leg, (state, chance, before, flag) in zip(legs, ex["legs"]):
+            if state != "priced":
+                chances.append(None)
+                continue
+            mean, spread = _M4_HAND[(leg["player"], leg["stat"])]
+            got = _own_count_chance(mean, float(leg["line"]), leg["side"], spread)
+            chances.append(got)
+            if abs(got - chance) > 5e-7:
+                problems.append(f"{ex['name']}: {leg['player']} {got} against {chance}")
+            if before is not None:
+                b = _own_count_chance(mean, float(leg["original_line"]), leg["side"], spread)
+                if abs(b - before) > 5e-7:
+                    problems.append(f"{ex['name']}: before the discount {b} against {before}")
+            if flag != (got - own[0] < -1e-9):
+                problems.append(f"{ex['name']}: {leg['player']}'s flag {flag} against the "
+                                f"chance {got} and the break-even {own[0]}")
+        for key, which in (("expected", ""), ("offered_expected", "offered_")):
+            want = ex.get(key)
+            payout = _own_payout(ex, which)
+            if want is None or payout is None:
+                continue
+            got = _own_return_at(payout, chances)
+            if abs(got - want) > 5e-7:
+                problems.append(f"{ex['name']}: {key} {got} against {want}")
+    if problems:
+        raise LawViolation("STEP 2'S WORKED EXAMPLES DISAGREE WITH THE AUDIT'S OWN "
+                           "ARITHMETIC:" + _NL2 + _NL2.join(problems))
+
+
+def _m4_world(path: Path):
+    """THE SCRATCH WORLD STEP 2 IS CHECKED IN (2026-10-07): the entry check's
+    world, the played game's settled forecasts with what each player recorded
+    (`M4_WORLD_SETTLED`), and the forecasts still to come with the
+    projections they store (`M4_WORLD_PROJECTIONS`). Never the record."""
+    conn = _entry_check_world(path)
+    with conn:
+        for pid, name, club, stat, _line, _side, _proj, got, _o in M4_WORLD_SETTLED:
+            conn.execute(
+                "INSERT INTO player_week_stats (season, week, player_id, player_name,"
+                f" position, team, opponent, {stat}) VALUES (2099, 5, ?, ?, 'WR', ?,"
+                " 'BUF', ?)", (pid, name, club, got))
+
+        def forecast(gid, pid, name, stat, line, side, projection, *, created, pass_kind):
+            payload = {"coverage": 1.0, "question": {"player_id": pid, "stat": stat}}
+            if projection is not None:
+                payload["expected_count"] = projection
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+                " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+                " pass_kind, factor_set_version, factors_json, reasoning) VALUES"
+                " (?, 'nfl', ?, 'prop', ?, ?, ?, 0.6, ?, 'statistical', ?, 'fs2', ?,"
+                " 'the audit''s world')",
+                (created, gid, stat, f"{name} {stat}", line, side, pass_kind,
+                 json.dumps(payload)))
+            return conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+
+        for pid, name, _club, stat, line, side, proj, _got, outcome in M4_WORLD_SETTLED:
+            fid = forecast("ec_played", pid, name, stat, line, side, proj,
+                           created="2099-09-26T12:00:00Z", pass_kind="final")
+            conn.execute("UPDATE predictions SET resolved_utc = '2099-09-28T00:00:00Z',"
+                         " outcome = ? WHERE id = ?", (outcome, fid))
+        for gid, pid, name, stat, line, pass_kind, proj in M4_WORLD_PROJECTIONS:
+            forecast(gid, pid, name, stat, line, "over", proj,
+                     created=("2099-09-30T12:00:00Z" if pass_kind == "early"
+                              else "2099-09-30T18:00:00Z"), pass_kind=pass_kind)
+        # A ROW WHOSE STORED FACTORS ARE NOT JSON, in St. Brown's game and
+        # stat (its prover, 2026-10-07): the schema holds no rule on the
+        # column's form, and M4's read of a forecast's player as first built
+        # raised "malformed JSON" on it, taking the coin flips' verdict and
+        # the Props tile with it. It is no forecast of anyone here.
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " prop_type, subject, line_asked, model_prob, model_side, predictor,"
+            " pass_kind, factor_set_version, factors_json, reasoning) VALUES"
+            " ('2099-09-30T18:30:00Z', 'nfl', 'ec_gb_det', 'prop', 'receptions',"
+            " 'Somebody Else receptions', 3.5, 0.6, 'over', 'statistical', 'final',"
+            " 'fs2', 'not JSON at all', 'the audit''s world')")
+    return conn
+
+
+def _m4_fit_faults(conn) -> list[str]:
+    """THE FITTING RUN ON THE WORLD: each stat's spread the arithmetic
+    declared over its settled rows, written inactive once, and not again for
+    the same rows."""
+    from . import m4 as _m4
+
+    faults = []
+    report = _m4.refit(conn, write=True, now=M4_FITTED)
+    again = _m4.refit(conn, write=True, now=M4_NOW)
+    for stat, spread in M4_WORLD_SPREADS.items():
+        got = _m4.latest_fit(conn, stat)
+        if got is None:
+            faults.append(f"the fitting run wrote no fit of {stat}, where its settled "
+                          f"history gives a spread of {spread}")
+            continue
+        if abs(float(got["spread"]) - spread) > 1e-9 or got["n"] != 2:
+            faults.append(f"the fit of {stat} has a spread of {got['spread']!r} on "
+                          f"{got['n']} rows, where the arithmetic declared gives {spread} "
+                          f"on 2 (reading (b))")
+        if got["form"] != _m4.FORM or got["form_declared"] != _m4.FORM_DECLARED:
+            faults.append(f"the fit of {stat} is not in the declared form, dated")
+    if any(g.get("written") for g in again):
+        faults.append("the fitting run wrote a second fit of the same rows and spread")
+    if [g["stat"] for g in report] != list(M4_WORLD_SPREADS):
+        faults.append(f"the fitting run fitted {[g['stat'] for g in report]}, where the "
+                      f"stats storing a projection are {list(M4_WORLD_SPREADS)}: no "
+                      f"yardage stat is fitted (reading (a))")
+    return faults
+
+
+def _m4_strings(node) -> list[str]:
+    out: list[str] = []
+    if isinstance(node, dict):
+        for value in node.values():
+            out += _m4_strings(value)
+    elif isinstance(node, list):
+        for value in node:
+            out += _m4_strings(value)
+    elif isinstance(node, str):
+        out.append(node)
+    return out
+
+
+def _m4_keys(node) -> set:
+    out: set = set()
+    if isinstance(node, dict):
+        out |= set(node)
+        for value in node.values():
+            out |= _m4_keys(value)
+    elif isinstance(node, list):
+        for value in node:
+            out |= _m4_keys(value)
+    return out
+
+
+#: NOTHING A PICK OR A VERDICT CARRIES, in the model's part of the answer.
+_M4_NEVER_KEYS = frozenset({"signal", "pick", "pick_words", "clears", "badge",
+                            "badge_words", "outline", "verdict", "verdict_words"})
+
+
+def _m4_example_faults(conn, ex: dict, unproven: str) -> list[str]:
+    from . import entry_check as _ec, m4 as _m4
+
+    name = f"step 2's {ex['name']}"
+    try:
+        out = _ec.check(conn, json.loads(json.dumps(ex["form"])), now=M4_NOW,
+                        remember_it=False)
+    except Exception as exc:  # noqa: BLE001 - named, never swallowed
+        return [f"{name} raised {type(exc).__name__}: {exc}"]
+    faults = entry_check_words_faults(out, name)
+    # THE MODEL NEVER RAISES A VERDICT: the outline is the coin flips' alone,
+    # worked out by the audit's own arithmetic on the entry as offered.
+    be, ev = _own_entry_numbers(ex, "offered_") or _own_entry_numbers(ex)
+    coin = ("clears" if 0.5 - be >= PICK_MIN_EDGE_AS_RULED - 1e-9
+            else "costs" if ev < -1e-9 else "none")
+    if out.get("signal") != coin or coin != ex["signal"]:
+        # RAISED OR TAKEN AWAY (its prover, 2026-10-07): a green outline taken
+        # off, or a green entry turned red, is a verdict the model changed as
+        # surely as one it raised (reading (c): "step 1's outline and verdict
+        # come from coin flips alone").
+        faults.append(f"{name}: the outline is {out.get('signal')!r}, where the coin "
+                      f"flips give {coin!r}: the model raised a verdict or took one away "
+                      f"(an entry turned green, a red outline removed, or a green one "
+                      f"taken off or turned red, by its chance; the brief: \"The model "
+                      f"only flags; it never raises a verdict\")")
+    model = out.get("model")
+    if not model:
+        return faults + [f"{name}: no model beside the verdict (the brief's step 2)"]
+    numbers = (model.get("numbers") or {}).get("legs") or []
+    said = model.get("legs") or []
+    if len(numbers) != len(ex["legs"]) or len(said) != len(ex["legs"]):
+        return faults + [f"{name}: the model reads {len(numbers)} legs of {len(ex['legs'])}"]
+    never = _m4_keys(model) & _M4_NEVER_KEYS
+    if never:
+        faults.append(f"{name}: the model's part carries {sorted(never)}: a pick, a badge, "
+                      f"an outline or a verdict from a model not yet proven (reading (d); "
+                      f"the brief: the model only flags)")
+    for text in _m4_strings(model):
+        if re.search(r"\bpicks?\b|\bclears?\b", text, re.I) and "never makes a pick" not in text:
+            faults.append(f"{name}: the model's words call something a pick or say it "
+                          f"clears: {text[:120]!r} (reading (d))")
+    priced_chances = []
+    for i, (leg, want, got, words) in enumerate(zip(ex["form"]["legs"], ex["legs"], numbers,
+                                                     said)):
+        state, chance, before, flag = want
+        where = f"{name}, leg {i + 1}"
+        if got.get("state") != state:
+            faults.append(f"{where}: the model's reading is {got.get('state')!r}, where it "
+                          f"is {state!r}")
+            continue
+        if state == "priced":
+            # EVERY NUMBER WORKED OUT AGAIN, FROM THE STORED FORECAST AND FIT.
+            row = conn.execute("SELECT factors_json FROM predictions WHERE id = ?",
+                               (got.get("forecast_id"),)).fetchone()
+            fitted = conn.execute("SELECT spread FROM prop_spread_fits WHERE id = ?",
+                                  (got.get("fit_id"),)).fetchone()
+            if row is None or fitted is None:
+                faults.append(f"{where}: the model names no stored forecast or fit")
+                continue
+            mean = json.loads(row["factors_json"]).get("expected_count")
+            own = _own_count_chance(float(mean), float(leg["line"]), leg["side"],
+                                    float(fitted["spread"]))
+            priced_chances.append(own)
+            if got.get("chance") is None or abs(float(got["chance"]) - own) > 5e-6 \
+                    or abs(own - chance) > 5e-6:
+                faults.append(f"{where}: the model's chance at {leg['line']} is "
+                              f"{got.get('chance')!r}, where the stored projection "
+                              f"{mean} and spread {fitted['spread']} give {own:.6f} "
+                              f"(by hand {chance})")
+            if before is not None:
+                own_b = _own_count_chance(float(mean), float(leg["original_line"]),
+                                          leg["side"], float(fitted["spread"]))
+                if got.get("chance_before") is None or abs(float(got["chance_before"]) - own_b) > 5e-6:
+                    faults.append(f"{where}: the model's chance before the discount is "
+                                  f"{got.get('chance_before')!r}, where it is {own_b:.6f}")
+            if bool(got.get("flag")) != (own - be < -1e-9) or bool(got.get("flag")) != flag:
+                faults.append(f"{where}: flagged {got.get('flag')!r}, where its chance "
+                              f"{own:.6f} against the break-even {be:.6f} gives "
+                              f"{own - be < -1e-9} (the brief: \"flag legs below their "
+                              f"break-even\")")
+            for key in ("model_words", "model_gap_words"):
+                if unproven not in (words.get(key) or ""):
+                    faults.append(f"{where}: the model's number is drawn without "
+                                  f"\"{unproven}\" ({words.get(key)!r}; ruling D)")
+            if not words.get("record_words") or " settled" not in words["record_words"]:
+                faults.append(f"{where}: no record for the stat with its N beside the "
+                              f"model's number ({words.get('record_words')!r}; the brief, "
+                              f"LAW 4)")
+        else:
+            if got.get("chance") is not None or got.get("flag"):
+                faults.append(f"{where}: a chance or a flag where the model states none")
+            if re.search(r"\d+(?:\.\d+)?%", words.get("model_words") or ""):
+                faults.append(f"{where}: a chance drawn where the model states none: "
+                              f"{words.get('model_words')!r}")
+        if bool(words.get("lean_words")) != bool(got.get("flag")):
+            faults.append(f"{where}: the flag's words and the flag disagree")
+        if leg.get("original_line"):
+            text = words.get("discount_words") or ""
+            if state == "priced" and before is not None:
+                if unproven not in text or "%" not in text:
+                    faults.append(f"{where}: the discount is priced without its chance "
+                                  f"and \"{unproven}\": {text!r}")
+            elif text != "Can't price this discount." or got.get("chance_before") is not None:
+                faults.append(f"{where}: a discounted line priced where the model states "
+                              f"no chance at any line ({text!r}, {got.get('chance_before')!r};"
+                              f" the brief: \"otherwise 'can't price this discount'\")")
+    mnums = model.get("numbers") or {}
+    if mnums.get("graded") != _m4.graded_legs(conn) or mnums.get("gate") != 100:
+        faults.append(f"{name}: the count of graded legs is {mnums.get('graded')!r} of "
+                      f"{mnums.get('gate')!r}, where it is 0 of 100 (ruling D)")
+    for key, which in (("expected", ""), ("offered_expected", "offered_")):
+        want = ex.get(key)
+        got = mnums.get(key)
+        payout = _own_payout(ex, which)
+        if want is None:
+            if got is not None:
+                faults.append(f"{name}: a return at the model's chances ({key} {got!r}) "
+                              f"without its chance on every leg")
+            continue
+        own = (_own_return_at(payout, priced_chances)
+               if payout is not None and len(priced_chances) == len(ex["legs"]) else None)
+        if got is None or own is None or abs(float(got) - own) > 5e-6 or abs(own - want) > 5e-6:
+            faults.append(f"{name}: the return at the model's chances ({key}) is {got!r}, "
+                          f"where it is {own!r} (by hand {want})")
+    labels = [line.get("label") or "" for line in out.get("lines") or [] if line.get("model")]
+    for label in labels:
+        if unproven not in label:
+            faults.append(f"{name}: the return at the model's chances is drawn without "
+                          f"\"{unproven}\" ({label!r})")
+    if ex.get("expected") is not None and not labels:
+        faults.append(f"{name}: the return at the model's chances is not beside the "
+                      f"return at coin flips")
+    text = json.dumps(out, ensure_ascii=False)
+    for want in ex.get("words") or ():
+        if want not in text:
+            faults.append(f"{name} does not say {want!r}")
+    return faults
+
+
+def _m4_tile_faults(conn, unproven: str) -> list[str]:
+    """A PROPS TILE'S WORDS ABOUT THE OPERATOR'S LINE: "not yet proven" and the
+    count beside a stat the model can price, no chance and no pick on the
+    tile (`board._at_your_line`)."""
+    from . import board as _board
+
+    faults = []
+    for name, stat, want in (("Amon-Ra St. Brown", "receptions", "priced"),
+                             ("Jared Goff", "passing_yards", "no_projection")):
+        row = conn.execute(
+            "SELECT * FROM predictions WHERE game_id = 'ec_gb_det' AND prop_type = ?"
+            " AND subject = ? ORDER BY id DESC LIMIT 1", (stat, f"{name} {stat}")).fetchone()
+        card = {"game_id": "ec_gb_det", "prediction_id": row["id"]}
+        try:
+            got = _board._at_your_line(conn, card, dict(row), stat, stat.replace("_", " "),
+                                       sport="nfl")
+        except Exception as exc:  # noqa: BLE001 - named, never swallowed
+            faults.append(f"the Props tile of {name}'s {stat} raised {type(exc).__name__}: "
+                          f"{exc} (a model that cannot read a row takes the slate with it)")
+            continue
+        if got is None or got.get("state") != want:
+            faults.append(f"the Props tile of {name}'s {stat} says {got!r}, where the model "
+                          f"{'can' if want == 'priced' else 'cannot'} state its chance at "
+                          f"the operator's line")
+            continue
+        words = ((got.get("words") or "") + " " + (got.get("tip") or "")).replace(
+            "never makes a pick", "")
+        if want == "priced" and unproven not in got.get("words", ""):
+            faults.append(f"the Props tile of {name}'s {stat} says the model can price the "
+                          f"operator's line without \"{unproven}\": {got.get('words')!r} "
+                          f"(ruling D)")
+        if re.search(r"\d+(?:\.\d+)?%|\bpicks?\b", words, re.I):
+            faults.append(f"the Props tile of {name}'s {stat} draws a chance or a pick from "
+                          f"the model at a line it was never asked: {words[:120]!r} "
+                          f"(reading (d))")
+    return faults
+
+
+#: The one call the entry check's verdict may wear: the server's own verdict.
+_M4_VERDICT_CLASS = re.compile(r"signalClass\(([^)]*)\)")
+#: The answer's numbers read by the page that draws it (its prover,
+#: 2026-10-07): `.numbers`, or `["numbers"]`, anywhere in `paintEntryResult`.
+_M4_PAGE_NUMBERS = re.compile(r"""\.\s*numbers\b|\[\s*['"]numbers['"]\s*\]""")
+
+
+def model_flag_faults(*, js: str | None = None) -> list[str]:
+    """THE MODEL ONLY FLAGS (gate step 2; the entry check's step 2,
+    2026-10-07): the fitting run and the shipped check on a scratch world, by
+    worked examples, every M4 number and flag worked out again; the Props
+    tile's words; and the page drawing the verdict's outline from the
+    server's verdict alone. `js` takes a planted copy of the page."""
+    import tempfile
+
+    from . import language as _language, m4 as _m4
+
+    faults: list[str] = []
+    unproven = _language.m4_unproven_words(_m4.graded_legs(), _m4.PROVEN_AT)
+    if _m4.graded_legs() != 0 or _m4.PROVEN_AT != 100 or unproven != (
+            "not yet proven · 0 of 100 graded legs"):
+        faults.append(f"M4 is said to be {unproven!r}, where it is not yet proven on 0 of "
+                      f"100 graded legs: no leg is graded before step 3 (ruling D)")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _m4_world(Path(tmp) / "m4.db")
+        try:
+            faults += _m4_fit_faults(conn)
+            for ex in M4_WORKED_EXAMPLES:
+                faults += _m4_example_faults(conn, ex, unproven)
+            faults += _m4_tile_faults(conn, unproven)
+        finally:
+            conn.close()
+    js = js if js is not None else (config.PACKAGE_ROOT / "web" / "app.js").read_text(
+        encoding="utf-8")
+    paint = _js_function_bodies(js, ("paintEntryResult",)).get("paintEntryResult")
+    if paint is None:
+        faults.append("`paintEntryResult` is gone from app.js, so nothing says what the "
+                      "entry check's verdict wears")
+    else:
+        calls = [m.group(1).strip() for m in _M4_VERDICT_CLASS.finditer(paint[1])]
+        if calls != ["r.signal"] or re.search(r"""['"]sig-[a-z]""", paint[1]):
+            faults.append(f"app.js:{paint[0]} `paintEntryResult` draws an outline from "
+                          f"{calls or 'no verdict'}: the verdict's outline is the "
+                          f"server's verdict at coin flips alone, never the model's (the "
+                          f"brief: \"The model only flags; it never raises a verdict\")")
+        # NO NUMBER OF THE MODEL'S DRAWN BARE (its prover, 2026-10-07): every
+        # number the model states reaches the page inside the server's words,
+        # each with "not yet proven" and its count (ruling D); a page reading
+        # the answer's numbers draws one without them, which the server-side
+        # examples above cannot see.
+        if _M4_PAGE_NUMBERS.search(paint[1]):
+            faults.append(f"app.js:{paint[0]} `paintEntryResult` reads the answer's numbers: "
+                          f"the page draws the server's words alone, so every number the "
+                          f"model states reaches it with \"not yet proven\" and its count "
+                          f"beside it -- a number read off the answer is drawn bare (ruling "
+                          f"D: \"shown as 'not yet proven' until its record clears 100 "
+                          f"graded legs\")")
+    return faults
+
+
+def check_the_model_only_flags() -> None:
+    faults = model_flag_faults()
+    if faults:
+        raise LawViolation(
+            "THE MODEL RAISED A VERDICT, OR DREW A NUMBER AS PROVEN (GRIDIRON_ENTRY_CHECK "
+            "step 2, 2026-10-07: \"flag legs below their break-even, with the model's "
+            "record for that stat in plain words. The model only flags; it never raises "
+            "a verdict\"; ruling D: \"Written inactive; shown as 'not yet proven' until "
+            "its record clears 100 graded legs\"):"
+            + _NL2 + _NL2.join(faults[:10]))
+
+
+_check_the_m4_fixtures()
 
 
 # ---------------------------------------------------------------------------

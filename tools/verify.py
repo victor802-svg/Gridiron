@@ -979,6 +979,22 @@ def step_2_guards() -> bool:
         # below read its modules as they read every other.
         ("the entry check reaches no app and writes no entry (LAW 5)",
          audit.check_the_entry_check_reaches_no_app),
+        # THE ENTRY CHECK, STEP 2 (the brief's step 2 with ruling D of
+        # 2026-10-05; built 2026-10-07): "each leg's model probability at the
+        # typed line ... at a discounted line only if the model can state a
+        # probability at any line, otherwise 'can't price this discount'.
+        # Show model EV beside coin-flip EV and flag legs below their
+        # break-even ... The model only flags; it never raises a verdict." BY
+        # WORKED EXAMPLES ON A SCRATCH WORLD: the fitting run's spread by the
+        # arithmetic declared, and every number M4 states and every flag
+        # worked out again from the stored projection and fit; the outline
+        # the coin flips' alone; "not yet proven" and 0 of 100 graded legs
+        # beside every number; no pick, badge or outline from the model; a
+        # discount priced only where M4 states a chance; and the page drawing
+        # the verdict's outline from the server's verdict alone. (M4 outside
+        # the prediction closure is the LAW 1 scan's, above, which names it.)
+        ("the model only flags, and never raises a verdict (entry check, step 2)",
+         audit.check_the_model_only_flags),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",

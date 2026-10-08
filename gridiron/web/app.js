@@ -1983,6 +1983,10 @@ const Gridiron = (function () {
         holds.appendChild(one);
       });
       leg.appendChild(be);
+      // AT YOUR LINE (the entry check's step 2, 2026-10-07): whether the
+      // model can state its chance at the line typed in Check an entry, in
+      // the server's words, never a chance or a pick on the tile.
+      if (t.m4_words) leg.appendChild(legRow(labels.at_your_line, t.m4_words, tips.leg_m4));
       body.appendChild(leg);
       // THE BAR IS THE CHANCE AT THE MAIN LINE, its tick the first typed
       // break-even, and there is no bar where the model gives no chance there.
@@ -2452,27 +2456,43 @@ const Gridiron = (function () {
     if (entry.changed) { host.appendChild(el('p', 'entry-ask', words.changed || '')); return; }
     if (r.refused_words) { host.appendChild(el('p', 'entry-ask', r.refused_words)); return; }
     if (r.ask_words) host.appendChild(el('p', 'entry-ask', r.ask_words));
+    // THE MODEL AS A VETO (step 2, 2026-10-07): beside the verdict, never on
+    // it -- the outline above is the server's verdict at coin flips, and the
+    // model's words are ink only: no outline, no badge, no colour of a pick.
+    const model = r.computed ? r.model : null;
     if (r.computed) {
       const verdict = el('div', 'verdict ' + signalClass(r.signal));
       verdict.appendChild(tip(el('span', 'v-words', r.verdict_words || ''), r.verdict_tip));
       host.appendChild(verdict);
+      if (model && model.summary_words) {
+        host.appendChild(tip(el('p', 'entry-model', model.summary_words), model.unproven_tip));
+      }
       (r.lines || []).forEach(line => {
-        const row = el('div', 'entry-line');
+        const row = el('div', 'entry-line' + (line.model ? ' entry-line-model' : ''));
         row.appendChild(el('span', 'entry-label', line.label || ''));
         row.appendChild(tip(el('span', 'entry-value', line.value_words || ''), line.tip));
         host.appendChild(row);
       });
+      if (model && model.return_missing_words) host.appendChild(el('p', 'entry-said', model.return_missing_words));
       if (r.promo_words) host.appendChild(el('p', 'entry-said', r.promo_words));
     }
     if ((r.one_game_words || []).length) {
       host.appendChild(el('h5', 'entry-sub', words.one_game_heading || ''));
       r.one_game_words.forEach(w => host.appendChild(el('p', 'entry-said', w)));
     }
-    (r.legs || []).forEach(l => {
+    (r.legs || []).forEach((l, i) => {
       const row = el('div', 'entry-read-leg');
       row.appendChild(el('span', 'entry-read-words', l.words || ''));
       row.appendChild(el('span', 'entry-read-detail', l.detail_words || ''));
       row.appendChild(el('span', 'entry-read-game', l.game_words || l.unplaced_words || ''));
+      const said = model ? (model.legs || [])[i] : null;
+      if (said) {
+        if (said.lean_words) row.appendChild(el('span', 'entry-read-lean', said.lean_words));
+        row.appendChild(tip(el('span', 'entry-read-model', said.model_words || ''), said.model_tip));
+        if (said.discount_words) row.appendChild(el('span', 'entry-read-model', said.discount_words));
+        if (said.model_gap_words) row.appendChild(el('span', 'entry-read-model', said.model_gap_words));
+        if (said.record_words) row.appendChild(el('span', 'entry-read-record', said.record_words));
+      }
       host.appendChild(row);
     });
     if (r.remembered_now_words) host.appendChild(el('p', 'footnote entry-note-small', r.remembered_now_words));

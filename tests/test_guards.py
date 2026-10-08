@@ -796,6 +796,14 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_an_unflagged_same_game_pair",
         "plant_an_entry_outlined_where_reading_h_gives_none",
         "plant_a_pickem_app_reached_from_the_entry_check",
+        # THE ENTRY CHECK, STEP 2 (built 2026-10-07): the brief's planting, "a
+        # model flag raising a verdict", and ruling D's M4 -- outside LAW 1's
+        # closure, drawn "not yet proven" with its count, never a pick, and a
+        # discount priced only where it states a chance.
+        "plant_a_model_flag_raising_a_verdict",
+        "plant_m4_read_in_the_prediction_closure",
+        "plant_an_unproven_number_drawn_as_proven",
+        "plant_a_discount_priced_where_m4_cannot",
         # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second
         # set; built 2026-10-07): "Planting: a finished game's pick priced;
         # an in-play read used as a close."

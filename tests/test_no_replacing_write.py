@@ -117,8 +117,13 @@ def test_the_append_only_tables_are_the_ones_sqlite_holds_a_rule_on(tmp_path):
     # 38 (A), 2026-10-07), append-only from the day it was declared: 25 --
     # and the payouts the operator typed and confirmed in the entry check
     # (GRIDIRON_ENTRY_CHECK step 1, 2026-10-07; reading (e)), append-only
-    # likewise: 26.
-    assert len(protected) == 26
+    # likewise: 26 -- and M4's fits of how far a stat strays from the model's
+    # projection (the entry check's step 2, 2026-10-07; ruling D's "Written
+    # inactive"), append-only as model_fits and calibration_corrections are:
+    # 27.
+    assert len(protected) == 27
+    assert protected["prop_spread_fits"] == {
+        "prop_spread_fits_no_delete", "prop_spread_fits_no_update"}
     assert protected["pickem_payouts_typed"] == {
         "pickem_payouts_typed_no_delete", "pickem_payouts_typed_no_update"}
     assert protected["live_first_under_way"] == {
