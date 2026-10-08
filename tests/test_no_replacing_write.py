@@ -120,8 +120,13 @@ def test_the_append_only_tables_are_the_ones_sqlite_holds_a_rule_on(tmp_path):
     # likewise: 26 -- and M4's fits of how far a stat strays from the model's
     # projection (the entry check's step 2, 2026-10-07; ruling D's "Written
     # inactive"), append-only as model_fits and calibration_corrections are:
-    # 27.
-    assert len(protected) == 27
+    # 27 -- and the five question 26 gave the rules (ruled 2026-09-28, built
+    # 2026-09-29 on 24 and ported onto the current repair 2026-10-08):
+    # factor_scores, llm_calls and the capture history, 32.
+    assert len(protected) == 32
+    for table in ("factor_scores", "llm_calls", "injury_reports",
+                  "lineup_captures", "weather_observed"):
+        assert protected[table] == {f"{table}_no_delete", f"{table}_no_update"}
     assert protected["prop_spread_fits"] == {
         "prop_spread_fits_no_delete", "prop_spread_fits_no_update"}
     assert protected["pickem_payouts_typed"] == {

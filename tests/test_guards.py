@@ -612,6 +612,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         # the prover of the port (2026-10-08): a rule's own one row under a
         # ruled clause, run once a row of the statement firing it
         "plant_a_rules_own_insert_that_can_stop_part_way",
+        # OPERATOR QUESTION 26 (ruled 2026-09-28, built 2026-09-29): the
+        # five tables said to be append-only hold to it by rule -- a delete,
+        # an update and a replacement refused on each.
+        "plant_a_deleted_row_of_the_append_only_history",
+        "plant_an_updated_row_of_the_append_only_history",
+        "plant_a_replaced_row_of_the_append_only_history",
         # OPERATOR QUESTION 24 (ruled 2026-09-28): no recommendation moved
         # above every number given out, where a new one could be written
         # over it -- question 15's basis, applied to question 13's table.

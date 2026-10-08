@@ -2688,11 +2688,14 @@ something unparseable, writes no row, and its request is not stored. 33
 failed reasoning calls are on the ledger (read 2026-09-25). If a rejected
 answer's prompt is ever wanted, `llm.record_call` would carry the request.
 
-### `llm_calls` has no append-only triggers *(open, found by the item 4 maps, 2026-09-25)*
+### `llm_calls` has no append-only triggers *(found by the item 4 maps, 2026-09-25; CLOSED 2026-09-29 by operator question 26)*
 
 The conventions call it append-only; the schema has only its day index, and
 row 37 (`key_probe`) was written by hand. A prompt record now cites a ledger
 row by foreign key, which stops a cited row being deleted but not edited.
+(2026-09-29, question 26's prover: closed by question 26 -- `llm_calls`
+refuses a delete, any update and a replacement by rule from that date,
+"The history tables hold to their words" below; row 37 stays as written.)
 
 ### The Results "Prediction" column is outside the rendered plain-words scan *(open, found 2026-09-25)*
 
@@ -17479,7 +17482,9 @@ or LAW 3 in fact -- no shipped code does it and nothing on the record moved
 - For question 26 (next): `capture.py`'s two OR IGNORE inserts into
   `injury_reports` and `lineup_captures` are one row each, handed straight
   to `execute`; if those tables get their rules, this scan holds them as
-  they are.
+  they are. (2026-09-29, question 26: this scan does; the rules themselves
+  did not -- a rule's refusal is no conflict OR IGNORE resolves -- so the two
+  captures were rewritten plainly to the same rows: the next section.)
 
 ### PORTED ONTO THE CURRENT REPAIR (2026-10-08)
 
@@ -17693,3 +17698,489 @@ holding both ports (a dummy token; `plant_whole.txt`): 460/460 caught in
 413 seconds, 187 inside the harness's 600 (459 in 416 as handed: the one
 planting added costs about 1.4 seconds, and the run's total is within its
 own spread). The limit was not touched.
+
+## The history tables hold to their words -- built 2026-09-29 *(operator question 26, ruled 2026-09-28; docs/briefs/2026-09-28-rulings.md, placed after question 25 by the later orders of 2026-09-28 (second set) and 2026-09-29)*
+
+"Q26: each of the five tables either gets the rules or its description
+changes to what the code does; mlb_people's description changes and it joins
+the upsert register. One commit after Q24." Found by question 15's scan
+(REPAIR_STATE question 26): `factor_scores` and `llm_calls` (CLAUDE.md,
+"Append-only history"), `injury_reports`, `lineup_captures` and
+`weather_observed` ("append-only and stamped" in `schema.sql`) had no delete
+or update rule, and `mlb_people`'s comment said a row is written once while
+`mlb_loader.load_people` upserts it. CLAUDE.md's APPEND-ONLY HISTORY, BY RULE
+row says what the guard is; this is how it was decided and built. Built
+uncommitted for its prover. Evidence: the session scratchpad's `q25\q26\`.
+
+### MEASURED FIRST: WHAT THE SHIPPED CODE DOES TO EACH TABLE
+
+Every INSERT, UPDATE, DELETE, REPLACE and upsert the package, `tools/` less
+`tools/guards/` and `desktop/` can hand SQLite naming the six tables, read
+with question 15's readers (the scans' own sources), and every write whose
+table is worked out at run time (the rebuild door, the widening recovery,
+`tools/dbcopy.py`, whose target is a scratch copy and whose list holds
+`mlb_people` and none of the five):
+
+- **`factor_scores`**: ONE WRITER, an insert -- `factors.store.record_factor_score`,
+  one row, plainly, committed at once, and no caller in the shipped code
+  (the orphan register, 2026-08-31: "the scoring pass that calls it is not
+  built yet"). The rebuild door copies it whole when a newly declared sport
+  widens it (`db.WIDEN_ON_SIGHT`), before its rules are recreated from the
+  schema's text; `db._finish_widening_table` copies it back plainly from a
+  `factor_scores_narrow` an old widening left (none on the record). No
+  update, no delete, no replacement, no upsert.
+- **`llm_calls`**: ONE WRITER, an insert -- `model.llm.record_call`, one row
+  per paid call (four call sites in `llm.py`), committed at once. Read by the
+  budget (`spent_today`, `ledger_summary`), the freshness strip (`views`)
+  and `tools/reconstruct_prompts.py`; `reasoning_prompts.llm_call_id`
+  points at it. No update, no delete.
+- **`injury_reports`**: ONE WRITER, an insert -- `capture.capture_injuries`,
+  one row at a time under OR IGNORE (the key holds the stamp, so it
+  collides only on a second capture in the same second). Nothing in the
+  shipped code reads it.
+- **`lineup_captures`**: ONE WRITER, an insert -- `capture.capture_lineups`,
+  the same shape. Nothing reads it.
+- **`weather_observed`**: NO WRITER. `capture.capture_weather` stores no
+  observation by design (no observed weather source is wired in). Nothing
+  reads it.
+- **`mlb_people`**: an UPSERT -- `mlb_loader.load_people`, `INSERT ... ON
+  CONFLICT(player_id) DO UPDATE SET` the name, the two hands and the
+  position, for every player the record holds with no side and no hand
+  stored; read by `mlb_repo`'s handedness and `sports.mlb`'s names.
+
+### ON THE RECORD (read-only through `db.read_the_live_record`, 2026-09-30T00:19Z; `q26\measure_live.py`, `.txt`)
+
+- `factor_scores`: no row, no mark.
+- `llm_calls`: 1,000 rows, ids 1-1000, no gap, mark 1000; called
+  2026-08-30T18:00:04Z to 2026-09-29T22:14:50Z, never out of id order;
+  965 reasoning calls ok, 33 failed, 1 format, 1 of purpose `key_probe`
+  (no shipped code writes that purpose now -- an early hand probe, left as
+  it is).
+- `injury_reports`: 143,580 rows, rowids 1-143,580, no gap, in stamp order;
+  74 stamps, 2026-09-07T15:15:02Z to 2026-09-29T23:15:01Z.
+- `lineup_captures`: 810 rows, rowids 1-810, no gap, in stamp order; 18
+  captures, all `live`, 2026-09-05 to 2026-09-26.
+- `weather_observed`: no row.
+- `mlb_people`: 1,613 players, none with both hands unknown, `fetched_utc`
+  2026-08-30 to 2026-09-26 (20 values).
+- No half-finished widening; 268 objects.
+
+Nothing was ever removed from any of the five.
+
+### THE DECISION, TABLE BY TABLE
+
+- `factor_scores`, `llm_calls`, `injury_reports`, `lineup_captures`: the code
+  only ever inserts, so each GETS THE RULES, and its words stand, now true.
+- `weather_observed`: nothing writes it, so nothing contradicts its words;
+  it GETS THE RULES too (READINGS TAKEN, below).
+- `mlb_people`: upserted at each load, so its WORDS CHANGE -- the schema's
+  comment and `load_people`'s docstring say a cache of the source, upserted,
+  not append-only, no rule -- and it stays in `audit.UPSERTS_REGISTERED`,
+  where it has been since 2026-09-27 (in `UPSERTS_REGISTERED_ON_2026_09_27`;
+  the register only shrinks, and its reason, "names and handedness as the
+  league's API publishes them, a cache of the source", is true as it is).
+
+### MEASURED ON SCRATCH TABLES (`q26\probe_sqlite.py`, `.txt`; SQLite 3.49.1)
+
+1. A rule refusing a stored key makes a duplicate under INSERT OR IGNORE a
+   refusal, not a skip (and so under OR REPLACE and plainly); a plain insert
+   leaving out a stored key in the same statement writes nothing and raises
+   nothing.
+2. On a table with no number of its own, a rule is shown `NEW.rowid` -1 when
+   the insert names none or names NULL, and the number named otherwise (as
+   `oid`, as the text '11').
+3. The rowid of a one-row insert is worked out twice: a function answering
+   the rule NULL and the row 1 wrote over row 1; NULL then 3, over the
+   NEWEST row; a free 99 then 2, over row 2.
+4. A key column worked out by such a function is worked out once: the rule
+   sees what lands.
+5. On an AUTOINCREMENT id the same form onto the newest row lands too -- the
+   mark (3) is what tells it apart.
+6. Inside an AFTER INSERT rule the mark is the statement's starting one for
+   every row of a multi-row insert.
+7. An upsert naming a stored key meets the insert rule first; UPDATE OR
+   REPLACE, a move by rowid and one by _rowid_ meet the update rule.
+
+### BUILT
+
+- **Twenty rules** in `schema.sql`, four a table, declared after each
+  table's own text (`factor_scores` and `llm_calls` after `llm_day`; the
+  three after `weather_observed`), each refusing in the words "GRIDIRON
+  APPEND-ONLY HISTORY": `_no_delete`; `_no_update` with no column list;
+  `_never_replaced` (a stored number -- `id`, or the rowid, never -1 -- or a
+  stored primary key, the only unique key of each; `id` alone on the two
+  numbered tables, which have no other); `_never_replaced_by_the_number_written`
+  (after the insert: at or below `sqlite_sequence`'s mark, on the two
+  AUTOINCREMENT tables, or below any stored number). These tables had no rule
+  before, so a fresh build and the record run them in one order. The comments
+  hold no word that opens a declaration.
+- **The captures, plainly** (`capture.capture_injuries`,
+  `capture.capture_lineups`): `INSERT ... SELECT :values WHERE NOT EXISTS`
+  the stored key -- one statement, so no writer can come between the look
+  and the write -- where OR IGNORE was; the count `rowcount` as before.
+  Nothing else about a row read can be refused (`injury_reports` has no
+  CHECK and every column it requires is required of `injuries`, checked --
+  the name -- or given -- the sport and the stamp; `mlb_lineups` holds
+  `lineup_captures`' CHECKs and NOT NULLs, and the game is read through its
+  join), so the rows are OR IGNORE's: tested side by side against the
+  released statements (three passes, two in one second: 12, 0, 12 rows, the
+  same rows under the same rowids), `db.set_meta`'s precedent (question 15).
+- **Words**: `mlb_people`'s comment and `load_people`'s docstring (what it
+  does, the register, the record's 1,613); the history section's note in
+  `schema.sql` and `capture.py`'s docstring (append-only by rule from this
+  date); CLAUDE.md's convention line and its row.
+- **Three plantings**, `plant_a_deleted_row_of_the_append_only_history`
+  (15 forms), `plant_an_updated_row_...` (23) and `plant_a_replaced_row_...`
+  (51), each on all five tables of one world built by `db.init`: on 3c36861
+  every form taken (`q26\plant_head.txt`: 15 of 15, 23 of 23, 51 of 51),
+  here every form refused in its rule's words with the table as stored, and
+  each landing once its rule is dropped -- the forms read twice with only
+  the rule on the number written dropped -- and every writer still writing,
+  a capture repeated in the same second writing nothing
+  (`q26\plant_fix.txt`).
+- **`tests/test_append_only_history.py`**, 144 tests: 75 fail on 3c36861
+  (`q26\tests_on_head.txt`); the 69 that pass there are the 66 proofs that
+  each form lands without the rules, the capture side by side, the writers
+  writing and `load_people`'s behaviour, whose effects did not change.
+  `test_no_replacing_write.py`: the append-only set is 29 (was 24).
+  `test_rebuild.py::test_db_init_does_not_run_the_migration` held a record
+  in the eight tables' pre-migration shapes to be exactly as it was after
+  `db.init`; `db.init` now adds the four rules to its `factor_scores` (as it
+  does to any record), so the test holds every object that was there as it
+  was and names the four as the only addition -- still no table rebuilt.
+- **The rehearsal** (`q26\copy_record.py`, `rehearse.py`, `rehearse.txt`) on
+  ONE verified copy of the record (`rebuild.verified_backup`,
+  2026-09-30T00:39:42-00:40:28Z, 1.09 GB, integrity ok, 64 tables proved
+  equal): `db.init` of this tree added exactly the twenty rules (268 objects
+  to 288), changed and removed none, moved no table's checksums and no
+  sequence mark, and left 0 differences from a fresh build of this tree (an
+  empty register); a second open changed nothing. On the copy's own rows a
+  delete, an update and a replacing insert on each table holding rows were
+  refused. The new captures ran on its real tables: 735 injury rows a sport,
+  then, in the same second, none and no refusal (0.9s and 0.1s), the rowids
+  still without a gap. Question 15's scan and question 25's: none. Gate step
+  2's rows, dry, with the copy as the gate's copy (the harness answered by a
+  stub; `plant.py` run whole on its own): PASS, 106 rows. Then the copy's
+  folder was deleted (1.09 GB freed).
+- **Whole**: `plant.py` 395/395 caught (`q26\plant_whole.txt`, 541s); the
+  suite, with a dummy non-secret access token and TMP/TEMP at their
+  defaults, 2540 passed and 4 skipped (`q26\suite.txt`, 26m58s; 2396 and 4
+  on 3c36861, the 144 new tests the difference).
+
+### READINGS TAKEN *(the conservative default each time; none breaks LAW 1 or LAW 3 or makes a gate count false)*
+
+- **`weather_observed` gets the rules** though nothing writes it: "a table
+  the code only ever inserts into gets the rules" is read to cover a table
+  the code never updates or deletes, whose words say append-only; the
+  stricter reading, and the words become true before a writer arrives.
+  Reversal: drop its four rules and say "nothing writes it" in its comment.
+- **"The rules"** are the four above. The update rule refuses EVERY update
+  (none of the five has a lawful one), which also covers question 13's
+  update rule and question 24's move above the mark, so neither is written
+  separately.
+- **"Never replaced" on a table with no number of its own** reads the rowid
+  SQLite keeps and the primary key; the rule on the number written reads
+  "below any stored one" there, since SQLite keeps no mark without
+  AUTOINCREMENT (NOT SEEN, below).
+- **The writers change, not the rule**: the rule refuses a stored key under
+  any clause, as question 13's and 15's do, and the two captures leave a
+  stored key out themselves -- the same rows, the precedent of `db.set_meta`
+  and the two migration copies (question 25).
+- **The refusals' words** name the convention ("GRIDIRON APPEND-ONLY
+  HISTORY"), not a law: none of the five holds a prediction, LAW 3's word.
+
+### NOT SEEN, AND FOUND ON THE WAY *(the queue rule: none breaks LAW 1 or LAW 3 or makes a gate count false; for the re-read)*
+
+- **The newest row of `injury_reports`, `lineup_captures` or
+  `weather_observed`, replaced by a rowid read twice** (probe 3): a one-row
+  insert under OR REPLACE whose rowid answers the rules nothing and the row
+  the newest one's writes over it, and nothing stored tells it from a
+  newcomer -- SQLite keeps no mark for a table numbered without
+  AUTOINCREMENT. Every other row is held ("below any stored one"). No shipped
+  code can write it: question 15's scan refuses OR REPLACE and REPLACE on
+  these tables from this date. Closing it would be AUTOINCREMENT on the
+  three, a rebuild of each through the rebuild door and a dated migration --
+  not asked by the ruling.
+- **The injury capture files the NFL report under all five sports.**
+  `injuries` holds one report with no sport column (the NFL's, from
+  nflverse), and `capture.run` calls `capture_injuries` for every sport in
+  `config.SPORTS` with that sport's current season, so each pass writes the
+  same rows five times, labelled nfl, mlb, nba, cfb and ufc: 28,716 rows
+  under each on the record, 735 a sport on the rehearsal's pass. Nothing
+  reads `injury_reports`, and no count or gate reads it; mislabelled
+  history, left as written (append-only), for the re-read to rule how a
+  capture should name its sport.
+- A `DROP TABLE` of any of the five removes it whole with no rule run, as
+  for every table in the schema; no shipped code drops one (the rebuild door
+  drops only the table it renamed aside, after the copy is verified).
+
+### ITS PROVER (2026-09-29)
+
+Alone in the worktree, the change uncommitted as built. Scratch evidence in
+`scratchpad\q25\q26p\`: `head\` is `git archive` of 3c36861, `first\` the
+change as first built (3c36861 with the eleven files as the builder left
+them), each run with this tree's `plant.py` and test file copied in.
+
+**TRIED, AND HELD BY THE RULES AS FIRST BUILT** (`probe1.py`, `probe2.py`,
+`.txt`; SQLite 3.49.1, Python 3.12.10): a delete, and a replacing insert,
+from a temporary rule of the connection's own fired by an update of another
+table; a delete through a temporary view's INSTEAD OF rule; the same file
+attached under another name, a delete and a replacing insert through it; an
+insert of two rows under OR REPLACE whose second collides with the first; OR
+REPLACE onto a stored key with recursive rules on; an upsert doing nothing on
+a stored key (refused, as OR IGNORE is); a game deleted that the history
+points at (the key's own refusal: no action is declared on any of the five);
+and the number named twice in one insert under two of its names (`rowid` and
+`oid`, `oid` and `_rowid_`, `id` and `rowid`, either order) -- the rules and
+the row both read the last, so a stored number there is refused and a free
+one lands.
+
+**WHAT GOT PAST THE RULES AS FIRST BUILT, and is refused now** (`probe1.txt`
+section A, `probe3.py`, `probe3_first.txt`, `probe3_fix.txt`):
+
+- **THE -1 FORM.** The insert rule is shown -1 when SQLite chooses the rowid,
+  so it passes over a row stored under -1 (question 13's reason for not
+  looking it up). On a table holding no row -- each of the three with no mark
+  on a fresh build, and `weather_observed` on the record -- `INSERT INTO
+  weather_observed (rowid, ...) VALUES (-1, ...)` landed (nothing stored
+  above it), and then `INSERT OR REPLACE INTO weather_observed (rowid, ...)
+  VALUES (-1, <another game and stamp>)` wrote over it: a plain number, read
+  once, no function of the connection's own. The same on `injury_reports`
+  and `lineup_captures`; with a row above -1 stored, the second was already
+  refused ("below any stored one"). FIXED IN THE RULE, not by a list: each of
+  the three's `_never_replaced_by_the_number_written` also refuses a row
+  landing under -1 (`WHEN NEW.rowid = -1 OR ...`, the refusal "never below one
+  and never under -1"), so no stored row is ever under the one number the
+  insert rule cannot look up. The narrowest refusal that closes it: any other
+  number below 1 is looked up like any other. On `factor_scores` and
+  `llm_calls` nothing got through and nothing changed: AUTOINCREMENT writes
+  the mark at 0 for a first row named -5, -1 or 0 (measured), so -1 is at or
+  below it. No writer names a rowid; on the record the three tables' rowids
+  run from 1.
+
+**EACH PART NEUTRALISED IN A COPY** (`neutralise.py`, `neutralise_1.txt`
+before the change below, `neutralise_2.txt` after): 38 parts -- each of the
+twenty rules dropped; on the three tables with no mark the insert rule's
+rowid clause and its key clause, and the rule on the number written's -1
+clause and its "below any stored one"; on the two numbered tables the rule on
+the number written's mark clause and its "below any stored one"; and each
+capture put back to the released OR IGNORE -- the schema's text written to a
+scratch file `db.SCHEMA_PATH` was pointed at, or the released function put
+back in the process, and the three plantings run. With the rules as first
+built 36 of 38 let a planting escape: on the two numbered tables "below any
+stored one" was proved by no form, since the mark alone refused every one.
+The replace planting now also sets the mark back to 0, or removes its row
+from the sequence store, by a statement first, then writes a number read as
+nothing to the rules and row 1's to the row (question 24's shape): that
+clause alone holds it. Now 38 of 38 let a planting escape, and the tree is
+caught.
+
+**THE PLANTINGS** (`run_plantings.py`; `plant_head.txt`, `plant_first.txt`,
+`plant_fix.txt`): the delete planting 15 forms, the update planting 23, the
+replace planting 60 (the builder's 51, the -1 form on each of the five tables
+held empty, and the mark set back or removed on each numbered table). On
+3c36861: 15 of 15, 23 of 23, 60 of 60 taken. On the change as first built:
+the delete and update plantings caught, the replace planting ESCAPED (3 of 60
+taken: the -1 form on the three tables with no mark). Here: all three caught,
+and each form lands once its rule is dropped.
+
+**THE TESTS** (`tests_head.txt`, `tests_first.txt`, `tests_fix.txt`):
+`test_append_only_history.py` has 158 (the builder's 144 and fourteen:
+`::test_no_row_under_minus_one_is_ever_written_over` on the five tables, its
+proof `::test_the_minus_one_form_writes_over_a_row_without_the_rule_on_the_number_written`
+on the five, and `::test_with_the_mark_moved_a_row_below_the_newest_is_still_held`
+on the two numbered tables, the mark set back and removed). All 158 pass
+here; 84 fail on 3c36861 (the builder's 75 and nine); 3 fail on the change
+as first built (the -1 form on the three tables with no mark).
+
+**NOT SEEN, WIDENED** (above): the newest row of the three tables with no
+mark, replaced by a rowid read twice, needs no function of the connection's
+own -- `INSERT OR REPLACE INTO weather_observed (rowid, ...) VALUES (CASE WHEN
+random() % 2 = 0 THEN NULL ELSE 3 END, ...)` wrote over the newest row 13 and
+19 times in 64 on two runs (`probe1.txt`, section I): plain SQL a session
+could type. Still no shipped code can write it (question 15's scan refuses
+the clause on these tables).
+
+**FOUND, NOT A REPLACEMENT** *(the queue rule: breaks neither LAW 1 nor LAW 3
+and makes no gate count false; for the re-read)*: a row named at the largest
+rowid, 9223372036854775807 -- lawful by the rules, above every stored one --
+makes SQLite number every later row of a table with no mark at random, below
+it, so the rule on the number written refuses every later insert, and every
+capture after it would fail, loudly and by name (measured on
+`weather_observed`: three inserts after it refused, `probe1.txt` section C;
+without the rules the next landed, `probe4.txt`). On a table with
+AUTOINCREMENT the same number stops every later insert anyway ("database or
+disk is full"), rule or none (`probe4.txt`). No writer names a number;
+the conservative default of question 13 ("a free number below one given out
+is refused too"), left as it is.
+
+**THE REHEARSAL, AGAIN** (`copy_record.py`, `rehearse.py`, `copy.txt`,
+`rehearse.txt`), on ONE fresh verified copy of the record
+(`rebuild.verified_backup`, 2026-09-30T01:57:14-01:57:59Z, 1.09 GB,
+integrity ok, 64 tables proved equal): `db.init` of this tree added exactly
+the twenty rules (268 objects to 288), each a fresh build's text, and
+changed and removed none; no table's checksums and no sequence mark moved;
+0 differences from a fresh build of this tree with an empty register; a
+second open changed nothing. On the copy's own rows each table's delete,
+update and replacing insert were refused; the -1 form was refused on all
+five (the empty `factor_scores` took a first row under -1 and refused its
+replacement by the mark, the empty `weather_observed` refused both); on
+`llm_calls`, the mark set back to 0 or its row removed, then row 1 read
+twice: refused; nothing moved. The captures wrote 735 rows a sport, then
+none in the same second, raising nothing, the rowids still without a gap.
+Question 15's scan and question 25's: none; `audit.prose_reaching_the_raw_side()`:
+none. Gate step 2's rows, dry, `GRIDIRON_VERIFYING` set and the copy the
+gate's copy (the harness answered by a stub; `plant.py` run whole on its
+own): PASS, 106 rows (434s). Then the copy's folder was deleted (1.09 GB
+freed); no `.db` file remains under `scratchpad\q25`.
+
+**WHOLE**: `plant.py` 395/395 caught (`plant_whole.txt`, 712s; the prover
+added forms, not plantings).
+
+### PORTED ONTO THE CURRENT REPAIR (2026-10-08)
+
+Built and proved on 2026-09-29 and never committed: the run was stopped for
+the wrong-side fix before its commit, and the change was held as the WIP
+commit 72c90bd on `q26-held` for the order of 30 September (the START HERE
+lines of 29 September said "committed locally", which it was not; corrected
+there). Its content was applied onto `repair` after question 25's port, at
+208dc95 (Q46 released). One conflict:
+`test_no_replacing_write.py::test_the_append_only_tables_are_the_ones_sqlite_holds_a_rule_on`
+counted 27 tables on the current tree and 29 on the held one; it counts 32
+now -- the 27 and the five -- and keeps the three tables' rules named since.
+The writers of the five are as they were on bd90dc3, but for the lineup
+capture's start read as an instant (question 35, 2026-10-01), which the held
+change merged with as it stands. Evidence in the session scratchpad's
+`q2526\`.
+
+**MEASURED AGAIN, ON ONE VERIFIED COPY OF THE RECORD** (`copy_record.py`,
+`copy.txt`: `rebuild.verified_backup`, 2026-10-08T13:42:06Z to 13:43:01Z,
+1.17 GB, integrity ok, 67 tables proved equal; `measure_q26.py`,
+`measure_q26.txt`, read through `db.read_only`). What moved since 29
+September:
+
+- `factor_scores`: still no row, no mark.
+- `llm_calls`: 1,505 rows (1,000), ids 1-1505 with no gap, mark 1505,
+  called 2026-08-30T18:00:04Z to 2026-10-07T18:06:08Z, never written out of
+  id order; 505 since the held rehearsal.
+- `injury_reports`: 370,145 rows (143,580), rowids 1-370,145 with no gap, in
+  stamp order, the last at 2026-10-08T11:15:02Z; 74,029 under each of the
+  five sports -- the NFL report filed five times, as found on 29 September
+  (NOT SEEN, AND FOUND ON THE WAY, above), still so.
+- `lineup_captures`: 810 rows, unchanged (none since 26 September:
+  baseball's season ended on the 27th), rowids 1-810 with no gap.
+- `weather_observed`: no row.
+- `mlb_people`: 1,613 players, none with both hands unknown, unchanged (last
+  fetched 2026-09-26).
+- NO STORED ROW ANY OF THE TWENTY RULES WOULD HAVE REFUSED had it been in
+  place: none under 1, none written after a row under a higher number (read
+  by its stamp), no key stored twice.
+- The record holds 283 objects (268 on 29 September).
+
+**THE REHEARSAL** (`rehearse_q26.py`, `rehearse.txt`), on a scratch copy of
+that copy made through `db.back_up` (never the record): `db.init` of this
+tree added exactly the twenty rules (283 objects to 303), changed and
+removed none, moved no table's checksums and no sequence mark, and left 0
+differences from a fresh build of this tree (an empty register); a second
+open changed nothing. On the copy's own rows: `llm_calls`' newest (1505),
+`injury_reports`' (370,145) and `lineup_captures`' (810) each refused a
+delete, an update and a replacing insert, nothing moved;
+`factor_scores` and `weather_observed` hold no row to try (the test worlds
+hold them). The captures, the clock held at 2026-10-08T12:00:00Z: 1,275
+injury rows a sport, then none in the same second, raising nothing (the
+NFL report has grown since 29 September's 735); no lineup to capture. The
+scratch copy was deleted at 13:44:56Z. Question 15's scan and question 25's
+named nothing. GATE STEP 2'S ROWS, DRY, on the verified copy brought to this
+tree as the gate brings its own (`verify._bring_the_copy_to_this_tree`: 109
+seconds), the harness stood down (`plant.py` run whole apart) and never
+`.env`: 130 rows, all PASS, in 310 seconds -- question 25's among them.
+THE COPY'S FOLDER WAS DELETED at 2026-10-08T13:50:18Z (1.17 GB freed; no
+`-wal` or `-shm` left beside it, and no `.db` file under
+`scratchpad\q2526`).
+
+**THE REGISTER** ("mlb_people's description changes and it joins the upsert
+register"): `mlb_loader.load_people`'s upsert of `mlb_people` is in
+`audit.UPSERTS_REGISTERED` and in `UPSERTS_REGISTERED_ON_2026_09_27`, the
+register as frozen on 2026-09-27 (35 entries each, unchanged), with its
+reason "names and handedness as the league's API publishes them, a cache of
+the source". It joined on 2026-09-27, the day before the ruling, so the
+ruling is met by the entry as it stands: nothing is added, and the freeze's
+"may only shrink" is not stretched.
+
+**THE PLANTINGS**: the three, run with this tree's `plant.py` inside `git
+archive` of 208dc95 (`q26_plant_head.txt`): 15 of 15, 23 of 23 and 60 of 60
+forms taken, each ESCAPING; here each CAUGHT (`q26_plant_build.txt`), about
+0.2 seconds together.
+
+**THE TESTS**: `test_append_only_history.py`, 158, all passing; on 208dc95
+84 fail (`t_q26_head_rA.txt`) -- the 74 that pass there are the 66 proofs
+that each form lands without the rules, the five that the -1 form writes
+over a row without the rule on the number written, the capture side by
+side, the writers writing and `load_people`'s behaviour, as on 3c36861.
+`test_no_replacing_write.py` counts 32 append-only tables;
+`test_rebuild.py::test_db_init_does_not_run_the_migration` names the four
+rules on `factor_scores` as `db.init`'s only addition, as held.
+
+**WORDS**: `schema.sql`'s three notes (the history tables, `factor_scores`
+and `llm_calls`, `mlb_people`) and `load_people`'s docstring keep their
+figures of 29 September and add today's; CLAUDE.md's row, its convention
+line and REPAIR_STATE say what moved.
+
+### ITS PROVER (2026-10-08, the port)
+
+Alone in the worktree, with question 25's prover ("The rules stay on", THE
+PROVER OF THE PORT, above); evidence in `scratchpad\q2526\prove\`. NO
+DEFECT OF THE CHANGE FOUND.
+
+- **EACH OF THE FIVE REFUSES AN EDIT, A DELETE AND A REPLACING WRITE, AS
+  RULED.** The three plantings' 98 forms, each TAKEN on 208dc95 (this
+  tree's `plant.py` inside `git archive` of it, `plant_head.txt`: 15 of 15,
+  23 of 23 and 60 of 60) and REFUSED here (`plant_build.txt`). And 18 forms
+  more on a fresh build of this tree (`probe_q26.py`, `probe_q26.txt`),
+  each refused: a stored rowid named as the text '3', as 3.0 and as ' 3'
+  under OR REPLACE; a stored key with its season and week given as text and
+  as reals; an upsert on the stored key; the table inserted into itself,
+  plainly and under OR REPLACE; REPLACE naming rowid 1; -1 under OR REPLACE
+  on a table holding rows; UPDATE OR IGNORE; a delete of every row; and on
+  `llm_calls` OR REPLACE naming `(SELECT max(id))` and 2.0, a number below
+  every one (-5), and UPDATE OR REPLACE onto another's number. A row SQLite
+  numbers, and a number named above the mark, land. On the empty
+  `factor_scores` a first row named -1 lands -- it replaces nothing, and the
+  record holds no factor score -- and SQLite writes the mark at 0, so OR
+  REPLACE naming -1 after it is refused, as the build's prover measured.
+- **mlb_people's words are what the code does**: `load_people` read line by
+  line -- it asks for the players stored with no batting side and no
+  throwing hand, upserts each answer (name, sides and position overwritten,
+  `fetched_utc` as first written), and no rule is on the table -- as
+  `schema.sql` and its docstring now say. Its entry is in
+  `audit.UPSERTS_REGISTERED` and `UPSERTS_REGISTERED_ON_2026_09_27` (35
+  and 35): "joins the upsert register" is met by the entry as it stands;
+  nothing is added, and the freeze is read as written.
+- **THE APPEND-ONLY COUNT**: question 15's set, read from a fresh build, is
+  32 -- the 27 of today and the five (`test_no_replacing_write.py`).
+- **ON ONE VERIFIED COPY OF THE RECORD OF ITS OWN** (the build's three
+  scripts run unchanged, detached: `rec_copy.txt`, `rec_measure.txt`,
+  `rec_rehearse.txt`): `rebuild.verified_backup`, 2026-10-08T15:00:43Z to
+  15:01:38Z, 1.17 GB, integrity ok, 67 tables proved equal, read through
+  `db.read_only`. `llm_calls` 1,506 (one call more than the build's copy, at
+  15:00:04Z), ids 1-1506 with no gap, mark 1506; `injury_reports` 370,145,
+  `lineup_captures` 810, `factor_scores` and `weather_observed` none,
+  `mlb_people` 1,613, none with both hands unknown -- no stored row any of
+  the twenty rules would have refused. `db.init` of this tree on a scratch
+  copy of it (deleted at 15:03:15Z): exactly the twenty rules, 283 objects
+  to 303, none changed or removed, no table's checksums and no sequence mark
+  moved, 0 differences from a fresh build, a second open changing nothing;
+  the newest rows (`llm_calls` 1506, `injury_reports` 370,145,
+  `lineup_captures` 810) each refused a delete, an update and a replacing
+  insert; the captures 1,275 rows a sport, then none in the same second.
+  Both scans named nothing. GATE STEP 2'S ROWS, DRY, on the copy brought to
+  this tree (migrated in 102 seconds), the harness stood down, never
+  `.env`: 130 rows, all PASS, in 309 seconds, question 25's among them. THE
+  COPY'S FOLDER WAS DELETED at 2026-10-08T15:08:35Z (1.17 GB freed; no
+  `-wal` or `-shm` left, and no `.db` under `scratchpad\q2526`).
+- **WHOLE, WITH QUESTION 25'S PORT AND ITS PROVER'S FIX**: `plant.py`
+  460/460 caught in 413 seconds (detached, a dummy token; 187 inside the
+  harness's 600). The full suite, detached (a dummy non-secret token,
+  TMP/TEMP at their defaults; `suite_prove.txt`), its first run: 3,229
+  passed, 4 skipped, 0 failed, in 1,611 seconds -- the build's 3,210 and
+  question 25's prover's 19. `audit.prose_reaching_the_raw_side()` [].

@@ -421,7 +421,18 @@ def test_db_init_does_not_run_the_migration(tmp_path, plant, tool):
     db.open_db(path).close()
     conn = db.read_only(path, "the record after this tree's db.init")
     try:
-        assert _master(conn) == before
+        # WHAT db.init DOES ADD, AND ONLY THAT (2026-09-29, operator question
+        # 26): the four rules on `factor_scores` -- one of the eight tables,
+        # held here in the shape the record had before the migration -- which
+        # `db.init` brings to a record whatever the table's shape, as it
+        # brought question 13's and 15's rules. Every object that was there
+        # is as it was, so no table was rebuilt: the migration did not run.
+        after = _master(conn)
+        assert [row for row in after if row in before] == before
+        assert sorted(row[1] for row in after if row not in before) == sorted(
+            f"factor_scores_{kind}" for kind in (
+                "no_delete", "no_update", "never_replaced",
+                "never_replaced_by_the_number_written"))
     finally:
         conn.close()
 

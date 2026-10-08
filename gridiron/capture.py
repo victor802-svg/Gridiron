@@ -17,6 +17,10 @@ WHAT THIS MODULE DOES. It writes the same information a second time, stamped
 and append-only, into tables that exist only to hold history. Nothing here
 replaces a current-state row: `injuries`, `mlb_lineups` and
 `weather_forecasts` keep their shape and remain what the factors read.
+(Append-only in words until 2026-09-29; from then by rule -- operator
+question 26: `injury_reports`, `lineup_captures` and `weather_observed`
+refuse a delete, any update and a replacement, and the two writers below
+leave out a capture already stored themselves.)
 
 LOUD ON EMPTY. A capture that stores nothing says so and is recorded as a
 failure. A silent zero here is the exact failure mode that let a resolver run
@@ -62,19 +66,35 @@ def capture_injuries(conn: sqlite3.Connection, sport: str) -> int:
     for row in rows:
         if not row["player_name"]:
             continue
-        # INSERT OR IGNORE IS RIGHT HERE AND NOWHERE ELSE. The primary key
-        # includes the capture time, so the only way this collides is two
-        # captures inside the same second -- which is a duplicate of the same
-        # observation, not a rejected row. Everywhere else in this project an
-        # OR IGNORE would hide a constraint failure, which is why it is
-        # explained rather than merely used.
+        # A CAPTURE ALREADY STORED IS LEFT OUT, PLAINLY (2026-09-29, operator
+        # question 26). The primary key includes the capture time, so the
+        # only way this collides is two captures inside the same second --
+        # a duplicate of the same observation, not a rejected row. Until
+        # this date INSERT OR IGNORE skipped it. From this date the table's
+        # rules refuse any insert naming a stored key whatever its conflict
+        # clause (a rule cannot see one; measured: a duplicate under OR
+        # IGNORE is refused), so the insert leaves out a row whose key is
+        # stored, in the same statement: the same rows under the same rowids
+        # as OR IGNORE wrote, because nothing else about a row read here can
+        # be refused (every column the table requires is required of
+        # `injuries`, checked just above -- the name -- or given here -- the
+        # sport and the stamp -- and it has no CHECK) -- tested side by side
+        # (tests/test_append_only_history.py).
         cur = conn.execute(
-            "INSERT OR IGNORE INTO injury_reports (sport, season, week, team,"
+            "INSERT INTO injury_reports (sport, season, week, team,"
             " player_name, player_id, position, report_status,"
-            " practice_status, captured_utc) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (sport, row["season"], row["week"], row["team"],
-             row["player_name"], row["player_id"], row["position"],
-             row["report_status"], row["practice_status"], stamp))
+            " practice_status, captured_utc)"
+            " SELECT :sport, :season, :week, :team, :player_name, :player_id,"
+            "        :position, :report_status, :practice_status, :stamp"
+            "  WHERE NOT EXISTS (SELECT 1 FROM injury_reports"
+            "   WHERE sport = :sport AND season = :season AND week = :week"
+            "     AND team = :team AND player_name = :player_name"
+            "     AND captured_utc = :stamp)",
+            {"sport": sport, "season": row["season"], "week": row["week"],
+             "team": row["team"], "player_name": row["player_name"],
+             "player_id": row["player_id"], "position": row["position"],
+             "report_status": row["report_status"],
+             "practice_status": row["practice_status"], "stamp": stamp})
         written += cur.rowcount if cur.rowcount > 0 else 0
     conn.commit()
     return written
@@ -101,12 +121,25 @@ def capture_lineups(conn: sqlite3.Connection) -> int:
     stamp = utcnow()
     written = 0
     for row in rows:
+        # A CAPTURE ALREADY STORED IS LEFT OUT, PLAINLY (2026-09-29, operator
+        # question 26), as in `capture_injuries` above and for its reason:
+        # the table's rules refuse an insert naming a stored key under any
+        # conflict clause, so OR IGNORE would have made a second capture in
+        # the same second a refusal. The same rows under the same rowids:
+        # `mlb_lineups` requires every column this table does and holds the
+        # same CHECKs on side and slot, and the game is read through its join
+        # to `games`, so nothing else about a row read here can be refused.
         cur = conn.execute(
-            "INSERT OR IGNORE INTO lineup_captures (game_id, side, slot,"
+            "INSERT INTO lineup_captures (game_id, side, slot,"
             " player_id, player_name, captured_utc, source)"
-            " VALUES (?,?,?,?,?,?,'live')",
-            (row["game_id"], row["side"], row["slot"], row["player_id"],
-             row["player_name"], stamp))
+            " SELECT :game_id, :side, :slot, :player_id, :player_name,"
+            "        :stamp, 'live'"
+            "  WHERE NOT EXISTS (SELECT 1 FROM lineup_captures"
+            "   WHERE game_id = :game_id AND side = :side AND slot = :slot"
+            "     AND captured_utc = :stamp)",
+            {"game_id": row["game_id"], "side": row["side"],
+             "slot": row["slot"], "player_id": row["player_id"],
+             "player_name": row["player_name"], "stamp": stamp})
         written += cur.rowcount if cur.rowcount > 0 else 0
     conn.commit()
     return written

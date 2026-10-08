@@ -541,10 +541,27 @@ def load_people(conn: sqlite3.Connection, *, progress=None) -> int:
     """Handedness for every player the record holds, in batches.
 
     Batting side and throwing hand are the platoon-split factor's only inputs
-    and they never change, so a player is fetched once and never again. Missing
-    players are left missing: a NULL here makes the platoon factor ABSENT for
-    that matchup, which is the correct reading of "we do not know which way he
-    bats" and is not the same as a neutral matchup.
+    and they never change, so a player stored with either is not asked for
+    again. Missing players are left missing: a NULL here makes the platoon
+    factor ABSENT for that matchup, which is the correct reading of "we do not
+    know which way he bats" and is not the same as a neutral matchup.
+
+    A CACHE OF THE SOURCE, UPSERTED AT EACH LOAD, NOT APPEND-ONLY (operator
+    question 26, ruled 2026-09-28: "mlb_people's description changes"; these
+    words 2026-09-29, where this said "a player is fetched once and never
+    again" and the schema "a row is written once"). What it does: each load
+    asks the league's API -- through `sources.fetch`, which keeps each answer
+    by address and serves it again for the same batch -- for every player
+    the record holds that `mlb_people` has no batting side and no throwing
+    hand for, and upserts each person returned: a new player is inserted, and
+    a stored one (a row with both unknown) has its name, sides and position
+    overwritten from the answer, its `fetched_utc` left as first written.
+    No rule refuses the update or a delete, and the upsert is registered in
+    `audit.UPSERTS_REGISTERED` as a cache of the source (2026-09-27; the
+    register only shrinks). On the record on 2026-09-29: 1,613 players, none
+    with both unknown, so a load writes only players new to the record; the
+    same on 2026-10-08, read again when question 26 was ported onto the
+    current repair.
     """
     wanted = [
         int(r["pid"])

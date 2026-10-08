@@ -12,6 +12,67 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q26 PROVED (2026-10-08 ~14:45-16:00Z, the port's prover; COMMITTED
+  LOCALLY on `repair`, the second of two commits on 208dc95, after Q25's;
+  not pushed, for the gate; FOLLOWUPS "The history tables hold to their
+  words", ITS PROVER):** NO DEFECT OF THE CHANGE FOUND. Each of the five
+  refuses a delete, an update and a replacing write as ruled: the
+  plantings' 98 forms, each taken on 208dc95 and refused here, and 18 forms
+  more on a fresh build (a rowid named as text, as a real or padded; a
+  key's values as text or reals; an upsert; the table inserted into itself;
+  -1 on a table holding rows; a delete of every row; UPDATE OR IGNORE and
+  UPDATE OR REPLACE), each refused. `mlb_people`'s words are what
+  `load_people` does, and its entry stands in the register frozen on
+  2026-09-27 (35 and 35), nothing added. The append-only count is 32. ON
+  ONE VERIFIED COPY OF ITS OWN (`rebuild.verified_backup`, 15:00:43Z to
+  15:01:38Z, integrity ok, 67 tables proved equal; DELETED
+  2026-10-08T15:08:35Z, 1.17 GB, nothing left beside it): `llm_calls`
+  1,506, the rest as the build measured, and no stored row the twenty rules
+  would have refused; `db.init` of this tree on a scratch copy of it
+  (deleted 15:03:15Z): exactly the twenty rules (283 objects to 303), no
+  checksum or sequence mark moved, 0 differences from a fresh build; gate
+  step 2 dry on the copy, the harness stood down: 130 rows PASS in 309 s.
+  WHOLE, both ports and the prover's fix: `plant.py` 460/460 caught in 413
+  s (detached, a dummy token; inside the harness's 600 s); the suite
+  (detached, its first run) 3,229 passed, 4 skipped, 0 failed, in 1,611 s;
+  `audit.prose_reaching_the_raw_side()` []. No page draws anything new
+  (nothing rendered). No question put; nothing joins the queue. **Next: the
+  gate and the release of both commits; then Q5.**
+  **Q26 PORTED (2026-10-08 ~13:10-14:40Z, on 208dc95 -- Q46 released as
+  e09447f; UNCOMMITTED for its prover, beside Q25's port; FOLLOWUPS "The
+  history tables hold to their words", PORTED; CLAUDE.md row "APPEND-ONLY
+  HISTORY, BY RULE"):** the content of `q26-held` (72c90bd, the WIP commit
+  of 29 September -- built and proved, never committed; the lines below
+  that said "committed locally" are corrected) applied after Q25's port;
+  one conflict, the append-only count (27 on this tree, 32 with the five).
+  As ruled and built: all five tables get the rules (twenty, refusing in
+  "GRIDIRON APPEND-ONLY HISTORY"), the two captures insert plainly to the
+  rows OR IGNORE wrote, `mlb_people`'s words say it is upserted at each
+  load, and its upsert stays in the register frozen on 2026-09-27 (35, as
+  frozen): it joined the day before the ruling, so nothing is added and the
+  freeze is not stretched. MEASURED AGAIN on ONE verified copy of the
+  record (`rebuild.verified_backup`, 13:42:06Z to 13:43:01Z, integrity ok,
+  67 tables proved equal; DELETED 2026-10-08T13:50:18Z, nothing left
+  beside it): `llm_calls` 1,505 (1,000 on 29 September), `injury_reports`
+  370,145 (143,580; the NFL report under all five sports, 74,029 each, as
+  found then), `lineup_captures` 810, `factor_scores` and
+  `weather_observed` none, `mlb_people` 1,613 -- no gap, and no stored row
+  any of the twenty rules would have refused; `db.init` of this tree on a
+  scratch copy of it (deleted 13:44:56Z): exactly the twenty rules (283
+  objects to 303), no checksum or sequence mark moved, 0 differences from a
+  fresh build, a second open changing nothing; each table's newest row
+  refused a delete, an update and a replacing insert; the captures 1,275
+  rows a sport, then none in the same second. Gate step 2, dry on the copy
+  brought to this tree, the harness stood down: 130 rows PASS in 310 s.
+  Plantings: the three ESCAPE on 208dc95 (15, 23, 60 forms taken) and are
+  CAUGHT here (0.2 s); `test_append_only_history.py` 158, 84 failing on
+  208dc95. WHOLE, with Q25's port: `plant.py` 459/459 caught in 416 s
+  (detached, a dummy token; inside the harness's 600 s); the suite
+  (detached, its first run) 3,210 passed, 4 skipped, 0 failed, in 1,604 s.
+  No page draws anything new (nothing rendered). No question put; nothing
+  joins the queue. **Next: its prover; then two commits, Q25 with Q29 then
+  Q26 (the split in the prover's hand: `scratchpad\q2526\q25.patch`,
+  `q26.patch`), the gate and the release; then Q5.**
   **Q25 WITH Q29 PROVED (2026-10-08 ~14:45-16:00Z, the port's prover;
   COMMITTED LOCALLY on `repair`, the first of two commits on 208dc95, not
   pushed, for the gate; FOLLOWUPS "The rules stay on", THE PROVER OF THE
@@ -55,12 +116,8 @@
   read once over the shipped package and every planting's copies; the
   limit not widened. The eight plantings ESCAPE on 208dc95 and are CAUGHT;
   `test_rules_stay_on.py` 375 (163 new, the read-once tests), 345 failing
-  on 208dc95. No schema change from this part. Gate step 2's rows, dry on
-  one verified copy of the record made for both ports (Q26's lines have
-  it), PASS, this scan's among them; `plant.py` whole and the suite were
-  run on the tree holding both ports (Q26's lines). No question put;
-  nothing joins the queue. **Next: Q26, its own commit; then the gate and
-  the release.**
+  on 208dc95. No schema change from this part. Gate step 2's row PASS on
+  the verified copy (above). No question put; nothing joins the queue.
   **Q46 PROVED (2026-10-08 ~11:15-12:30Z; ONE LOCAL COMMIT on `repair`
   holding exactly the change's files, not pushed, for its gate; FOLLOWUPS
   "The band line above the slate is one category's", THE PROVER):** NO DEFECT
@@ -1664,6 +1721,59 @@
   text past its no-update rule, and a backup written into a database file
   replaced every page with no rule run; and the roster scan (released)
   misses its own holder looked up by a string in pieces.
+  **Q26 BUILT (2026-09-29), NOT COMMITTED -- left in the worktree for its
+  prover, on top of Q25's local commit 3c36861:** measured first, table by
+  table (the shipped code with question 15's readers; the record read-only
+  through `db.read_the_live_record`): the code only ever INSERTS into
+  `factor_scores` (`store.record_factor_score`, no caller yet; 0 rows),
+  `llm_calls` (`llm.record_call`; 1,000 rows, ids 1-1000, no gap),
+  `injury_reports` and `lineup_captures` (the two captures, one row at a
+  time under OR IGNORE; 143,580 and 810 rows, no gap) and writes nothing to
+  `weather_observed` (0 rows); nothing updates or deletes any of them. SO ALL
+  FIVE GOT THE RULES and their words stand, now true: twenty triggers, four
+  a table (no delete; no update, naming no columns; an insert naming a
+  stored number or primary key; the number written, read after it lands),
+  refusing as "GRIDIRON APPEND-ONLY HISTORY"; the append-only set is 29.
+  The captures' OR IGNORE would have been refused by the rule on a second
+  capture in the same second, so both now insert plainly and leave a stored
+  key out in the same statement -- the same rows, tested side by side.
+  `mlb_people` (upserted by `load_people` at each load) got words saying so
+  in `schema.sql` and the docstring, and stays in the upsert register (there
+  since 2026-09-27). Rehearsed on one verified copy (00:40Z): exactly the
+  twenty rules, no checksum or mark moved, 0 differences; gate step 2's rows
+  PASS; the copy deleted. Three plantings (15, 23, 51 forms), each escaping
+  on 3c36861 and caught; 144 tests, 75 failing on 3c36861; `plant.py` whole
+  395/395; the suite 2540 passed, 4 skipped. Readings below
+  ("Rulings taken in your absence (2026-09-29, Q26)"); FOLLOWUPS, "The
+  history tables hold to their words" (with two findings for the re-read:
+  the newest row of the three rowid tables replaced by a rowid read twice,
+  which no rule sees and no shipped code can write, and the injury capture
+  filing the NFL report under all five sports).
+  **Q26 PROVED (2026-09-29); NOT COMMITTED** (corrected 2026-10-08: these
+  lines said "and committed locally on `repair` (one commit, 'Q26: five
+  tables get their rules or true words; mlb_people's words say what the
+  code does')", written before the run was stopped for the wrong-side fix;
+  the change was set aside uncommitted, then held on `q26-held` as the WIP
+  commit 72c90bd for the order of 30 September, and ported 2026-10-08 --
+  START HERE). Its prover got one form
+  past the rules as first built, within the ruling's words, and closed it:
+  THE -1 FORM -- the insert rule is shown -1 when SQLite chooses a rowid, so
+  on a table holding no row (the three with no mark on a fresh build;
+  `weather_observed` on the record) a first row named -1 landed and a
+  one-row OR REPLACE naming -1, a plain number, wrote over it; the rule on
+  the number written now refuses a row landing under -1 on those three
+  (`factor_scores` and `llm_calls` were held by SQLite's mark, measured).
+  Each of the change's 38 parts, neutralised in a copy, now lets a planting
+  escape (as first built, the numbered tables' "below any stored one" was
+  proved by no form: the replace planting now moves the mark first,
+  question 24's shape). The replace planting 60 forms (51 and nine), escaping
+  on 3c36861 and on the change as first built and caught; 158 tests (84 fail
+  on 3c36861, 3 on the change as first built). For the re-read (FOLLOWUPS,
+  "ITS PROVER", by the queue rule): the newest row read twice needs only the
+  built-in `random()`, in plain SQL; and a row named at the largest rowid
+  makes every later capture refused, loudly (no writer names a number).
+  Rehearsed again on a fresh verified copy; the evidence is in the
+  scratchpad's `q25\q26p\`.
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
@@ -2644,6 +2754,16 @@ depend on the answer.
     **RULED 2026-09-28:** each of the five gets the rules or words
     saying what the code does; mlb_people's words change and it joins
     the upsert register; one commit.
+    **BUILT 2026-09-29 (START HERE has it):** the code only inserts into
+    four of the five and writes nothing to the fifth, so all five got the
+    rules; mlb_people's words say it is upserted at each load, and its
+    upsert stays registered. **PROVED the same day** (its prover closed
+    the -1 form on the three tables with no mark), and held uncommitted on
+    `q26-held` (72c90bd, WIP) for the order of 30 September -- not
+    "committed locally", as these lines said until 2026-10-08. **PORTED
+    2026-10-08 onto the current repair (START HERE has it); PROVED the same
+    day, no defect found, and COMMITTED LOCALLY, after question 25's
+    commit.**
 27. **Sixteen NFL week-3 reasoning totals stand on their early pass, written
     after their final pass. (Found by Q15's measurement.)** `final:nfl` run
     2052 wrote the finals on 23 September at 19:30Z; `predict:nfl` run 2336
@@ -3291,6 +3411,27 @@ depend on the answer.
     absence (2026-10-08, Q46)"), uncommitted for its prover. PROVED the same
     day (Q46 PROVED, START HERE): no defect found, one local commit for its
     gate.**
+
+## Rulings taken in your absence (2026-10-08, the Q26 port)
+
+Each the conservative default or a precedent, reversible in a line; none
+breaks LAW 1 or LAW 3 or makes a gate count false (FOLLOWUPS, "The history
+tables hold to their words", PORTED, has each in full).
+- **"It joins the upsert register" is met by the entry frozen on
+  2026-09-27.** `mlb_loader.load_people`'s upsert of `mlb_people` is in
+  `audit.UPSERTS_REGISTERED` and in `UPSERTS_REGISTERED_ON_2026_09_27` (35
+  each, unchanged) -- it joined the day before the ruling, which the
+  question itself said ("registered as a cache"). Nothing is added, so the
+  freeze's "may only shrink" is read as written, not stretched (the held
+  build's reading, kept). Were an addition needed, it would be the
+  operator's question.
+- **The held lines saying Q26 was "committed locally" are corrected**, not
+  left: it was set aside uncommitted when the run stopped for the
+  wrong-side fix and held as the WIP commit 72c90bd (whose own message says
+  so). The correction says what the lines said.
+- **The record's figures in the words** (`schema.sql`'s three notes,
+  `load_people`'s docstring) keep 29 September's and add 2026-10-08's, so
+  neither is rewritten.
 
 ## Rulings taken in your absence (2026-10-08, the Q25 + Q29 port)
 
@@ -3964,6 +4105,39 @@ ranked by edge, never by chance"); each reversible in a line or two.
   neither, sets the word aside as it sets the ruled set to its own. After
   the release: the tool dry through the read-only door, then `--write
   --live`.
+
+## Rulings taken in your absence (2026-09-29, Q26)
+
+Each the conservative default, reversible in a line; none breaks LAW 1 or
+LAW 3 or makes a gate count false (FOLLOWUPS, "The history tables hold to
+their words", READINGS TAKEN, has each in full).
+- **`weather_observed` gets the rules** though nothing writes it: its words
+  say append-only and nothing contradicts them, so the stricter reading
+  holds it to them before a writer arrives. Reversal: drop its four rules
+  and say "nothing writes it" in its comment.
+- **"The rules"** are four a table; the update rule refuses every update
+  (no table of the five has a lawful one), which covers question 13's
+  update rule and question 24's move above the mark as well.
+- **"Never replaced" where a table has no number of its own** reads SQLite's
+  rowid and the primary key; the rule on the number written reads "below
+  any stored one", as SQLite keeps no mark without AUTOINCREMENT (the newest
+  row read twice is NOT SEEN: FOLLOWUPS).
+- **The two captures were rewritten plainly** to the rows OR IGNORE wrote
+  (`db.set_meta`'s precedent), not the rule loosened: a rule refusing a
+  stored key under any clause is question 13's and 15's shape.
+- **`mlb_people`'s register entry and its reason stay as written** (true as
+  they stand; the register only shrinks); its words changed in `schema.sql`
+  and `load_people`'s docstring.
+- **Its prover (2026-09-29).** "Gets the rules" is read to hold "never
+  replaced" for the one number the insert rule cannot look up (-1, what it
+  is shown when SQLite chooses): a row landing under -1 is refused on the
+  three tables with no mark -- the narrowest refusal that closes the -1
+  form; any other number below 1 is looked up like any other. Reversal:
+  drop `NEW.rowid = -1 OR` from the three rules on the number written. Two
+  findings went to FOLLOWUPS by the queue rule, neither in shipped code:
+  the newest row read twice (NOT SEEN: no rule can see it) needs only the
+  built-in `random()`; and a row at the largest rowid makes every later
+  capture refused (a refusal, not a replacement).
 
 ## Rulings taken in your absence (2026-09-29, Q25 + Q29)
 
