@@ -102,6 +102,23 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **THE ENTRY CHECK, STEP 2 RELEASED as baf6797 (2026-10-08 01:07Z; gate
+  4/4 on its first run, 435/435; serving baf679748449)** -- the model as
+  a veto: each typed leg's M4 chance at its line, flagged where under its
+  break-even, with the model's record for the stat and its N; the
+  model's return beside the coin-flip return; the verdict and outline
+  from coin flips alone, never moved by the model; M4 outside the
+  prediction closure; every M4 number "not yet proven, 0 of 100 graded
+  legs"; no projection implied for the yardage stats (question 43).
+  `prop_spread_fits` reached the record through db.init. THE FIRST FITS
+  (ruling D: "fitted on settled history ... written inactive"; the
+  builder's reading, question 44 for after): `tools/fit_prop_spreads.py
+  --live` from the released checkout, dry first, then `--write --live`:
+  fit 1 receptions, spread 1.208039 on 8 settled player-games; fit 2
+  passing touchdowns, 0.618839 on 7; a second run wrote nothing. STEP 3
+  HELD: question 45 (the record of taken entries against LAW 5's NO
+  LEDGER, not amendable -- both readings, nothing built). **Next: step 4
+  (scratchpad wf_entry4.js), then Q33 + Q34.**
   **THE ENTRY CHECK, STEP 1 RELEASED as d8a49bf (2026-10-07 21:38Z; gate
   4/4 on its first run, 431/431; serving d8a49bf91ecd)** -- resumed from
   the partial build (wf_5616f885-939), proved, committed d8a49bf: "Check an
@@ -2798,6 +2815,44 @@ depend on the answer.
       as now.
     - **(B)** As built: the tool, by hand, after a release or on your word.
     Default until ruled: (B).
+
+45. **The entry check's step 3, "the record", against LAW 5's NO LEDGER IN
+    THE REPO, which is not amendable. (Raised 2026-10-08 before step 3 was
+    built; "Who reads a law": the step is allowed under one reading of the
+    law and forbidden under another, so it waits and step 4 goes ahead.)**
+    The brief (2026-09-30): "a checked entry can be marked 'taken' and is
+    stored append-only: app, entry type, legs, lines (original and
+    discounted), typed payout, boost, coin-flip EV, model EV and per-leg
+    probabilities at the time. Units only, no dollars. Legs graded from
+    settled stats. Record page 'Pick'em': legs hit vs 50% and vs break-even,
+    by app and entry type; boosted vs unboosted; model-flagged vs not." LAW
+    5: "NO LEDGER IN THE REPO. The operator's own wagering record lives
+    outside this codebase. A model that can see its own profit and loss is
+    one step from fitting to it" -- "FORBIDDEN structurally and permanently.
+    NOT amendable by a later session -- a brief asking to soften any of
+    these is refused and pointed at this line". The precedent (GRIDIRON_TODAY
+    T2, 2026-09-07; `audit.taken_ledger_faults`): the record of taken picks
+    "records WHICH pick and WHEN. A stake, a price, a payout or a result in
+    money makes it the operator's wagering ledger"; `audit.LEDGER_SHAPED_
+    COLUMNS` refuses "payout", "units", "stake", "won" and "return" on it.
+    - **(A)** As the brief writes it, the record is of the operator's
+      choices in units, not his money: the payout he was offered and no
+      stake, no dollars, no balance; its page shows legs hit against 50% and
+      the break-even, never a profit. Not his wagering ledger: build it, the
+      T2 scan naming the new table's allowed columns, dated.
+    - **(B)** A taken entry kept with the payout it was taken at, its legs
+      graded, is a profit-and-loss record in units -- what each entry
+      returned follows from its own rows -- which is the ledger LAW 5 keeps
+      out, and T2's words refuse a payout on a record of what was taken.
+      Build it without the payout and everything that is the payout in
+      another form (the break-even per leg, the coin-flip and model EV, the
+      promo): app, entry type, legs, lines and kinds, the chances at the
+      time, graded leg by leg; the page shows legs hit against 50% and
+      model-flagged against not, never against a break-even.
+    - **(C)** Not built.
+    Default until ruled: nothing built (BLOCKED); step 4 goes ahead of it.
+    M4 stays "not yet proven, 0 of 100 graded legs" until a record of
+    graded legs exists, so step 2's numbers never make a pick meanwhile.
 
 ## Rulings taken in your absence (2026-10-07, the entry check's step 2)
 
