@@ -382,6 +382,16 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q46 RELEASED as e09447f (2026-10-08 12:48Z; gate 4/4 on its first
+  run, 448/448; serving e09447fa049b)** -- the band line above every
+  slate is one category's fullest band (one market, the page's
+  forecaster, one card for UFC) through the blind curve's door, named
+  in words ("distance, Fight Night, statistical, 50-60%: 36 of 100 · 64
+  more before calibration speaks"); the greeting counts each forecast
+  once (it counted a forecast read twice at the venue twice: NFL 632
+  for 524); pooled figures that state no gate say what they pool.
+  **Next: Q25/Q26, ported from q25-held and q26-held onto the current
+  repair (scratchpad wf_q2526.js).**
   **Q33 + Q34 RELEASED as 2ffa0b3 (2026-10-08 07:33Z; gate 4/4 on its
   first run, 447/447; serving 2ffa0b3f7abf)** -- an outlook counts only
   slates still to come (Q38's start), states the most it can reach this
