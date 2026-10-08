@@ -594,6 +594,17 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q5 RELEASED as 451ab3d (2026-10-08 23:54Z; gate 4/4 on its first run,
+  463/463; serving 451ab3dbafd8)** -- the page says when a render has
+  landed (`gridiron:rendered`, its view, panel and place in the order
+  asked); every fixed wait in the browser tier rebuilt on it, on a
+  held-and-released answer, or gone (27 held waits, the route handler's
+  sleep, two page timers and 11 network-quiet loads); ELAPSED_TIME_HELD
+  emptied and pinned; the Results redraw race that failed two first
+  gates fixed on the signal (10 of 10; the browser tier 70 runs, all
+  passing); nothing drawn moved (14 views pixel for pixel). Its prover's
+  finding joined the queue first as question 47. **Next: Q47, then Q10
+  (scratchpad wf_q47q10.js, two commits, one gate).**
   **Q25 WITH Q29 AND Q26 RELEASED as d264f1f + cfcf273 (2026-10-08
   17:19Z; serving cfcf27350e73)** -- ported from q25-held and q26-held
   onto the current repair, re-measured and re-proved (the held branches
@@ -3548,6 +3559,21 @@ depend on the answer.
     absence (2026-10-08, Q46)"), uncommitted for its prover. PROVED the same
     day (Q46 PROVED, START HERE): no defect found, one local commit for its
     gate.**
+
+
+47. **Results can draw one forecaster's rows under the other's choice.
+    (Found by Q5's prover, 2026-10-09; it could show the operator a wrong
+    number on a pick, so it joined the queue FIRST, before Q10 -- the
+    queue rule as amended on 30 September -- and the rule that a number
+    is drawn under the words of what it is (step A, Q37) settles the fix,
+    so it is built without a new ruling.)** `renderResults` keeps no check
+    that a later filter superseded its answer within a sport, and reads
+    the Forecaster column from the select's value when the answer lands:
+    with a held answer, a search's late answer drew 51 rows, 50 of them
+    the statistical model's chances, under "reasoning pass" with no
+    Forecaster column. Building: a render draws only the answer to the
+    latest thing asked for its view (Q5's render count), its words read
+    from its own request; every view measured for the same gap.
 
 ## Rulings taken in your absence (2026-10-08, Q5's prover)
 
