@@ -3429,16 +3429,97 @@ def settled_count_line(n: int) -> str:
     return f"{n:,} settled"
 
 
-def bucket_countdown_line(label: str, n: int, gate: int) -> str:
-    """"50-60% bucket: 30 of 100 · 70 more before calibration speaks", and past
-    the gate "50-60% bucket: 158 settled · past the 100 needed, so calibration
-    speaks here". The first shape used to keep going -- "158 of 100 · 0 more
-    before calibration speaks" -- which says the gate is still ahead when it is
-    behind (UI audit finding 10, 2026-09-05). Tested AT the gate."""
+def bucket_countdown_line(category: str, label: str, n: int, gate: int) -> str:
+    """"moneyline, statistical, 50-60%: 30 of 100 · 70 more before calibration
+    speaks", and past the gate "moneyline, statistical, 50-60%: 158 settled ·
+    past the 100 needed, so calibration speaks here". The first shape used to
+    keep going -- "158 of 100 · 0 more before calibration speaks" -- which says
+    the gate is still ahead when it is behind (UI audit finding 10,
+    2026-09-05). Tested AT the gate.
+
+    ONE CATEGORY'S BAND, NAMED (operator question 46, found 2026-10-08 by the
+    prover of questions 33 and 34; built the same day under LAW 4 -- "nothing
+    claims an edge below 100 resolved predictions in THAT CATEGORY" -- and
+    question 14's ruling of 2026-09-27, applied to this line). Until this date
+    the line was "50-60% bucket: 370 settled · past the 100 needed, so
+    calibration speaks here" above UFC's slate, a count of every settled
+    forecast of the sport in the band -- every pass, both forecasters, every
+    market and every card -- where no UFC category's own band held more than
+    36. `category` is the curve's own label (`category_label`: "distance,
+    Fight Night, statistical"), and it is required: a band line naming no
+    category is the pool, so no caller can compose one. The count is the
+    category's (`calibration.band_lines`), and
+    `calibration.assert_no_pooled_band_line` reads these words back."""
+    if not category or not str(category).strip():
+        raise ValueError(
+            "QUESTION 46: a band line names its category (one market, one "
+            "forecaster, one card for UFC); a band counted over the sport is "
+            "the pool LAW 4 forbids.")
+    head = f"{category}, {label}"
     if n >= gate:
-        return (f"{label} bucket: {n:,} settled · past the {gate:,} needed, "
+        return (f"{head}: {n:,} settled · past the {gate:,} needed, "
                 "so calibration speaks here")
-    return f"{label} bucket: {n:,} of {gate:,} · {gate - n:,} more before calibration speaks"
+    return f"{head}: {n:,} of {gate:,} · {gate - n:,} more before calibration speaks"
+
+
+def band_line_tip(sport_label: str, forecaster: str, carded: bool) -> str:
+    """The band line's tooltip: which band it is and where the rest are
+    (operator question 46, 2026-10-08). The greeting draws ONE band -- the
+    fullest of any one curve of the page's forecaster, the nearest any of
+    them is to the hundred -- and says so, so it is never read as the
+    sport's."""
+    who = FORECASTER_WORDS.get(forecaster, forecaster)
+    one = "one market on one card" if carded else "one market"
+    return (f"The fullest confidence band of any one {sport_label} curve of "
+            f"{who}: {one}, its standing questions each counted once. Every "
+            "curve's bands, each with its own count, are on the Record page.")
+
+
+def every_category_words(carded: bool) -> str:
+    """What a count over a whole sport counts, said as what it is (operator
+    question 46, reading (b), 2026-10-08): "every market and forecaster", and
+    for a sport that splits by card "every market, card and forecaster". A
+    pooled count stays where it states no distance to a gate and no claim --
+    the greeting's "since you last looked" count and the slate's forecasts
+    waiting to settle -- and these words say beside it what it pools."""
+    return ("every market, card and forecaster" if carded
+            else "every market and forecaster")
+
+
+def settled_forecasts_words(n: int) -> str:
+    """"12 settled forecasts" -- the greeting's count, a count of forecasts
+    (a question's early and final forecast are two), never of questions."""
+    return counted(n, "settled forecast")
+
+
+def greeting_headline(n: int, correct: int, brier: float | None,
+                      carded: bool) -> str:
+    """"Since you last looked: 12 settled forecasts, every market and
+    forecaster - 7 correct, 5 wrong · Brier 0.2133". The figure stays, said
+    as what it is (operator question 46, reading (b), 2026-10-08): it states
+    no distance to a gate, and it pools every market, forecaster and pass,
+    which the words now say; until this date it read "12 resolved"."""
+    line = (f"Since you last looked: {settled_forecasts_words(n)}, "
+            f"{every_category_words(carded)} - {correct} correct, "
+            f"{n - correct} wrong")
+    if brier is not None:
+        line += f" · Brier {brier}"
+    return line
+
+
+def slate_forecasts_line(label: str, n: int, carded: bool,
+                         gap: float | None = None,
+                         matchup: str | None = None) -> str:
+    """"178 NFL forecasts waiting to settle on the current slate, every
+    market and forecaster · sharpest disagreement +26.2 on HOU @ TEN". The
+    greeting draws it where no band has settled yet (operator question 46,
+    reading (b), 2026-10-08: a pooled count that states no distance to a gate
+    stays, said as what it is); until this date "178 NFL predictions in"."""
+    line = (f"{counted(n, f'{label} forecast')} waiting to settle on the "
+            f"current slate, {every_category_words(carded)}")
+    if gap is not None and matchup:
+        line += f" · sharpest disagreement {gap * 100:+.1f} on {matchup}"
+    return line
 
 
 _DETAIL_CLASS = _re.compile(r"^[A-Z][A-Za-z0-9]*(?:Error|Exception|Answered|Refused|Missing|Failure)?:\s+")

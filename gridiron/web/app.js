@@ -4732,8 +4732,15 @@ const Gridiron = (function () {
     if (data.n) {
       // Correct in green, wrong in plain chrome. Green is the positive value;
       // being wrong is not an alarm, it is half of a calibration record.
+      // SAID AS WHAT IT IS (operator question 46, reading (b), 2026-10-08):
+      // the count pools every market, forecaster and pass, and the server's
+      // words say so -- "12 settled forecasts, every market and forecaster"
+      // where this said "12 resolved".
       msg.appendChild(document.createTextNode('Since you last looked: '));
-      msg.appendChild(el('b', '', data.n + ' resolved'));
+      msg.appendChild(el('b', '', data.count_words || ''));
+      if (data.counted_words) {
+        msg.appendChild(document.createTextNode(', ' + data.counted_words));
+      }
       msg.appendChild(document.createTextNode(' — '));
       msg.appendChild(el('span', '', data.correct + ' correct'));
       msg.appendChild(document.createTextNode(', ' + data.wrong + ' wrong'));
@@ -4752,10 +4759,19 @@ const Gridiron = (function () {
       msg.appendChild(el('span', 'greet-calls', data.calls.line));
     }
 
+    // THE BAND LINE IS ONE CATEGORY'S (operator question 46, 2026-10-08):
+    // the fullest band of any one curve of the page's forecaster, named --
+    // "distance, Fight Night, statistical, 50-60%: 36 of 100 · ..." -- with
+    // the server's tooltip saying which band it is. It drew the first band
+    // over every market, forecaster, pass and card ("50-60% bucket: 370
+    // settled · past the 100 needed, so calibration speaks here") until
+    // then. Where nothing has settled, the slate's forecasts waiting to
+    // settle, said as what they are.
     const counts = hosts.countdown;
     if (counts) {
-      counts.textContent = (data.movement.buckets[0] || {}).countdown ||
-        (data.today && data.today.line) || '';
+      const movement = data.movement || {};
+      counts.textContent = movement.line || (data.today && data.today.line) || '';
+      counts.title = movement.line ? (movement.line_tip || '') : '';
       counts.hidden = !counts.textContent;
     }
 
@@ -4807,6 +4823,12 @@ const Gridiron = (function () {
       // quietly is a greeting that is wrong and looks fine.
       strip.hidden = true;
       strip.dataset.empty = 'true';
+      // AND ITS BAND LINE GOES WITH IT (operator question 46, 2026-10-08):
+      // a greeting refused for a pooled band answers 500, and the line left
+      // standing was the PREVIOUS sport's -- another sport's count above
+      // this sport's slate (LAW 6).
+      const counts = document.getElementById('greet-countdown');
+      if (counts) { counts.textContent = ''; counts.title = ''; counts.hidden = true; }
       console.error('greeting failed:', err);
     }
   }

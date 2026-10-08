@@ -19555,6 +19555,301 @@ def plant_a_bout_on_no_declared_card_counted_in_a_cards_band() -> Result:
 
 
 # ---------------------------------------------------------------------------
+# THE GREETING'S BAND LINE IS ONE CATEGORY'S (operator question 46, found
+# 2026-10-08 by the prover of questions 33 and 34; built the same day under
+# LAW 4, NO MERGED CURVES and question 14's ruling of 2026-09-27)
+# ---------------------------------------------------------------------------
+
+LAW_BAND_LINE = ("THE BAND LINE ABOVE THE SLATE IS ONE CATEGORY'S (LAW 4, NO "
+                 "MERGED CURVES, QUESTION 14 APPLIED; OPERATOR QUESTION 46)")
+
+#: The planting's UFC cards: (event, week, start, bouts asked every market,
+#: bouts asked the distance alone). Every question is asked by both
+#: forecasters, early and final, at 0.55, and settled: 224 settled forecasts
+#: of the sport in the 50-60% band and no category's own band past 11.
+_Q46_CARDS = {
+    "fight_night": ("q46_fn", 1, "2026-09-05T19:00:00Z", 9, 2),
+    "contender": ("q46_cs", 2, "2026-09-08T23:00:00Z", 6, 0),
+    "numbered": ("q46_nc", 3, "2026-09-19T21:00:00Z", 3, 0),
+}
+_Q46_FULLEST = ("distance, Fight Night, statistical, 50-60%: 11 of 100 · 89 "
+                "more before calibration speaks")
+
+
+def _q46_world(path):
+    from gridiron import db as _db
+
+    conn = _db.open_db(path)
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    sides = {"moneyline": "win", "rounds": "over", "distance": "yes"}
+    for tier, (event, week, start, full, distance_only) in _Q46_CARDS.items():
+        conn.execute(
+            "INSERT INTO ufc_events (id, name, event_utc, season, fetched_utc,"
+            " event_tier) VALUES (?, ?, ?, ?, '2026-09-01T00:00:00Z', ?)",
+            (event, f"UFC {event}", start, season, tier))
+        for i in range(full + distance_only):
+            bout = f"{event}_{i}"
+            conn.execute(
+                "INSERT INTO ufc_bouts (id, event_id, bout_utc, scheduled_rounds,"
+                " fighter_a, fighter_b, status, fetched_utc)"
+                " VALUES (?, ?, ?, 3, 'A', 'B', 'final', '2026-09-01T00:00:00Z')",
+                (bout, event, start))
+            conn.execute(
+                "INSERT INTO games (id, sport, season, week, game_type, home,"
+                " away, kickoff_utc, status, league_date, home_score, away_score)"
+                " VALUES (?, 'ufc', ?, ?, 'R', 'A', 'B', ?, 'final', ?, 1, 0)",
+                (bout, season, week, start, start[:10]))
+            markets = (("distance", None),) if i >= full else (
+                ("moneyline", None), ("rounds", 1.5), ("distance", None))
+            for market, line in markets:
+                for predictor in ("statistical", "llm"):
+                    for pass_kind, hour in (("early", "08"), ("final", "10")):
+                        conn.execute(
+                            "INSERT INTO predictions (created_utc, sport, game_id,"
+                            " market_type, subject, line_asked, model_prob,"
+                            " model_side, predictor, pass_kind, factor_set_version,"
+                            " factors_json, reasoning, resolved_utc, outcome)"
+                            " VALUES (?, 'ufc', ?, ?, 'A', ?, 0.55, ?, ?, ?, 'fs2',"
+                            " '{\"coverage\": 1.0}', 'planted', ?, 1)",
+                            (f"{start[:10]}T{hour}:00:00Z", bout, market, line,
+                             sides[market], predictor, pass_kind,
+                             f"{start[:10]}T23:59:00Z"))
+    conn.commit()
+    return conn
+
+
+def _q46_as_it_shipped(conn, sport: str) -> list[tuple[str, int, str]]:
+    """Each band as da4aea6 counted it: every settled forecast of the sport
+    whose number fell in it -- every pass, both forecasters, every market,
+    every card -- in its words as they shipped."""
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    out = []
+    for lo, hi, label in calibration.BUCKETS:
+        n = conn.execute(
+            "SELECT COUNT(*) FROM predictions WHERE sport = ? AND resolved_utc"
+            " IS NOT NULL AND model_prob >= ? AND model_prob < ?"
+            " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
+            "                 WHERE v.prediction_id = predictions.id)",
+            (sport, lo, hi)).fetchone()[0]
+        if n:
+            words = (f"{label} bucket: {n:,} settled · past the {gate:,} needed, "
+                     "so calibration speaks here" if n >= gate else
+                     f"{label} bucket: {n:,} of {gate:,} · {gate - n:,} more "
+                     "before calibration speaks")
+            out.append((label, n, words))
+    return out
+
+
+def plant_a_greeting_band_line_counting_every_category() -> Result:
+    """Count the band line above the slate over the whole sport, as
+    `views._record_movement` counted it until 2026-10-08, and draw it.
+
+    THE LINE AS IT SHIPPED (found by the prover of questions 33 and 34 in
+    the render of UFC's board): "50-60% bucket: 370 settled · past the 100
+    needed, so calibration speaks here" above UFC's slate, every settled
+    forecast of the sport in the band -- every pass, both forecasters, every
+    market, every card -- where no UFC category's own band held more than
+    36. This world holds 224 settled forecasts in the band and no category
+    past 11. The planting proves the line is the fullest category's, named
+    -- "distance, Fight Night, statistical, 50-60%: 11 of 100 ..." -- then
+    plants the band count as it shipped (the pooled count under the shipped
+    words), the curve's door put back without the card, without the
+    forecaster, without its standing rule (every pass) and without the
+    market (every market) -- the four pools the finding names, each alone;
+    the last two its prover's, 2026-10-08 -- and with every card's rows named
+    as the asked card's, the
+    words as they shipped (no category), the first band drawn where the
+    fullest is not (the shipped rule, `buckets[0]`), and the payload as it
+    shipped handed to the guard; and demands the builder (`views.digest`,
+    which `/api/digest` calls), the API and the gate's check refuse each by
+    name, and the gate's step 2 make the call.
+    """
+    import tempfile
+
+    from gridiron import language as _language, views as _views
+
+    guard = ("calibration.assert_no_pooled_band_line (inside "
+             "views._record_movement), /api/digest, "
+             "audit.check_the_greeting_band_line_is_one_categorys")
+    violation = ("the band line above a slate counting every pass, forecaster, "
+                 "market and card of the sport")
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        path = pathlib.Path(tmp) / "plant.db"
+        conn = _q46_world(path)
+        shipped = _q46_as_it_shipped(conn, "ufc")
+        try:
+            movement = _views.digest(conn, sport="ufc", day="2026-10-08")["movement"]
+            line = movement.get("line")
+            if line is None and movement.get("buckets"):
+                line = movement["buckets"][0].get("countdown")
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_BAND_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the greeting refuses an honest world: "
+                          f"{type(exc).__name__}: {str(exc)[:200]}")
+        check = getattr(audit, "check_the_greeting_band_line_is_one_categorys", None)
+        assert_guard = getattr(calibration, "assert_no_pooled_band_line", None)
+        if line != _Q46_FULLEST or check is None or assert_guard is None:
+            conn.close()
+            return Result(LAW_BAND_LINE, violation, guard, False,
+                          f"NOT CAUGHT - the line above UFC's slate says {line!r} "
+                          f"(the sport's {shipped[0][1]} settled forecasts in the "
+                          f"band) where no category's own band holds more than "
+                          f"11 -- the fullest is {_Q46_FULLEST!r}"
+                          + ("" if check else "; and the gate checks nothing"))
+
+        def the_builder():
+            _views.digest(conn, sport="ufc", day="2026-10-08")
+
+        def the_gate():
+            try:
+                check(conn)
+            except audit.LawViolation as exc:
+                named = [l.strip() for l in str(exc).splitlines()
+                         if l.strip().startswith("ufc,")]
+                if not named:
+                    raise
+                raise calibration.MergedCurve(f"the gate names {named[0]}") from exc
+
+        real_bands = calibration.band_lines
+        real_resolved = calibration.resolved
+        real_words = _language.bucket_countdown_line
+        real_fullest = calibration.fullest_band
+        real_clause = calibration.standing_row_clause
+
+        def pooled_bands(conn, *, sport, predictor):
+            # THE COUNT AS IT SHIPPED under the shipped words, one band each,
+            # wearing the first category's name: what a builder that went
+            # back to counting the sport would hand the guard.
+            honest = real_bands(conn, sport=sport, predictor=predictor)
+            out = []
+            for label, n, words in _q46_as_it_shipped(conn, sport):
+                out.append(dict(honest[0], band=label, n=n,
+                                needed=max(0, 100 - n), past_the_gate=n >= 100,
+                                words=words))
+            return out
+
+        def without(**drop):
+            def door(conn, **kw):
+                return real_resolved(conn, **dict(kw, **drop))
+            return door
+
+        def named_as_asked(conn, **kw):
+            rows = real_resolved(conn, **dict(kw, event_tier=None))
+            for r in rows:
+                r.event_tier = kw.get("event_tier")
+            return rows
+
+        def words_as_shipped(category, label, n, gate):
+            return (f"{label} bucket: {n:,} settled · past the {gate:,} needed, "
+                    "so calibration speaks here" if n >= gate else
+                    f"{label} bucket: {n:,} of {gate:,} · {gate - n:,} more "
+                    "before calibration speaks")
+
+        def first_band(bands):
+            return next((b for b in bands if b.get("n")), None)
+
+        def every_pass(*_args, **_kwargs):
+            # THE CURVE'S DOOR WITHOUT ITS STANDING RULE (its prover,
+            # 2026-10-08): every pass of a question counted -- its early and
+            # final forecast two -- the first of the four pools the finding
+            # names, planted alone.
+            return ""
+
+        plantings = (
+            ("the band count as it shipped", "band_lines", calibration, pooled_bands),
+            ("the curve's door without the card", "resolved", calibration,
+             without(event_tier=None)),
+            ("the curve's door without the forecaster", "resolved", calibration,
+             without(predictor=None)),
+            # EVERY POOL THE FINDING NAMES, EACH ALONE (its prover,
+            # 2026-10-08): the passes and the markets join the forecasters
+            # and the cards above.
+            ("the curve's door without its standing rule (every pass)",
+             "standing_row_clause", calibration, every_pass),
+            ("the curve's door without the market (every market)", "resolved",
+             calibration, without(market_type=None, prop_type=None)),
+            ("every card's rows named as the asked card's", "resolved",
+             calibration, named_as_asked),
+            ("the words as they shipped", "bucket_countdown_line", _language,
+             words_as_shipped),
+            ("the first band drawn, as it shipped", "fullest_band", calibration,
+             first_band),
+        )
+        from fastapi.testclient import TestClient
+
+        from gridiron import api as _api, auth as _auth
+
+        token = "plant-q46-dummy-token-not-a-secret"
+        previous_token = os.environ.get(_auth.TOKEN_VAR)
+        law = calibration.BAND_LINE_LAW + ": "
+
+        def refused(build, name):
+            # THE FINDING, NOT THE LAW'S HEADING, in the harness's line.
+            try:
+                build()
+            except calibration.MergedCurve as exc:
+                caught.append(f"{name}: " + " ".join(
+                    str(exc).replace(law, "").split())[:170])
+            else:
+                missed.append(name)
+
+        for name, attr, owner, planted in plantings:
+            shipped_attr = getattr(owner, attr)
+            setattr(owner, attr, planted)
+            try:
+                refused(the_builder, f"{name}, the builder")
+                refused(the_gate, f"{name}, the gate")
+            finally:
+                setattr(owner, attr, shipped_attr)
+        # THE API ANSWERS 500 BY NAME: the door without the card.
+        calibration.resolved = without(event_tier=None)
+        previous_db = _api._database
+        os.environ[_auth.TOKEN_VAR] = token
+        try:
+            _api.set_database(path)
+            with TestClient(_api.app) as client:
+                client.post("/auth/login", json={"token": token})
+                answer = client.get("/api/digest",
+                                    params={"sport": "ufc", "peek": "true"})
+            if answer.status_code == 500 and "QUESTION 46" in answer.text:
+                caught.append("the door without the card, the API: 500, "
+                              + answer.json().get("detail", "")[:120])
+            else:
+                missed.append(f"the API answered {answer.status_code}")
+        finally:
+            calibration.resolved = real_resolved
+            _api.set_database(previous_db)
+            if previous_token is None:
+                os.environ.pop(_auth.TOKEN_VAR, None)
+            else:
+                os.environ[_auth.TOKEN_VAR] = previous_token
+        # THE PAYLOAD AS IT SHIPPED, handed to the guard.
+        as_it_shipped = {"sport": "ufc", "resolved_before": 0, "resolved_now": 0,
+                         "gained": 0, "gate": 100,
+                         "buckets": [{"label": l, "n": n, "countdown": w}
+                                     for l, n, w in shipped]}
+        refused(lambda: assert_guard(as_it_shipped),
+                "the payload as it shipped, the guard")
+        conn.close()
+        assert calibration.band_lines is real_bands
+        assert calibration.fullest_band is real_fullest
+        assert calibration.standing_row_clause is real_clause
+        assert _language.bucket_countdown_line is real_words
+    if not _step_2_calls("check_the_greeting_band_line_is_one_categorys"):
+        missed.append("the gate's step 2 does not make the call")
+    if missed:
+        return Result(LAW_BAND_LINE, violation, guard, False,
+                      "NOT CAUGHT - a band line above the slate counts the sport "
+                      "whole: " + "; ".join(missed))
+    return Result(LAW_BAND_LINE, violation, guard, True,
+                  f"the line is the fullest category's ({_Q46_FULLEST!r}) where "
+                  f"the sport holds {shipped[0][1]} in the band; pooled: "
+                  + " | ".join(caught))
+
+
+# ---------------------------------------------------------------------------
 # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
 # 2026-09-27; question 21, ruled 2026-09-28; built 2026-09-28)
 # ---------------------------------------------------------------------------
@@ -30007,6 +30302,10 @@ def main() -> int:
     # BAND, EVERY CHIP HELD TO ITS OWN CARD'S (the prover of question 34,
     # 2026-10-08).
     results.append(plant_a_bout_on_no_declared_card_counted_in_a_cards_band())
+    # THE GREETING'S BAND LINE IS ONE CATEGORY'S (operator question 46, found
+    # 2026-10-08 by the prover of 33 + 34; built the same day under LAW 4 and
+    # question 14's ruling): never a band counted over the sport.
+    results.append(plant_a_greeting_band_line_counting_every_category())
     # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
     # 2026-09-27; question 21, 2026-09-28): every record's door keyed by
     # `gridiron.bet`, recounted without the door, and no key spelled by hand.

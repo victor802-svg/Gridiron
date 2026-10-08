@@ -1150,6 +1150,15 @@ def step_2_guards() -> bool:
          lambda: audit.check_a_ufc_edge_figure_is_its_cards(_record_conn())),
         ("a UFC board badge is its card's (question 34)",
          lambda: audit.check_a_ufc_board_badge_is_its_cards(_record_conn())),
+        # OPERATOR QUESTION 46 (found 2026-10-08 by the prover of 33 + 34;
+        # built the same day under LAW 4 and question 14's ruling): the band
+        # line above every sport's slate is one category's -- one market,
+        # one forecaster, one card for UFC -- through the curve's door and
+        # held to the recount made without it, never a count over the sport;
+        # every sport's greeting, both forecasters, on the record's copy.
+        ("the greeting's band line is one category's (question 46)",
+         lambda: audit.check_the_greeting_band_line_is_one_categorys(
+             _record_conn())),
         # OPERATOR QUESTION 17 (ruled 2026-09-27; built 2026-09-28): one
         # function defines a distinct bet -- the forecaster and the venue's
         # question, the rung asked included -- and every count reads it. In

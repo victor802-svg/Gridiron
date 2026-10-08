@@ -2780,6 +2780,266 @@ def assert_each_band_is_its_cards(conn: sqlite3.Connection, sport: str,
                    "card's count" if card is None else "") + ".")
 
 
+# ---------------------------------------------------------------------------
+# THE GREETING'S BAND LINE IS ONE CATEGORY'S (operator question 46, found
+# 2026-10-08 by the prover of questions 33 and 34; built the same day)
+# ---------------------------------------------------------------------------
+#
+# The line above every sport's slate said, for UFC, "50-60% bucket: 370
+# settled · past the 100 needed, so calibration speaks here". It counted
+# every settled forecast of the sport whose number fell in the band -- every
+# pass, both forecasters, every market and every card -- where no UFC
+# category's own 50-60% band held more than 36 and no NFL one more than 44;
+# MLB's said 937 and NCAAF's 398. It has said so since 7ac5a73 (2026-08-29).
+# SETTLED BY THE LAW AND A RULING, NOT A NEW ONE: LAW 4 ("nothing claims an
+# edge below 100 resolved predictions in THAT CATEGORY"), NO MERGED CURVES
+# (a curve is one market, one forecaster, one card for UFC), and question
+# 14, ruled 2026-09-27 ("Every count on the Record page that states a gate
+# distance is rebuilt per forecaster (per tier for UFC) and per distinct
+# bet, through its record's standing rule"), applied to this line, which
+# states a gate distance on another page.
+#
+# So each band count is ONE CATEGORY'S -- one market, the page's
+# forecaster, one card for UFC -- its standing questions through the blind
+# curve's own door (`resolved`, the standing clause, one per distinct bet):
+# the number the Record page's curve draws for that band. Each carries the
+# count `gridiron.recount` makes without the door, read in the same instant,
+# and `assert_no_pooled_band_line` refuses, inside the builder
+# (`views._record_movement`), a band whose count is not its category's or
+# whose words do not name it, and the pooled shape itself, so
+# `/api/digest` answers 500 by name. The page draws one band, the fullest
+# (`fullest_band`), named; the payload carries every category's.
+
+
+class PooledBandLine(MergedCurve):
+    """A band count above a slate that is not its category's, or words that
+    do not say whose (operator question 46, 2026-10-08)."""
+
+
+BAND_LINE_LAW = (
+    "QUESTION 46: THE GREETING'S BAND LINE IS ONE CATEGORY'S (LAW 4: "
+    "\"nothing claims an edge below 100 resolved predictions in that "
+    "category\"; question 14, ruled 2026-09-27, applied to the line: every "
+    "count that states a gate distance is one forecaster's, one card's for "
+    "UFC, one per distinct bet, through its record's standing rule)")
+
+
+def band_lines(conn: sqlite3.Connection, *, sport: str,
+               predictor: str) -> list[dict]:
+    """Every confidence band of every curve of ONE sport and ONE forecaster
+    -- one market, one card for a sport that splits by card -- each count
+    the curve's own: its standing questions through `resolved` (the curve's
+    door), as `curve` and `calibration_buckets` count them on the Record
+    page. A band holding nothing is left out, unless the recount made
+    without the door finds something in it (so the guard sees it).
+
+    EACH ENTRY CARRIES what the guard reads: its market, card and
+    forecaster; the cards and forecasters its rows were on (read off each
+    row); the count `recount.settled_standing` makes without the door, in the
+    same instant (`db.one_instant`); its distance to the hundred; and its
+    words, naming the category (`language.bucket_countdown_line`)."""
+    from . import db, recount
+
+    require_sport(sport, "calibration.band_lines")
+    if predictor not in ("statistical", "llm"):
+        raise PooledCount(
+            f"{BAND_LINE_LAW}: the band line in {sport} was asked for "
+            f"forecaster {predictor!r}, not one of the two; a count for nobody "
+            f"in particular is both together.")
+    carded = bool(config.event_tiers(sport))
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    out: list[dict] = []
+    with db.one_instant(conn):
+        for market in config.SPORT_MARKETS.get(sport, ()):
+            market_type = market_type_of(sport, market)
+            prop_type = prop_type_of(sport, market)
+            retired = config.retired_market(sport, market)
+            for tier in (config.event_tiers(sport) or (None,)):
+                rows = resolved(conn, sport=sport, market_type=market_type,
+                                prop_type=prop_type, predictor=predictor,
+                                event_tier=tier)
+                again = recount.in_bands(recount.settled_standing(
+                    conn, sport=sport, predictor=predictor,
+                    market_type=market_type, prop_type=prop_type,
+                    event_tier=tier), BUCKETS)
+                label = language.category_label(market, tier, predictor, retired)
+                for (lo, hi, band), recounted in zip(BUCKETS, again):
+                    chosen = [r for r in rows if lo <= r.model_prob < hi]
+                    n = len(chosen)
+                    if not n and not recounted:
+                        continue
+                    out.append({
+                        "market": market,
+                        "market_type": market_type,
+                        "prop_type": prop_type,
+                        "event_tier": tier,
+                        "predictor": predictor,
+                        "category_label": label,
+                        "band": band,
+                        "n": n,
+                        "gate": gate,
+                        "needed": max(0, gate - n),
+                        "past_the_gate": n >= gate,
+                        "forecasters_counted": sorted({r.predictor for r in chosen}),
+                        "tiers_counted": (_cards_of(chosen) if carded else []),
+                        "recounted": recounted,
+                        "words": language.bucket_countdown_line(label, band, n, gate),
+                    })
+    return out
+
+
+def fullest_band(bands: list[dict]) -> dict | None:
+    """THE BAND THE GREETING DRAWS: the fullest of any one curve -- the
+    nearest any category of the page's forecaster is to the hundred, which
+    is the question the line has always answered ("the honest distance to
+    being able to say anything at all") asked of one category. A tie goes
+    to the first in the declared order (market, card, band). None where no
+    band holds anything."""
+    shown = None
+    for band in bands:
+        if band.get("n") and (shown is None or band["n"] > shown["n"]):
+            shown = band
+    return shown
+
+
+def assert_no_pooled_band_line(movement: dict) -> None:
+    """THE GREETING'S BAND LINE IS ONE CATEGORY'S (operator question 46,
+    2026-10-08). Refused by name, inside `views._record_movement`, so
+    `/api/digest` answers 500: the pooled shape (a `buckets` list or a gate
+    beside the sport's pooled counts, as it stood); a forecaster not one of
+    the two; a band naming another market, card or forecaster than the
+    sport declares and the page asked, or counting rows of another
+    forecaster or card (read off each row); a band whose count is not the
+    one `gridiron.recount` makes without the door -- a count wider than its
+    category, every market, forecaster, pass or card together, is the pool
+    LAW 4 forbids; a distance that is not its own arithmetic; words that do
+    not name the category and band, state another count, or say
+    "calibration speaks" of a band short of the hundred; one band twice; and
+    a drawn line that is not the fullest band's words."""
+    sport = movement.get("sport")
+    require_sport(sport, "calibration.assert_no_pooled_band_line")
+    gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    for key in ("buckets", "gate", "needed"):
+        if key in movement:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: the greeting for {sport} carries {key!r} "
+                f"beside the sport's settled forecasts, every market, "
+                f"forecaster, pass and card together -- a distance to the "
+                f"{gate} stated of a pool. A band count is one category's.")
+    if not movement.get("counted_words"):
+        raise PooledBandLine(
+            f"{BAND_LINE_LAW}: the greeting for {sport} states its pooled "
+            f"settled count without saying what it pools.")
+    forecaster = movement.get("forecaster")
+    if forecaster not in ("statistical", "llm"):
+        raise PooledBandLine(
+            f"{BAND_LINE_LAW}: the greeting for {sport} names forecaster "
+            f"{forecaster!r}, not one of the two.")
+    markets = config.SPORT_MARKETS.get(sport, ())
+    tiers = config.event_tiers(sport)
+    labels = [name for _, _, name in BUCKETS]
+    seen: set = set()
+    bands = movement.get("bands")
+    if not isinstance(bands, list):
+        raise PooledBandLine(
+            f"{BAND_LINE_LAW}: the greeting for {sport} carries no list of "
+            f"its categories' bands.")
+    for band in bands:
+        market, tier = band.get("market"), band.get("event_tier")
+        label = band.get("band")
+        what = (f"the band line {label!r} of {band.get('category_label')!r} "
+                f"in {sport}")
+        if market not in markets:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} names market {market!r}, not one "
+                f"of {sport}'s declared markets {list(markets)}: a band over "
+                f"every market describes none of them.")
+        if tiers and tier not in tiers:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} names card {tier!r}, not one of "
+                f"{sport}'s cards {list(tiers)}: a band over every card "
+                f"describes none of them.")
+        if not tiers and tier is not None:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} names card {tier!r} in {sport}, "
+                f"which declares no cards.")
+        if band.get("predictor") != forecaster:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} is {band.get('predictor')!r}'s on a "
+                f"page showing {forecaster!r}'s.")
+        if any(f != forecaster for f in band.get("forecasters_counted") or []):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} counts forecasts of "
+                f"{band.get('forecasters_counted')!r}: both forecasters "
+                f"together are a pool.")
+        counted_cards = band.get("tiers_counted") or []
+        if tiers and any(c != tier for c in counted_cards):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} is the {tier!r} card's and counts "
+                f"rows on {counted_cards!r}: {sport}'s cards are counted side "
+                f"by side, never summed.")
+        if not tiers and counted_cards:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} counts rows on cards "
+                f"{counted_cards!r} in {sport}, which declares no cards.")
+        if label not in labels:
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} is not one of the bands {labels}.")
+        if (market, tier, label) in seen:
+            raise PooledBandLine(f"{BAND_LINE_LAW}: {what} is stated twice.")
+        seen.add((market, tier, label))
+        n = band.get("n")
+        if not isinstance(n, int) or isinstance(n, bool) or n != band.get("recounted"):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} counts {n!r} settled where its "
+                f"category's own band, recounted without the door, holds "
+                f"{band.get('recounted')!r}: a count wider than its category "
+                f"-- every market, forecaster, pass or card together -- is the "
+                f"pool LAW 4 forbids.")
+        if band.get("gate") != gate or band.get("needed") != max(0, gate - n) \
+                or band.get("past_the_gate") is not (n >= gate):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} says {band.get('needed')!r} more to "
+                f"the {band.get('gate')!r} on a count of {n}: the distance is "
+                f"its own count's, to the {gate}.")
+        category = band.get("category_label") or ""
+        wanted = [language.MARKET_WORDS.get(market) or language.humanise(market),
+                  language.FORECASTER_FILTER_WORDS.get(forecaster, forecaster)]
+        if tier:
+            wanted.append(language.tier_label(tier))
+        if not category or any(w and w not in category for w in wanted):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} is labelled {category!r}, which does "
+                f"not name its market, forecaster{' and card' if tier else ''} "
+                f"({wanted}).")
+        words = band.get("words") or ""
+        if not words.startswith(f"{category}, {label}: {n:,} "):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} says {words!r}, which does not open "
+                f"on its category, its band and its own count ({n:,}).")
+        speaks = "calibration speaks here" in words
+        if speaks is not (n >= gate) or (
+                n < gate and f"{n:,} of {gate:,} · {gate - n:,} more " not in words):
+            raise PooledBandLine(
+                f"{BAND_LINE_LAW}: {what} says {words!r} on a count of {n}: "
+                f"calibration speaks of a band past the {gate} and of no "
+                f"other.")
+    # THE LINE DRAWN IS THE FULLEST BAND'S, worked out here in the guard's
+    # own spelling -- never by asking `fullest_band`, which a builder choosing
+    # another band would have been changed to agree with: the most any one
+    # band holds, and of the bands holding it the first in the declared
+    # order (market, card, band).
+    most = max((b["n"] for b in bands), default=0)
+    shown = next((b for b in bands if most and b["n"] == most), None)
+    line = movement.get("line")
+    if (shown is None) is not (line is None) or (
+            shown is not None and line != shown["words"]):
+        raise PooledBandLine(
+            f"{BAND_LINE_LAW}: the greeting for {sport} draws {line!r} where "
+            f"the fullest band of any one category says "
+            f"{(shown or {}).get('words')!r}.")
+
+
 def recent_settled(conn: sqlite3.Connection, *, sport: str, since: str) -> tuple[int, int]:
     """(standing rows settled since `since`, distinct days that settled any).
 

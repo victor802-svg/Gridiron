@@ -16617,13 +16617,19 @@ control 44px tall at 1300 and 390; the page 390 wide; no page error.
   fullest 36, distance, Fight Night), MLB says 937 (4 of 16 past) and NCAAF
   398 (1 of 6). Seen in the render of UFC's board. Since 2026-08-29 (7ac5a73);
   outside question 34's five and pooling more than cards, so not built here.
+  *(QUESTION 46, 2026-10-08: built -- each band one category's, the fullest
+  drawn and named; at the end of this file, "The band line above the slate
+  is one category's".)*
 - **The over-time strip reads "0 resolved across 0 weeks" for every market
   but the point spread** (app.js `renderOverTime` asks `market_type=prop`
   with the market as its prop type), under a curve of 14 (UFC) or 260
   (MLB); pre-existing, every sport, no gate.
 - **The greeting's own headline pools a sport's markets and forecasters**
   ("Since you last looked: 1742 resolved -- 961 correct, 781 wrong · Brier
-  0.2382", NFL); not a gate.
+  0.2382", NFL); not a gate. *(QUESTION 46, 2026-10-08, reading (b): it
+  stays, said as what it is -- "settled forecasts, every market and
+  forecaster" -- and counted once: 1742 was MLB's, and the join on the
+  market's snapshots counted 270 forecasts twice; 1472 settled. Below.)*
 
 **THE RENDER (`render_copy.py`, this tree on the copy, served by the test server's way on a free loopback port with a dummy token, never 8848; Chromium at 1300 and 390; each wait the sport's own content drawn).** UFC's Record page (its
 card choice, Fight Night chosen too), MLB's, UFC's board (the 10 October
@@ -16642,3 +16648,422 @@ pre-existing are listed above.
 **THE GATE'S STEP 2, DRY, ON THE COPY (`step2_all.py`: `verify.step_2_guards` with its copy pointed at this one, plant.py stood down and run apart, the credential scan handed an empty file, never .env):** 128 rows PASS on the change as handed (289 s), and all 128 again after the fix (292 s); the rows the change touched (`step2_rows.py`) PASS again after the fix, the unit scan [].
 
 **PLANTINGS:** the six and the prover's, each ESCAPING on c4014a9 (`git archive` with this plant.py) and caught here (`escape_head.txt`, `escape_head_chip.txt`, `caught_tree.txt`, `caught_tree_chip.txt`); plant.py whole, detached (`q3334\prover\run_detached.ps1`, the shape of the c prover's, a dummy token), 447/447 caught in 374 s, inside the harness's 600 s, the limit not widened (the prover's planting adds about 0.4 s). **THE SUITE**, detached after it, 2,656 passed, 4 skipped, 0 failed, in 1,407 s (the one test "that reached the network" asks a `.invalid` host, as it always has). `audit.prose_reaching_the_raw_side()` [].
+
+## The band line above the slate is one category's -- built 2026-10-08 *(operator question 46, found by the prover of questions 33 and 34 the same morning; built WITHOUT A NEW RULING under LAW 4 -- "nothing claims an edge below 100 resolved predictions in that category" -- NO MERGED CURVES, and question 14, ruled 2026-09-27, applied to the line; question 17's key and the standing clause; built on da4aea6 -- Q33 + Q34 released as 2ffa0b3; UNCOMMITTED for its prover)*
+
+The finding (docs/REPAIR_STATE.md, question 46): the greeting's band line
+above every sport's slate (`views._record_movement`,
+`language.bucket_countdown_line`, drawn as `#greet-countdown`) said, for
+UFC, "50-60% bucket: 370 settled · past the 100 needed, so calibration speaks
+here" -- every settled forecast of the sport in the band, every pass, both
+forecasters, every market and every card -- where no UFC category's own band
+held more than 36. It makes a gate count false, so it joined the queue (the
+queue rule). Question 14's ruling: "Every count on the Record page that
+states a gate distance is rebuilt per forecaster (per tier for UFC) and per
+distinct bet, through its record's standing rule" -- this line states a gate
+distance on another page, so it is held to the same rule.
+
+### MEASURED FIRST *(ONE verified copy of the record, `rebuild.verified_backup`, made 2026-10-08T07:42:52Z to 07:43:44Z, integrity ok, 67 tables, none mismatched; read through `db.read_only`, the clock held at 07:42:52Z; then served to the render (its sign-in writing session rows to the copy alone) and handed to the gate's step 2 dry (this tree's `db.init` on it: no object differs but in quoting, whitespace, comments or column order); DELETED 2026-10-08T09:07:35Z, no -wal or -shm left beside it; HEAD da4aea6 run from its `git archive`; scratchpad `q46\measure_head.py` -> `measure_head.txt`, `measure_head.json`)*
+
+- **The line as it ships, every sport**: NFL "50-60% bucket: 315 settled ·
+  past the 100 needed, so calibration speaks here" (the sport's bands
+  315/111/71/27 of 524 settled forecasts), MLB 937 (937/379/112/44 of 1,472),
+  NCAAF 398 (398/387/333/332 of 1,450), UFC 370 (370/74/35/9 of 488); NBA, with
+  nothing settled, draws "282 NBA predictions in · sharpest disagreement
+  +38.3 on MIL @ WAS" in its place.
+- **Each category's own bands** (one market, one forecaster, one card for
+  UFC; through the curve's door, `calibration.resolved`, and again by the
+  recount made without it, `recount.settled_standing` -- the two agree in
+  every category of every sport). The model: NFL's fullest point spread,
+  50-60%, 44, no band of 32 past the 100; MLB's moneyline, 50-60%, 237, 3 of
+  32 bands past (the 50-60% band of 2 of 8 markets); NCAAF's point spread,
+  50-60%, 108, 2 of 12 past (1 of 3 markets' 50-60%); UFC's distance, Fight
+  Night, 50-60%, 36, none of 36 past; NBA every band 0. The reasoning pass:
+  NFL total 33, none past; MLB moneyline 134, 2 of 32 past; NCAAF point
+  spread 60-70% 58, none past; UFC moneyline, Fight Night 36, none past.
+- **The page's forecaster on the copy**: Settings' default, statistical.
+- **Cost**: every category's bands and their recount, for one sport and one
+  forecaster, under 0.06 s on the copy; a whole day's digest 0.35-0.40 s.
+- **Found while measuring the payload (reading (b))**: the greeting's count
+  joined the market's snapshots (a LEFT JOIN), so a forecast read at the
+  venue twice was two rows. Since the start of each record: NFL 632 rows for
+  524 settled forecasts (108 held two snapshots), MLB 1,742 for 1,472 (270),
+  NCAAF 2,573 for 1,450 (1,123), UFC 488 for 488, NBA none -- the count, its
+  correct/wrong split and its Brier, and the movement's `resolved_before` was
+  negative in that window (-108, -270, -1,123). The slate's "predictions in"
+  line joined the same way (no forecast still to come holds two snapshots
+  today, so it counted true).
+
+### BUILT
+
+- **`calibration.band_lines(conn, sport=, predictor=)`** -- every band of
+  every curve of one sport for ONE forecaster (refused by name for any other
+  than the two, `PooledCount`), one market, one card for a carded sport, each
+  count the curve's own through `resolved` (the standing clause, one per
+  distinct bet: the number `curve` draws on the Record page for that band);
+  each entry carries its market, card, forecaster, label, band, count, gate,
+  distance, `past_the_gate`, the forecasters and cards its rows were on, the
+  recount's count (one instant, `db.one_instant`) and its words. A band
+  holding nothing is left out unless the recount finds something in it.
+- **`calibration.fullest_band`** -- the band the page draws: the fullest of
+  any one curve, a tie to the declared order (market, card, band).
+- **`calibration.assert_no_pooled_band_line`**, `PooledBandLine` (a
+  `MergedCurve`), `BAND_LINE_LAW` -- the guard, inside the builder.
+- **`views.page_forecaster`** -- the page's forecaster in one place (the one
+  asked, else Settings' `default_forecaster`, else the declared default);
+  `views.week` reads it (its own rule, moved), `views._record_movement` too;
+  `views.digest(forecaster=)`.
+- **`views._record_movement`'s shape**: `resolved_before`, `resolved_now`,
+  `gained` (the sport's pooled counts, kept), `counted_words` (what they
+  pool), `forecaster`, `bands`, `line` (the fullest band's words) and
+  `line_tip`; `buckets` and `gate` are gone.
+- **`views.digest`** reads one row per forecast (its first snapshot, as
+  Results reads it, `lines.snapshots_for`), carries `count_words` and
+  `counted_words`, and composes its headline through
+  `language.greeting_headline`; **`views._todays_slate_line`** reads one row
+  per forecast and words its line through `language.slate_forecasts_line`.
+- **`language`**: `bucket_countdown_line(category, label, n, gate)` (the
+  category required; a ValueError naming question 46 otherwise),
+  `band_line_tip`, `every_category_words`, `settled_forecasts_words`,
+  `greeting_headline`, `slate_forecasts_line`.
+- **`api.digest`** answers 500 with the guard's words for a `MergedCurve`.
+- **`app.js`**: `paintDigest` draws the server's count words and what they
+  pool, the band line (`movement.line`) and its tooltip (`line_tip`), the
+  slate's line where no band has settled; `renderGreeting`'s failure clears
+  the band line (left standing, it was the PREVIOUS sport's line above this
+  sport's slate).
+- **The gate**: `audit.check_the_greeting_band_line_is_one_categorys` (every
+  sport's greeting through `views.digest` on the record's copy, both
+  forecasters); `tools/verify.py` step 2 calls it.
+
+### READINGS TAKEN *(the conservative readings the task gave, each recorded in docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-08, Q46)")*
+
+(a) every band count is one category's -- one market, the page's forecaster,
+one card for UFC -- through the curve's door, the Record page's number, named
+in words; THE PAGE DRAWS THE FULLEST, ONE LINE (why: the line has always
+answered one question in one line, "the honest distance to being able to say
+anything at all", and per category the honest answer is the nearest
+category's distance, named; every other category is further; the slate's own
+categories would be up to eight lines above every slate -- NFL's eight
+markets, UFC's three a card -- and the greeting is fetched once per sport,
+not per slate chosen); the payload carries every category's. (b) the whole
+greeting payload and the slate's header measured: the pooled bands and the
+gate beside the pooled counts rebuilt or gone; the pooled counts that state
+no gate distance stay, said as what they are, and counted once so the words
+are true. (c) the guard inside the builder, the 500, the gate row, the
+planting, the tests. (d) measured first on one verified copy, HEAD against
+this tree.
+
+### WHAT MOVES *(HEAD against this tree on the copy, the clock held at 07:42:52Z; scratchpad `q46\moves.py` -> `moves_head.json`, `moves_tree.json`; `moves_diff.py` -> `moves_diff.txt`: every sport's greeting payload in three windows -- since 2026-10-01, the copy's own day, since the start of the record -- and what the page draws from each by that tree's renderer's rule; 4,683 values, 3,825 differ, nearly all of them the movement's shape: `buckets` and `gate` gone, `bands`, `line`, `line_tip`, `forecaster` and `counted_words` new)*
+
+- **The band line, drawn on every sport's Games page in every window**: NFL
+  "50-60% bucket: 315 settled · past the 100 needed, so calibration speaks
+  here" -> "point spread, statistical, 50-60%: 44 of 100 · 56 more before
+  calibration speaks"; MLB 937 -> "moneyline, statistical, 50-60%: 237
+  settled · past the 100 needed, so calibration speaks here"; NCAAF 398 ->
+  "point spread, statistical, 50-60%: 108 settled · past ..."; UFC 370 ->
+  "distance, Fight Night, statistical, 50-60%: 36 of 100 · 64 more before
+  calibration speaks"; NBA's slate line (below). Each with its tooltip ("The
+  fullest confidence band of any one UFC curve of the model: one market on
+  one card, its standing questions each counted once. Every curve's bands,
+  each with its own count, are on the Record page."). TWO SPORTS STILL SAY
+  CALIBRATION SPEAKS -- of one named category each, which has passed.
+- **The greeting's words**, every sport and window where something settled:
+  "N resolved" -> "N settled forecasts, every market and forecaster" (UFC
+  "every market, card and forecaster").
+- **The count, its split and its Brier**, where a forecast holds two
+  snapshots: since the start, NFL 632 (384-248, Brier 0.2320) -> 524
+  (321-203, 0.2315) -- the header's own "NFL 321-203", which it contradicted
+  -- MLB 1,742 (961-781, 0.2382) -> 1,472 (832-640, 0.2355), NCAAF 2,573
+  (1784-789, 0.1853) -> 1,450 (1021-429, 0.1787); since 2026-10-01, NFL 276
+  (163-113, 0.2350) -> 212 (128-84, 0.2328), NCAAF 1,332 (875-457, 0.2022) ->
+  678 (444-234, 0.2022); UFC's and every day window's unchanged; the
+  movement's `gained` and `resolved_before` with them (never negative now).
+- **The slate's line**: "178 NFL predictions in · sharpest disagreement
+  +26.2 on HOU @ TEN" -> "178 NFL forecasts waiting to settle on the current
+  slate, every market and forecaster · sharpest disagreement +26.2 on HOU @
+  TEN"; NBA's 282 (drawn, nothing settled), UFC's 34 ("..., every market, card
+  and forecaster"); no count moves.
+- **Not drawn**: the `settled` list (one row per forecast, its market figure
+  the first snapshot); `today.n`.
+- **The slate** (`views.week`): unchanged; `page_forecaster` is its own rule
+  in one place.
+
+### (b) EVERY FIGURE OF THE GREETING AND THE SLATE'S HEADER *(the whole `/api/digest` payload, and the Games page's header: the day head and the day strip)*
+
+- **Stating a gate distance from a pooled count -- rebuilt**:
+  `movement.buckets[*]` (`n`, `needed`, `provisional`, `countdown`) ->
+  `movement.bands`, each one category's; `movement.gate`, beside the sport's
+  pooled counts -> gone, each band carrying its own.
+- **Pooled, stating no gate distance and no claim -- stay, said as what they
+  are**: `n`, `correct`, `wrong` (settled forecasts since last looked, every
+  market, forecaster and pass, and card for UFC -- the drawn words now say
+  so; counted once), `brier` (a score over the same forecasts, beside its N;
+  no claim of an edge), `headline` (the same words), `movement.
+  resolved_before` / `resolved_now` / `gained` (payload only, `counted_words`
+  beside them), `today.line` (the forecasts waiting to settle on the current
+  slate -- its words say so), `today.n`; `today.sharpest_gap` is one
+  forecast's gap (the greatest of either forecaster's), no gate.
+- **Not pooled, no gate**: `settled[*]` (one forecast each),
+  `today.quiet_markets` (one market's zero, the model's; not drawn on Games),
+  `warnings` (the appliance's), `scope`, `since`, `day`.
+- **The slate's header** (`views.week`): the heading and the sport pill
+  (words), `today.where_words` (the day and sport), `today.count_words` (the
+  page's forecaster's picks, questions watched, live and settled on this
+  slate -- one forecaster's listing count), `no_price_words`, `fee_line` (a
+  price's fee arithmetic), `board.nothing_clears_words`: none states a gate
+  distance or pools forecasters; unchanged.
+
+### THE PLANTING *(scratchpad `q46\run_plantings.py`; ESCAPING on da4aea6 -- its `git archive` with this plant.py, `escape_head.txt` -- and CAUGHT here, `caught_tree.txt`)*
+
+`plant_a_greeting_band_line_counting_every_category` (1.1 s): a UFC world of
+three cards (Fight Night nine bouts asked every market and two the distance
+alone, the Contender Series six, a Numbered card three), every question asked
+by both forecasters, early and final, at 0.55 and settled -- 224 settled
+forecasts in the band, no category's own past 11. Lawful: the line is
+"distance, Fight Night, statistical, 50-60%: 11 of 100 · 89 more before
+calibration speaks". Planted, each refused by the builder (`views.digest`)
+and the gate's check by name: the band count as it shipped under the shipped
+words; the curve's door without the card, without the forecaster, and with
+every card's rows named as the asked card's; the words as they shipped (no
+category); the first band drawn, as it shipped (`buckets[0]`); the door
+without the card refused by the API (500, "QUESTION 46"); the payload as it
+shipped refused by the guard; and the gate's step 2 makes the call. On
+da4aea6: "the line above UFC's slate says '50-60% bucket: 224 settled · past
+the 100 needed, so calibration speaks here' ... and the gate checks nothing".
+
+### THE RENDER *(the one copy, served the test server's way on a free loopback port with this tree's app and a dummy token, never 8848; Chromium at 1300 and 390, one device pixel to one; Games for UFC, MLB and NBA, each wait for the sport's own line and its own slate drawn; scratchpad `q46\render.py` -> `render\tree_*.png`, `tree_said.json`; da4aea6 drawn the same way, `head_*`)*
+
+Read: UFC at 1300 -- "Since you last looked: **488 settled forecasts**, every
+market, card and forecaster -- 258 correct, 230 wrong · Brier 0.2459" over
+"distance, Fight Night, statistical, 50-60%: 36 of 100 · 64 more before
+calibration speaks", above the Fight Night card of 10 October (its badges
+39/100, moneyline, Fight Night: another category, named in its tooltip); MLB
+"1472 settled forecasts ... 832 correct, 640 wrong", the header's "MLB
+832-640" beside it (da4aea6 drew "1742 resolved -- 961 correct, 781 wrong"
+beside the same header), over "moneyline, statistical, 50-60%: 237 settled ·
+past the 100 needed, so calibration speaks here" above its last slate of 27
+September (badge 260/100, the market's whole count); NBA "Nothing resolved
+since you last looked ..." over "282 NBA forecasts waiting to settle on the
+current slate, every market and forecaster · sharpest disagreement +38.3 on
+MIL @ WAS". At 390 each wraps to three lines and two, in the muted and faint
+inks it always had; the page 373 wide (the scrollbar), no page error, no
+failed request; the tooltip read from the element. The first capture took
+MLB's and NBA's greetings above UFC's slate still on screen (the wait was for
+the greeting alone); the waits were made the sport's own slate too. No defect
+of the change was seen.
+
+### THE GATE'S STEP 2, DRY, ON THE COPY *(`q46\step2_all.py`: `verify.step_2_guards` with its copy pointed at this one, plant.py stood down and run apart, the credential scan handed an empty file, never .env)*
+
+129 rows PASS in 298 s, the new row ("the greeting's band line is one
+category's (question 46)") among them; on its own on the copy, before, 3.8 s.
+
+### THE SUITE AND plant.py WHOLE *(detached, `q46\run_detached.ps1` -- the shape of `c\prover\run_detached.ps1` -- a dummy non-secret token, TMP/TEMP at their defaults)*
+
+plant.py whole: 448/448 caught in 376 s (447 in 374 s at the prover of Q33 +
+Q34; the new planting adds about 1.1 s), inside the harness's 600 s, the
+limit not widened. The full suite, first run: 2,673 passed, 4 skipped, 2
+failed, in 1,433 s -- both
+`test_prompt_disclosure.py::test_results_shows_each_reasoning_row_the_prompt_it_carries`
+(1120 and 390: the prompt box on Results not open in 10 s), the Results
+table's redraw race FOLLOWUPS holds for Q5, which failed the same way in
+Q38's first gate; the change touches neither Results nor its table, and the
+file passes alone, 7 of 7. Its one as-is rerun failed it again (1120), and
+`test_smoke.py::test_the_weekly_strip_renders_with_hit_targets` beside it
+(the race FOLLOWUPS records under the wrong-side fix, failing 3 of 4 alone on
+older trees -- 3 of 3 alone here today, without this module). DIAGNOSED
+BEFORE A THIRD RUN: the change's code is not on the race's road (Results
+asks `/api/history`, `/api/week` and `/api/calendar`, none changed; on the
+browser suite's own world `views.history` and `views.week` time alike on
+da4aea6 and here, the digest 3.4 ms -> 8.0 ms, `q46\world_timing.py`). A
+third run failed it again (390). THEN BISECTED: the whole suite with the new
+module set aside passed (2,656, 1,414 s), and with only its two browser
+tests deselected passed (2,673, 1,412 s): the second of them,
+`test_a_refused_greeting_leaves_no_other_sports_line_in_chromium`, switched
+the shared page to another sport and ended with that switch's requests to
+the suite's shared server still in flight. It now waits on the slate's own
+sport pill for the switch to finish (never a clock) and takes its route off;
+it still fails on da4aea6. The whole suite with it: **2,675 passed, 4
+skipped, 0 failed, in 1,410 s**, the planting harness inside its 600 s. How
+a request cut off on the shared server reached a later module's own server
+is not shown (FOUND, NOT BUILT, below).
+
+### FOUND, NOT BUILT *(none joins the queue: none breaks LAW 1 or LAW 3, makes a gate count false, or could show the operator a wrong number on a pick)*
+
+- **The footer's "market comparison for X of N"** (`lines.coverage`, in
+  `/api/meta`, every page) joins the market's snapshots the same way: N counts
+  a forecast once per snapshot. A displayed count, no gate, no pick.
+- **The sport tabs' season record ("NFL 321-203", `views.season_record`) and
+  the yesterday strip beneath the rows** pool every market, forecaster and
+  pass; they state no gate distance and sit outside the greeting and the
+  slate's header (the page's header, the slate's foot); unchanged. With the
+  greeting counted once, the greeting since the start of the record and the
+  tab now agree.
+- **`/api/digest` moves the reader's "last looked" marker before it builds
+  the digest** (`views.mark_seen` returns the old one): a greeting refused
+  for a pooled band (500) still moves it, so what settled in between is not
+  greeted on the next visit. Pre-existing ordering, for any failure of the
+  digest.
+- **The greeting's Brier pools markets and forecasters**: a score beside its
+  N, no gate and no claim, so it stays, said after the words saying what it
+  pools. `language.tier_status_line`'s note ("a count, never a pooled rate")
+  is the precedent if the operator wants it per category.
+- **At 390 the sport tabs' records run together** ("NFL 321-203MLB
+  832-640"); pre-existing.
+- **A browser test that ends with requests in flight on the suite's shared
+  server tipped a later module's race.** With
+  `test_a_refused_greeting_leaves_no_other_sports_line_in_chromium` ending
+  mid-switch, `test_prompt_disclosure.py`'s Results race failed three whole
+  suites of three; set aside, or let finish, it passed. The race itself --
+  the test opens a prompt box the unfiltered table may already hold, before
+  the filtered redraw lands -- is Q5's (above); by what road the shared
+  server's cut-off requests slowed the prompt world's own server was not
+  traced (in-process servers share one interpreter and `api._database`; a
+  worker opened while the pointer named another world would serve it).
+  The weekly strip test fails alone today, 3 of 3, on this tree without the
+  module.
+
+### NOT HERE, AND NAMED
+
+- Which band the greeting draws (the fullest of any one curve) is reading
+  (a)'s choice; drawing every category of the sport, or the slate's own,
+  is a change of one function (`fullest_band`) and the renderer's one line.
+
+### THE PROVER *(2026-10-08 ~11:15-12:30Z, on the change as handed: alone in the worktree; scratchpad `q46\prover\`)*
+
+**NO DEFECT OF THE CHANGE FOUND.** Looked for, adversarially: any figure in
+the greeting (`/api/digest`, drawn as `#greet-msg` and `#greet-countdown`),
+the slate's header (the heading, the sport pill, the day strip, "Nothing worth
+taking today") or the strip around them that states a gate distance or a
+calibration claim from a count pooled over markets, forecasters, passes or
+UFC cards; any band whose count is not its category's curve's own; any
+sentence false of its counts. The band line is the only figure stating a gate
+distance, and every band it carries is one category's, the Record page's own
+bucket; the pooled figures that stay state no gate distance and no claim and
+say what they pool; no drawn sentence is false of its counts. The page's
+forecaster is one rule for the slate and the line: the per-sport forecaster
+choice the page keeps (`viewChoice`) is never set, so the slate is always
+Settings' forecaster, as the line is.
+
+**ADDED, FOR COVERAGE (not a defect: the change as handed refuses both):**
+the planting's two forms the finding names and it did not plant alone -- the
+curve's door without its standing rule (every pass of a question counted, its
+early and final forecast two) and without the market (every market's rows in
+each category) -- each refused by the builder and the gate's check by name;
+with the guard stood down each moves the drawn line ("distance, Fight Night,
+statistical, 50-60%: 22 of 100" and "moneyline, Fight Night, statistical,
+50-60%: 29 of 100" where no category holds more than 11), so neither form is
+vacuous (`forms_bite.py`). Two tests, the same two pools
+(`test_a_band_counted_over_a_pool_is_refused_by_the_builder[without its
+standing rule (every pass)]` and `[without the market (every market)]`),
+each failing on da4aea6.
+
+**MEASURED ON ONE VERIFIED COPY OF ITS OWN** (`rebuild.verified_backup`, made
+2026-10-08T11:20:54Z to 11:21:47Z, integrity ok, 67 tables, none mismatched;
+read through `db.read_only` with the clock held at 11:20:54Z; then handed to
+the gate's step 2 dry and served to the render, the copy alone written to;
+DELETED 2026-10-08T11:35:56Z, no -wal or -shm left beside it; no other copy
+made), HEAD (da4aea6's `git archive`) against this tree (`moves.py`,
+`moves_diff.py` -> `moves_diff.txt`):
+
+- **Every sport's current slate** (`views.week`), the page's forecaster
+  (Settings', statistical) and both forecasters by name: **0 of 290,562
+  values move** -- `page_forecaster` is the slate's own rule, moved.
+- **Every sport's greeting**, in three windows (since 2026-10-01, the copy's
+  day, since the start), and what the page draws from it: the band line on
+  every sport but NBA -- NFL "50-60% bucket: 315 settled · past the 100
+  needed, so calibration speaks here" -> "point spread, statistical, 50-60%:
+  44 of 100 · 56 more before calibration speaks"; MLB 937 -> "moneyline,
+  statistical, 50-60%: 237 settled · past the 100 needed, so calibration
+  speaks here"; NCAAF 401 -> "point spread, statistical, 50-60%: 110 settled ·
+  past ..." (108 on the build's copy four hours before); UFC 370 ->
+  "distance, Fight Night, statistical, 50-60%: 36 of 100 · 64 more before
+  calibration speaks"; NBA's slate line reworded, no count moving. The
+  greeting's words on every sport; its count, split and Brier where a forecast
+  holds two snapshots: since the start NFL 632 -> 524, MLB 1,742 -> 1,472,
+  NCAAF 2,585 -> 1,456 (Brier 0.1855 -> 0.1789); since 2026-10-01 NFL 276 ->
+  212, NCAAF 1,344 -> 684; the copy's own day NCAAF "12 resolved -- 8
+  correct, 4 wrong" -> "6 settled forecasts ... 4 correct, 2 wrong" (Brier
+  0.2364 both ways); UFC unchanged; `resolved_before` never negative now
+  (-108, -270, -1,129 since the start on HEAD).
+- **The settled list, forecast by forecast** (`settled_check.py`): in every
+  sport and window the tree lists the same forecasts as HEAD, each once, in
+  HEAD's order; each tree row is one of HEAD's rows for that forecast, and its
+  market figure is its first snapshot's, read straight off the copy (NFL 108,
+  MLB 270, NCAAF 1,129 forecasts listed more than once on HEAD since the
+  start).
+- **Every band against the Record page** (`bands_vs_record.py`), every
+  sport, both forecasters: every band the greeting carries is the bucket
+  `calibration.blind_categories` draws for its category; no non-empty bucket
+  of any curve is missing from the list and none is added; no tie at the
+  fullest; the guard passed on every one (door and recount agree). Past the
+  hundred: MLB the model's moneyline 50-60% 237, point spread 60-70% 150 and
+  total 50-60% 143, the reasoning pass's moneyline 134 and total 129; NCAAF
+  the model's point spread 50-60% 110 and moneyline 80%+ 108; none in NFL,
+  NBA or UFC. Drawn for the reasoning pass, were Settings to name it: NFL
+  "total, reasoning pass, 50-60%: 33 of 100", MLB "moneyline, reasoning
+  pass, 50-60%: 134 settled · past ...", NCAAF "point spread, reasoning pass,
+  60-70%: 58 of 100", UFC "moneyline, Fight Night, reasoning pass, 50-60%: 36
+  of 100". A day's digest 0.34-0.40 s.
+- **Gate step 2, dry, on the copy** (`step2_all.py`, plant.py stood down and
+  run whole apart, the credential scan handed an empty file, never .env):
+  **129 rows PASS in 301 s**, "the greeting's band line is one category's
+  (question 46)" among them, with every row that builds a slate (the page's
+  forecaster's one rule).
+
+**THE RENDER** (`render.py`: the copy served the test server's way, this
+tree's app and da4aea6's, a free loopback port, a dummy token, never 8848;
+Chromium at 1300 and 390, one device pixel to one; Games for UFC, NFL and NBA,
+each capture waiting for the sport's own line and its own slate; pictures
+`render\tree_*.png`, `head_*.png`, words `tree_said.json`, `head_said.json`).
+READ: UFC at 1300 -- "Since you last looked: **488 settled forecasts**, every
+market, card and forecaster -- 258 correct, 230 wrong · Brier 0.2459" (the
+UFC tab's "258-230" beside it) over "distance, Fight Night, statistical,
+50-60%: 36 of 100 · 64 more before calibration speaks", above the Fight Night
+card of Saturday 10 October (its badges 39/100: moneyline, Fight Night,
+another category); da4aea6 drew "488 resolved" over "50-60% bucket: 370
+settled · past the 100 needed, so calibration speaks here" there. NFL "point
+spread, statistical, 50-60%: 44 of 100 · 56 more before calibration speaks"
+above "TONIGHT" (da4aea6: "50-60% bucket: 315 settled · past ..."). NBA "282
+NBA forecasts waiting to settle on the current slate, every market and
+forecaster · sharpest disagreement +38.3 on MIL @ WAS". At 390 the greeting
+wraps to three lines and the band line to two, in the muted ink it always
+had, readable; the page 373 wide (the scrollbar); no page error and no
+failed request at either width; the tooltip read from the element. No defect
+of the change seen. (The NFL rows below the heading are caught mid-arrival
+in both trees' captures, the stagger's fade; not this change.)
+
+**PLANTINGS**: `plant_a_greeting_band_line_counting_every_category`, with the
+prover's two forms, ESCAPING on da4aea6 (its `git archive` with this
+plant.py, `escape_head.txt`: "the line above UFC's slate says '50-60%
+bucket: 224 settled · past the 100 needed, so calibration speaks here' ...
+and the gate checks nothing") and CAUGHT here (`caught_tree.txt`, 1.2 s:
+eight forms, each refused by the builder and the gate's check, the API's 500
+and the payload as it shipped). plant.py whole, detached
+(`q46\prover\run_detached.ps1`, the shape of `c\prover\run_detached.ps1`, a
+dummy non-secret token, TMP/TEMP at their defaults): **448/448 caught in 377
+s** (376 s at the build; the two forms add about 0.1 s), inside the
+harness's 600 s, the limit not widened. `audit.prose_reaching_the_raw_side()`
+[]. THE SUITE, detached, after it, on its first run: **2,677 passed, 4
+skipped, 0 failed, in 1,411 s** (the build's 2,675 and the prover's two
+tests; the one test "that reached the network" asks a `.invalid` host, as it
+always has), the planting harness inside its 600 s.
+
+**FOUND, NOT BUILT** *(none meets the queue rule: none breaks LAW 1 or LAW 3,
+makes a gate count false, or could show the operator a wrong number on a
+pick)*:
+
+- **The slate line's "sharpest disagreement" names a game and not the
+  forecast it is.** It is the greatest gap over every forecast still to settle
+  on the slate -- both forecasters and every pass -- and the words name only
+  the matchup. On the copy NBA's "+38.3 on MIL @ WAS" is the reasoning pass's
+  point spread (forecast 3182: Washington fails to cover +3.5, 62% against the
+  media line's 23.7%), drawn above the model's slate, whose own greatest is
+  17.8 (forecast 3163); NFL's "+26.2 on HOU @ TEN" is the reasoning pass's
+  early pass (forecast 4478), the model's greatest 21.4. The figure is true of
+  its forecast and states no gate distance or claim; the words could name the
+  question and forecaster (`language.slate_forecasts_line`). Pre-existing
+  since the greeting was built.
+- **"TONIGHT" over "SUNDAY 11 OCTOBER · NFL"** on NFL's Games page: the heading
+  reads the next start (Thursday night's game, 00:15Z), the line beneath it
+  the slate's day. No count; pre-existing.

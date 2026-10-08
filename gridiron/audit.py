@@ -10176,6 +10176,52 @@ def check_a_ufc_board_badge_is_its_cards(conn) -> None:
 
 
 # ---------------------------------------------------------------------------
+# THE GREETING'S BAND LINE IS ONE CATEGORY'S (operator question 46, found
+# 2026-10-08 by the prover of questions 33 and 34; built the same day under
+# LAW 4, NO MERGED CURVES and question 14's ruling of 2026-09-27)
+# ---------------------------------------------------------------------------
+#
+# The guard is `calibration.assert_no_pooled_band_line`, inside the builder
+# (`views._record_movement`, which `views.digest` and so `/api/digest` call).
+# This builds every sport's greeting on the record's copy, for both
+# forecasters -- the page shows whichever Settings names -- and turns a
+# refusal into a failure of its own. On the release before it, every
+# sport's line counted the sport whole: "50-60% bucket: 370 settled · past
+# the 100 needed, so calibration speaks here" above UFC's slate, where no
+# UFC category's band held more than 36.
+
+
+def check_the_greeting_band_line_is_one_categorys(conn) -> None:
+    """Refuse a band line above any sport's slate, on the record, whose count
+    is not one category's -- one market, one forecaster, one card for UFC,
+    its standing questions through the curve's door -- or that the recount
+    made without the door does not make, or whose words do not name its
+    category or say calibration speaks short of the hundred; and the pooled
+    shape itself. Every sport, both forecasters, through the builder's
+    guard (operator question 46)."""
+    from . import bet, calibration, db, horizon, views
+
+    faults = []
+    day = db.utcnow()[:10]
+    for sport in config.SPORTS:
+        for forecaster in ("statistical", "llm"):
+            try:
+                views.digest(conn, sport=sport, day=day, forecaster=forecaster)
+            except (calibration.MergedCurve, calibration.MergedRecord,
+                    config.CrossSportAggregation, horizon.PooledCount,
+                    bet.NotABet) as exc:
+                faults.append(f"{sport}, {forecaster}: {exc}")
+    if faults:
+        raise LawViolation(
+            "THE GREETING'S BAND LINE IS NOT ONE CATEGORY'S (operator question "
+            "46; LAW 4: \"nothing claims an edge below 100 resolved "
+            "predictions in that category\"; question 14, ruled 2026-09-27, "
+            "applied to the line): each band above the slate counts one "
+            "market's, one forecaster's and, for UFC, one card's standing "
+            "questions:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE AT-THE-LINE RECORD COUNTS ONE CLAIM PER DISTINCT BET (GRIDIRON_REPAIR
 # item 6, 2026-09-26; operator question 17, 2026-09-28)
 # ---------------------------------------------------------------------------

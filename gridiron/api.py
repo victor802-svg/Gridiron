@@ -396,15 +396,22 @@ def digest(request: Request, sport: str | None = None,
     anyone who wants to look twice.
     """
     chosen = _sport(sport)
-    if day:
-        return views.digest(get_conn(), sport=chosen, day=day)
+    # A BAND LINE THAT IS NOT ITS CATEGORY'S IS A 500 THAT SAYS SO (operator
+    # question 46, 2026-10-08): the builder's guard refuses a band above the
+    # slate counting more than one market, forecaster or card, by name, and
+    # the page hides the greeting rather than draw it.
+    try:
+        if day:
+            return views.digest(get_conn(), sport=chosen, day=day)
 
-    session_id = request.cookies.get(auth.COOKIE_NAME)
-    if peek:
-        since = views.seen_marker(get_conn(), session_id, chosen)
-    else:
-        since = views.mark_seen(get_auth_conn(), session_id, chosen)
-    return views.digest(get_conn(), sport=chosen, since=since)
+        session_id = request.cookies.get(auth.COOKIE_NAME)
+        if peek:
+            since = views.seen_marker(get_conn(), session_id, chosen)
+        else:
+            since = views.mark_seen(get_auth_conn(), session_id, chosen)
+        return views.digest(get_conn(), sport=chosen, since=since)
+    except calibration.MergedCurve as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/digest")

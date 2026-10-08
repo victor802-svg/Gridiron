@@ -12,6 +12,97 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q46 PROVED (2026-10-08 ~11:15-12:30Z; ONE LOCAL COMMIT on `repair`
+  holding exactly the change's files, not pushed, for its gate; FOLLOWUPS
+  "The band line above the slate is one category's", THE PROVER):** NO DEFECT
+  OF THE CHANGE FOUND -- no other figure in the greeting, the slate's header
+  or the strip states a gate distance or a calibration claim from a pooled
+  count; every band is its category's own; no drawn sentence is false of its
+  counts. Added for coverage: the planting's two pools not planted alone
+  (the curve's door without its standing rule -- every pass -- and without
+  the market), each refused by the builder and the gate's check, and two
+  tests (each failing on da4aea6). MEASURED AGAIN on ONE verified copy of
+  its own (11:20:54Z to 11:21:47Z, read-only, the clock held; handed to step
+  2 dry and served to the render; DELETED 2026-10-08T11:35:56Z): every
+  sport's current slate, three forecaster asks, 0 of 290,562 values move;
+  the greeting's band line, words, count, split and Brier move as the build
+  measured (NCAAF now 110 past the 100, 1,456 settled forecasts since the
+  start); the settled list is the same forecasts, each once, its market
+  figure the first snapshot's; every band of every sport, both forecasters,
+  is the Record page's bucket, none lost; gate step 2 dry, 129 rows PASS in
+  301 s. RENDERED from the copy (UFC, NFL, NBA Games at 1300 and 390) and
+  read: no defect. The planting ESCAPES on da4aea6 and is CAUGHT here (1.2
+  s); plant.py whole 448/448 caught in 377 s (detached, a dummy token;
+  inside the harness's 600 s); the suite (detached, its first run) 2,677
+  passed, 4 skipped, 0 failed, in 1,411 s;
+  `audit.prose_reaching_the_raw_side()` []. Nothing joins the queue
+  (FOLLOWUPS: the slate line's "sharpest disagreement" names a game, not
+  its forecast -- NBA's +38.3 is the reasoning pass's, above the model's
+  slate). **Next: the gate and release; then Q25/Q26.**
+  **Q46 BUILT (2026-10-08 ~07:40-11:15Z, on da4aea6 -- Q33 + Q34 released as
+  2ffa0b3; question 46 joined the queue after Q33 + Q34, before Q25/Q26;
+  UNCOMMITTED for its prover; FOLLOWUPS "The band line above the slate is one
+  category's"; CLAUDE.md row "THE BAND LINE ABOVE THE SLATE IS ONE
+  CATEGORY'S"):** no new ruling -- LAW 4, NO MERGED CURVES and question 14's
+  ruling applied to the line. EVERY BAND IS ONE CATEGORY'S
+  (`calibration.band_lines`): one market, the page's forecaster
+  (`views.page_forecaster`, Settings' default, as the slate's), one card for
+  UFC, through the blind curve's door -- the Record page's number for that
+  band -- held to the recount made without the door, named in words; THE
+  PAGE DRAWS ONE, THE FULLEST (`calibration.fullest_band`, reading (a): the
+  nearest any category is to the hundred), its tooltip saying so; the guard
+  inside the builder (`calibration.assert_no_pooled_band_line`, so
+  `/api/digest` answers 500 by name -- the line's own route; the page then
+  hides the greeting and clears the line, which a failed greeting left as the
+  previous sport's); a step-2 row
+  (`audit.check_the_greeting_band_line_is_one_categorys`, every sport, both
+  forecasters). READING (b): the greeting's pooled count stays, said as what
+  it is ("12 settled forecasts, every market and forecaster"; UFC "..., card
+  and ..."), as does the slate's ("178 NFL forecasts waiting to settle on the
+  current slate, every market and forecaster"), and the gate beside the
+  movement's pooled counts is gone -- AND THE GREETING COUNTS EACH FORECAST
+  ONCE: it joined the market's snapshots, so since the start of NFL's record
+  it said "632 resolved" where 524 had settled (MLB 1,742 for 1,472, NCAAF
+  2,573 for 1,450, the Brier with them) beside the header's "NFL 321-203".
+  MEASURED FIRST on ONE verified copy (`rebuild.verified_backup`,
+  2026-10-08T07:42:52Z to 07:43:44Z, integrity ok, 67 tables, none
+  mismatched; measured through `db.read_only`, the clock held; then served
+  to the render and handed to the gate's step 2 dry, the copy alone written
+  to; DELETED 2026-10-08T09:07:35Z, no -wal or -shm left beside it):
+  the line as it ships NFL 315, MLB 937, NCAAF 398, UFC 370 settled "past the
+  100"; each category's own fullest band, the model's: NFL point spread 44,
+  MLB moneyline 237 (3 of 32 bands past), NCAAF point spread 108 (2 of 12),
+  UFC distance, Fight Night, 36 (none of 36); door and recount agree in every
+  category. HEAD against this tree, every sport's greeting in three windows:
+  the band line moves on every sport (NFL "point spread, statistical,
+  50-60%: 44 of 100 · 56 more before calibration speaks", MLB "moneyline,
+  statistical, 50-60%: 237 settled · past the 100 needed, so calibration
+  speaks here", NCAAF "point spread, ... 108 settled · past ...", UFC
+  "distance, Fight Night, statistical, 50-60%: 36 of 100 · 64 more ..."; NBA,
+  nothing settled, the slate's line said as what it is); the greeting's words
+  on every sport, and its count, split and Brier where a forecast holds two
+  snapshots; nothing else. RENDERED from the copy (UFC, MLB and NBA Games at
+  1300 and 390) and read: no defect of the change; the page 373 wide at 390,
+  no page error. Plantings: `plant_a_greeting_band_line_counting_every_
+  category` ESCAPING on da4aea6 (`git archive`, this plant.py: "50-60%
+  bucket: 224 settled · past the 100 needed ..." where no category passes 11,
+  and no check) and CAUGHT here (1.1 s, eight forms); tests:
+  `test_band_line_per_category.py` (19, each failing on da4aea6) and
+  `test_countdown.py` (the category now required). Gate step 2 dry on the
+  copy: 129 rows PASS in 298 s, the new row among them. plant.py whole
+  448/448 caught in 376 s (detached, `q46\run_detached.ps1`, a dummy token;
+  inside the harness's 600 s). THE SUITE (detached): three runs failed
+  `test_prompt_disclosure.py`'s Results race (Q5's, FOLLOWUPS) -- one as-is
+  rerun, a diagnosis (the change is not on the race's road), a third run --
+  then BISECTED: green with the new module set aside (2,656) and with its two
+  browser tests deselected (2,673); the refused-greeting test ended with its
+  sport switch's requests in flight on the shared server, and now waits for
+  the switch to finish (still failing on da4aea6). The whole suite: 2,675
+  passed, 4 skipped, 0 failed, in 1,410 s. `audit.prose_reaching_the_raw_
+  side()` []. No question put; nothing new joins the queue
+  (FOLLOWUPS, "FOUND, NOT BUILT": the footer's "market comparison for X of N"
+  joins the snapshots the same way). **Next: its prover; then the gate and
+  release; then Q25/Q26.**
   **Q33 + Q34 PROVED (2026-10-08 ~05:45-06:55Z; ONE LOCAL COMMIT on
   `repair` holding exactly the change's files, not pushed, for its gate;
   FOLLOWUPS "The outlook counts only slates still to come ...", THE
@@ -3081,7 +3172,80 @@ depend on the answer.
     distance is rebuilt per forecaster (per tier for UFC) and per distinct
     bet, through its record's standing rule") applied to this line.
     Building: each band count one category's, through the blind curve's
-    door, named in words; a guard, a gate row and a planting.
+    door, named in words; a guard, a gate row and a planting. **BUILT
+    2026-10-08 (Q46 BUILT, START HERE; readings under "Rulings taken in your
+    absence (2026-10-08, Q46)"), uncommitted for its prover. PROVED the same
+    day (Q46 PROVED, START HERE): no defect found, one local commit for its
+    gate.**
+
+## Rulings taken in your absence (2026-10-08, Q46)
+
+Operator question 46 (found by the prover of questions 33 and 34, 2026-10-08):
+the greeting's band line above every sport's slate counted every settled
+forecast of the sport in the band -- "50-60% bucket: 370 settled · past the
+100 needed, so calibration speaks here" above UFC's slate, where no UFC
+category's own band held more than 36. Settled by the law and a ruling, no new
+one: LAW 4 ("nothing claims an edge below 100 resolved predictions in that
+category"), NO MERGED CURVES, and question 14, ruled 2026-09-27 ("Every count
+on the Record page that states a gate distance is rebuilt per forecaster (per
+tier for UFC) and per distinct bet, through its record's standing rule"),
+applied to this line, which states a gate distance on another page; question
+17's key and the standing clause. Each reading below is the conservative one
+the task gave, recorded here and in FOLLOWUPS ("The band line above the slate
+is one category's"); each reversible in a few lines. None needed a word of a
+law or a ruling stretched, so no question is put.
+
+- **(a) EVERY BAND COUNT IS ONE CATEGORY'S, AND THE PAGE DRAWS THE FULLEST.**
+  Each band is one market's, the page's forecaster's (Settings' default, as
+  the slate's -- `views.page_forecaster`, one place for both) and, for UFC,
+  one card's: its standing questions through the blind curve's own door
+  (`calibration.resolved`, the standing clause, one per distinct bet), the
+  number the Record page's curve draws for that band, held to the count
+  `gridiron.recount` makes without the door, and named in words ("distance,
+  Fight Night, statistical, 50-60%: 36 of 100 · 64 more before calibration
+  speaks"). WHICH IS DRAWN: ONE line, the fullest band of any one curve, a tie
+  to the declared order, its tooltip saying it is the fullest and that every
+  curve's bands are on the Record page; the payload carries every category's.
+  WHY: the line has always answered one question in one line -- "the honest
+  distance to being able to say anything at all" -- and per category the
+  honest answer is the nearest category's distance, named, so it cannot be
+  read as the sport's; every other category is further. Every category of
+  the sport, or the slate's own, would be up to eight lines above every slate
+  (NFL's eight markets; UFC's three a card), and the greeting is fetched once
+  per sport, not per slate chosen. Never a pooled count, never "calibration
+  speaks here" over a pool: MLB and NCAAF still say it, each of one named
+  category that has passed (MLB moneyline, the model, 237; NCAAF point spread,
+  108). Reversal: `calibration.fullest_band` and the renderer's one line.
+- **(b) THE REST OF THE GREETING AND THE SLATE'S HEADER.** Measured whole
+  (FOLLOWUPS lists each figure). The pooled bands and the gate beside the
+  sport's pooled counts -- the only figures stating a gate distance -- are
+  rebuilt (the bands) or gone (the gate). The pooled counts that state no gate
+  distance and no claim stay, said as what they are: "Since you last looked:
+  12 settled forecasts, every market and forecaster" (UFC "every market, card
+  and forecaster"; it said "12 resolved"), its correct/wrong split and Brier
+  after those words, the movement's pooled counts beside the same words in the
+  payload, and the slate's "178 NFL forecasts waiting to settle on the current
+  slate, every market and forecaster" (it said "178 NFL predictions in").
+  AND COUNTED ONCE, so the words are true: the greeting joined the market's
+  snapshots, so a forecast read at the venue twice was two rows -- since the
+  start of NFL's record "632 resolved" where 524 had settled (MLB 1,742 for
+  1,472, NCAAF 2,573 for 1,450; its Brier with them, the movement's "before"
+  count negative) -- and the header beside it said "NFL 321-203"; each
+  forecast is one row now, its market figure its first snapshot, as Results
+  reads it. The slate's header (the day head and the day strip) holds no
+  gate distance and pools no forecasters: unchanged. Reversal: the two
+  queries' one subquery each, and `language`'s words.
+- **(c) THE GUARD, THE 500, THE GATE.** `calibration.assert_no_pooled_band_line`
+  inside the builder refuses a band whose count is not its category's (and
+  says a count wider than its category is the pool), the pooled shape, words
+  not naming the category or saying calibration speaks short of the hundred,
+  and a drawn line that is not the fullest's -- so `/api/digest` answers 500
+  by name; the task said "/api/week", but the line is served by
+  `/api/digest` (the greeting's own route; `/api/week` builds the slate and
+  no band line), so the 500 is there, and the page hides the greeting and
+  clears the line rather than leave the previous sport's standing.
+  `audit.check_the_greeting_band_line_is_one_categorys` is a step-2 row, every
+  sport's greeting on the record's copy, both forecasters.
 
 ## Rulings taken in your absence (2026-10-08, Q33 + Q34)
 

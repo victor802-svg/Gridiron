@@ -645,6 +645,11 @@ def test_every_new_guard_is_in_the_planted_harness():
         # UFC's slate and Results down for one -- and every chip is held to
         # its own card's band.
         "plant_a_bout_on_no_declared_card_counted_in_a_cards_band",
+        # OPERATOR QUESTION 46 (found 2026-10-08 by the prover of 33 + 34;
+        # built the same day under LAW 4 and question 14's ruling): the band
+        # line above every slate is one category's -- one market, one
+        # forecaster, one card for UFC -- never a count over the sport.
+        "plant_a_greeting_band_line_counting_every_category",
         # OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
         # 2026-09-28): one function defines a distinct bet -- the forecaster
         # and the venue's question, the rung asked included. A door keyed

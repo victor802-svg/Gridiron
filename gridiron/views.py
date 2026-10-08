@@ -553,8 +553,9 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
     # then record that choosing rather than one forecaster's work.
     from . import settings as _settings
 
-    chosen = forecaster or _settings.value(conn, "default_forecaster") \
-        or config.PICKS_DEFAULT_FORECASTER
+    # ONE PLACE DECIDES IT (2026-10-08), so the greeting's band line above
+    # the slate is this forecaster's too (operator question 46).
+    chosen = page_forecaster(conn, forecaster)
     available = [
         {"forecaster": name,
          "label": config.FORECASTER_LABELS.get(name, name),
@@ -5200,8 +5201,13 @@ def digest(
     sport: str,
     since: str | None = None,
     day: str | None = None,
+    forecaster: str | None = None,
 ) -> dict:
     """What happened while you were away, for one sport.
+
+    `forecaster` is whose band the line above the slate states (operator
+    question 46, 2026-10-08): the page's, through `page_forecaster`, when
+    none is asked.
 
     Two modes, and the difference matters:
 
@@ -5225,14 +5231,22 @@ def digest(
         window = (since or "0000-01-01T00:00:00Z", db.utcnow())
         scope = "since you last looked" if since else "so far"
 
+    # ONE ROW PER FORECAST (operator question 46, reading (b), 2026-10-08).
+    # The market figure is the forecast's FIRST snapshot, as Results reads
+    # it (`lines.snapshots_for`) and the curve's door reads it (`resolved`):
+    # until this date a LEFT JOIN gave a forecast one row per snapshot, so a
+    # forecast read at the venue twice was counted, scored and listed twice
+    # -- "632 resolved" since the start of NFL's record, where 524 forecasts
+    # had settled (MLB 1742 for 1472, NCAAF 2573 for 1450). The count stays,
+    # said as what it is -- settled forecasts -- which it now is.
     rows = conn.execute(
         "SELECT p.id, p.subject, p.model_prob, p.model_side, p.outcome,"
         " p.resolved_utc, p.market_type, p.prop_type, p.predictor, p.pass_kind,"
         " p.line_asked, p.factors_json,"
         " g.home, g.away, g.home_score, g.away_score,"
-        " s.implied_prob"
+        " (SELECT s.implied_prob FROM market_snapshots s"
+        "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
-        " LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
         " WHERE p.sport = ? AND p.resolved_utc IS NOT NULL"
         "   AND p.resolved_utc > ? AND p.resolved_utc <= ?"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
@@ -5305,13 +5319,15 @@ def digest(
     )
 
     # --- the headline, in the mockup's words -------------------------------
+    # SAID AS WHAT IT IS (operator question 46, reading (b), 2026-10-08): the
+    # count pools every market, forecaster and pass (and card for UFC) and
+    # states no distance to a gate, so it stays, and the words say what it
+    # pools -- "12 settled forecasts, every market and forecaster" where it
+    # said "12 resolved". The page draws the same words (`count_words`,
+    # `counted_words`).
+    carded = bool(config.event_tiers(sport))
     if n:
-        headline = (
-            f"Since you last looked: {n} resolved - {correct} correct, "
-            f"{n - correct} wrong"
-        )
-        if brier is not None:
-            headline += f" · Brier {brier}"
+        headline = language.greeting_headline(n, correct, brier, carded)
     else:
         headline = _nothing_resolved_message(conn, sport)
 
@@ -5328,8 +5344,10 @@ def digest(
         # counts above: "7 resolved, 4 correct" is about the model.
         "brier": brier,
         "headline": headline,
+        "count_words": language.settled_forecasts_words(n),
+        "counted_words": language.every_category_words(carded),
         "settled": settled,
-        "movement": _record_movement(conn, sport, n),
+        "movement": _record_movement(conn, sport, n, forecaster),
         "today": _todays_slate_line(conn, sport),
         # Warnings travel to the FRONT page. A panel nobody visits is a panel
         # that cannot warn anybody.
@@ -5376,11 +5394,48 @@ def _friendly_time(iso: str) -> str:
     return f"on {when.date().isoformat()} at {clock}"
 
 
-def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int) -> dict:
-    """Resolved counts before and after, and how far the gate still is.
+def page_forecaster(conn: sqlite3.Connection, forecaster: str | None = None) -> str:
+    """WHOSE QUESTIONS THE PAGE SHOWS, decided in one place: the one asked
+    for, else the operator's default from Settings (ruling 2026-09-08), else
+    the declared default. The slate (`week`) and the greeting's band line
+    (operator question 46, 2026-10-08) read it, so the line above the slate
+    is the slate's forecaster's."""
+    from . import settings as _settings
+
+    return (forecaster or _settings.value(conn, "default_forecaster")
+            or config.PICKS_DEFAULT_FORECASTER)
+
+
+def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int,
+                     forecaster: str | None = None) -> dict:
+    """Settled counts before and after, and how far each category's band is
+    from the gate.
 
     One sport. LAW 6 means there is no combined movement figure and there never
     will be one here.
+
+    THE BAND LINE IS ONE CATEGORY'S (operator question 46, found 2026-10-08 by
+    the prover of questions 33 and 34; built the same day under LAW 4, NO
+    MERGED CURVES and question 14's ruling of 2026-09-27, applied to it).
+    Until this date each band counted every settled forecast of the sport --
+    every pass, both forecasters, every market, every card -- and the line
+    above UFC's slate said "50-60% bucket: 370 settled · past the 100 needed,
+    so calibration speaks here" where no UFC category's own band held more
+    than 36 (NFL 315 where the fullest held 44; MLB 937, NCAAF 398). Now
+    every band is one category's -- one market, the page's forecaster
+    (`page_forecaster`), one card for UFC -- through the blind curve's door,
+    the number the Record page's curve draws for it, named in words
+    (`calibration.band_lines`); the line drawn is the fullest of them
+    (`calibration.fullest_band`), the nearest any category is to the hundred,
+    and its tooltip says so; and `calibration.assert_no_pooled_band_line`
+    refuses here, inside the builder, anything else (`/api/digest` answers
+    500 by name).
+
+    THE POOLED COUNTS STAY, SAID AS WHAT THEY ARE (the question's reading
+    (b)): `resolved_before`, `resolved_now` and `gained` count every settled
+    forecast of the sport, and state no distance to a gate -- the gate that
+    stood beside them (`gate`) is gone, and each band carries its own --
+    so `counted_words` says what they pool. No page draws them.
     """
     total = conn.execute(
         "SELECT COUNT(*) AS n FROM predictions WHERE sport = ?"
@@ -5390,37 +5445,28 @@ def _record_movement(conn: sqlite3.Connection, sport: str, just_settled: int) ->
         (sport,),
     ).fetchone()["n"]
 
-    buckets = []
-    for lo, hi, label in calibration.BUCKETS:
-        n = conn.execute(
-            "SELECT COUNT(*) AS n FROM predictions WHERE sport = ?"
-            " AND resolved_utc IS NOT NULL AND model_prob >= ? AND model_prob < ?"
-            " AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
-            "                 WHERE v.prediction_id = predictions.id)",
-            (sport, lo, hi),
-        ).fetchone()["n"]
-        if not n:
-            continue
-        buckets.append({
-            "label": label,
-            "n": n,
-            "needed": max(0, config.MIN_SAMPLE_FOR_EDGE_CLAIM - n),
-            "provisional": n < config.MIN_SAMPLE_FOR_BUCKET_POINT,
-            # The countdown line, right-aligned in the design and deliberately
-            # unglamorous: it is the honest distance to being able to say
-            # anything at all.
-            "countdown": language.bucket_countdown_line(
-                label, n, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
-        })
-
-    return {
+    chosen = page_forecaster(conn, forecaster)
+    bands = calibration.band_lines(conn, sport=sport, predictor=chosen)
+    # The countdown line, right-aligned in the design and deliberately
+    # unglamorous: it is the honest distance to being able to say anything
+    # at all -- asked now of one category, the nearest.
+    shown = calibration.fullest_band(bands)
+    carded = bool(config.event_tiers(sport))
+    movement = {
         "sport": sport,
         "resolved_before": total - just_settled,
         "resolved_now": total,
         "gained": just_settled,
-        "buckets": buckets,
-        "gate": config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+        "counted_words": language.every_category_words(carded),
+        "forecaster": chosen,
+        "bands": bands,
+        "line": shown["words"] if shown else None,
+        "line_tip": (language.band_line_tip(
+            config.SPORT_LABELS.get(sport, sport.upper()), chosen, carded)
+            if shown else None),
     }
+    calibration.assert_no_pooled_band_line(movement)
+    return movement
 
 
 def _below_floor(conn: sqlite3.Connection, sport: str, wk: int | None) -> int:
@@ -5610,10 +5656,14 @@ def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:
     if week is None:
         return {"n": 0, "line": None, "week": None}
 
+    # ONE ROW PER FORECAST, its first snapshot (operator question 46, reading
+    # (b), 2026-10-08): the line counts forecasts waiting to settle, and a
+    # forecast read at the venue twice was two rows of the join.
     rows = conn.execute(
-        "SELECT p.model_prob, p.subject, g.away, g.home, s.implied_prob"
+        "SELECT p.model_prob, p.subject, g.away, g.home,"
+        " (SELECT s.implied_prob FROM market_snapshots s"
+        "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob"
         " FROM predictions p JOIN games g ON g.id = p.game_id"
-        " LEFT JOIN market_snapshots s ON s.prediction_id = p.id"
         " WHERE p.sport = ? AND g.season = ? AND g.week = ?"
         "   AND p.resolved_utc IS NULL"
         "   AND NOT EXISTS (SELECT 1 FROM prediction_voids v"
@@ -5637,12 +5687,14 @@ def _todays_slate_line(conn: sqlite3.Connection, sport: str) -> dict:
         delta = r["model_prob"] - r["implied_prob"]
         if abs(delta) > abs(gap):
             sharpest, gap = r, delta
-    line = f"{len(rows)} {label} predictions in"
-    if sharpest is not None:
-        line += (
-            f" · sharpest disagreement {gap * 100:+.1f} on "
-            f"{sharpest['away']} @ {sharpest['home']}"
-        )
+    # SAID AS WHAT IT IS (operator question 46, reading (b), 2026-10-08): a
+    # count of every forecast still to settle on the slate, every market,
+    # forecaster and pass; no distance to a gate. The greeting draws it
+    # where no band has settled yet. "178 NFL predictions in" until this date.
+    line = language.slate_forecasts_line(
+        label, len(rows), bool(config.event_tiers(sport)),
+        gap if sharpest is not None else None,
+        f"{sharpest['away']} @ {sharpest['home']}" if sharpest is not None else None)
     return {
         "n": len(rows), "week": week, "line": line,
         "sharpest_gap": round(gap, 4) if sharpest is not None else None,
