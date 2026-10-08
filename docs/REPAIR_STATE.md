@@ -291,6 +291,18 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q33 + Q34 RELEASED as 2ffa0b3 (2026-10-08 07:33Z; gate 4/4 on its
+  first run, 447/447; serving 2ffa0b3f7abf)** -- an outlook counts only
+  slates still to come (Q38's start), states the most it can reach this
+  season and says THIS GATE CANNOT CLEAR THIS SEASON where that is under
+  the gate (Fight Night moneyline 39 of 100, at most ~107); the tier
+  table, the ranker, the taken record, the edge figure and the board
+  badge each one UFC card's (badge 72 -> 39 on Fight Night), the pooled
+  UFC headline curve gone; the prover's fix: a bout on a card of no
+  declared kind counted in no card's figure (it took UFC's slate and
+  Results down with a 500 as built). Its prover's finding joined the
+  queue as question 46. **Next: Q46 (scratchpad wf_q46.js), then
+  Q25/Q26.**
   **THE ENTRY CHECK, STEP 4 RELEASED as 372eeab (2026-10-08 03:47Z; gate
   4/4 on its first run, 440/440; serving 372eeabf6924)** -- a deposit
   match beside "Check an entry": per unit of bonus, the stake the
@@ -3052,6 +3064,24 @@ depend on the answer.
     Default until ruled: nothing built (BLOCKED); step 4 goes ahead of it.
     M4 stays "not yet proven, 0 of 100 graded legs" until a record of
     graded legs exists, so step 2's numbers never make a pick meanwhile.
+
+46. **The band line above every slate counts a pool and says calibration
+    "speaks here". (Found by Q33 + Q34's prover, 2026-10-08; it makes a gate
+    count false, so it joined the queue -- after Q33 + Q34, before Q25/Q26
+    -- and the law and question 14's precedent settle the fix, so it is
+    built without a new ruling.)** The greeting's band line (views._record_
+    movement, language.bucket_countdown_line, #greet-countdown) says, for
+    UFC, "50-60% bucket: 370 settled · past the 100 needed, so calibration
+    speaks here": every resolved forecast in the band -- every pass, both
+    forecasters, every market, every card. On the copy no NFL or UFC
+    category's own 50-60% band is past 100 (fullest 44 and 36); MLB claims
+    937 (4 of 16 categories past), NCAAF 398 (1 of 6). There since 7ac5a73
+    (2026-08-29). SETTLED BY: LAW 4 ("in that category"), NO MERGED CURVES,
+    and question 14 (ruled 2026-09-27: "Every count ... that states a gate
+    distance is rebuilt per forecaster (per tier for UFC) and per distinct
+    bet, through its record's standing rule") applied to this line.
+    Building: each band count one category's, through the blind curve's
+    door, named in words; a guard, a gate row and a planting.
 
 ## Rulings taken in your absence (2026-10-08, Q33 + Q34)
 
