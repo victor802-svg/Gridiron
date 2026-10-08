@@ -118,13 +118,31 @@ def test_no_route_can_write_to_the_record():
     written. The same two locks as the others: a session and a CSRF token.
 
     A SEVENTH POST still has to come back here and argue for itself.
+
+    `POST /api/deposit-match` is the seventh, added 2026-10-08 under
+    GRIDIRON_ENTRY_CHECK step 4 (the brief of 2026-09-30: "deposit match
+    calculator: typed bonus, playthrough multiple, entry type and payout used
+    for playthrough"), and this is its argument. IT WRITES NOTHING, and is
+    given nothing to write with: it hands the form to
+    `entry_check.deposit_match` alone and opens no handle on the record,
+    writable or not (`test_deposit_match.py` makes every handle-maker but the
+    sign-in's raise, and it still answers). It is a POST only because it
+    carries a form -- a bonus in an address would sit in a log -- and it
+    carries the same two locks, a session and a CSRF token. What keeps it from
+    becoming what LAW 5 forbids: the bonus, the deposit and the playthrough
+    are kept nowhere (reading (a)), and `audit.check_the_entry_check_reaches_no_app`
+    reads every function it reaches, its route and its page for a write, a
+    handle or browser storage, while `audit.check_no_wagering_ledger` names
+    a table, a column or a setting that could hold one.
+
+    AN EIGHTH POST still has to come back here and argue for itself.
     """
     writers = sorted(
         route.path
         for route in api.app.routes
         if set(getattr(route, "methods", set()) or set()) - {"GET", "HEAD"}
     )
-    assert writers == ["/api/entry-check", "/api/settings",
+    assert writers == ["/api/deposit-match", "/api/entry-check", "/api/settings",
                        "/api/taken/package/{package_id}",
                        "/api/taken/{prediction_id}",
                        "/auth/login", "/auth/logout"], (
@@ -168,6 +186,14 @@ def test_no_route_can_touch_a_prediction(client):
                                 "payout": {"multiplier": "3"}, "payout_confirmed": True,
                                 "promo": {"kind": "none"}})
     assert checked.status_code == 200 and checked.json()["computed"], checked.text
+    # THE SEVENTH ROUTE (the deposit match, 2026-10-08): an offer worked out,
+    # its payout confirmed, leaves `predictions` as it was found -- and writes
+    # nothing at all (`test_deposit_match.py`).
+    matched = client.post("/api/deposit-match", headers={auth.CSRF_HEADER: csrf or ""},
+                          json={"entry_type": "power", "legs": "2",
+                                "payout": {"multiplier": "3"}, "payout_confirmed": True,
+                                "bonus": "1", "playthrough": "5"})
+    assert matched.status_code == 200 and matched.json()["computed"], matched.text
     client.post("/auth/logout")
     after = snapshot()
     assert (before["n"], before["sum_"]) == (after["n"], after["sum_"])

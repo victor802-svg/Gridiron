@@ -6829,7 +6829,105 @@ def wagering_ledger_faults(root: Path | None = None, conn=None) -> list[str]:
                     f"the record holds a table called {row['name']}, which is "
                     f"the operator's own wagering ledger by name. LAW 5: it "
                     f"lives outside this codebase.")
+    # THE DEPOSIT MATCH KEEPS NOTHING (the entry check's step 4, 2026-10-08;
+    # reading (a)): a table, a column or a setting that could hold a deposit,
+    # a bonus or a playthrough -- in the schema the tree declares, in the
+    # settings the page can write, and in the record -- named here, wherever
+    # a write of one would land.
+    keeps = ("a place for the operator's deposit, bonus or playthrough. LAW 5: "
+             "his own wagering record lives outside this codebase, and the "
+             "deposit match keeps nothing (the entry check's step 4, reading (a))")
+    for name in _deposit_ledger_in_schema(root):
+        faults.append(f"schema.sql declares {name}, {keeps}.")
+    for name in _deposit_ledger_settings(root):
+        faults.append(f"settings.py lets the page keep a setting called {name!r}, {keeps}.")
+    if conn is not None:
+        for name in _deposit_ledger_names(conn):
+            faults.append(f"the record holds {name}, {keeps}.")
     return sorted(set(faults))
+
+
+#: THE DEPOSIT MATCH KEEPS NOTHING (the entry check's step 4, 2026-10-08;
+#: reading (a): "no table, no settings row, no remembered bonus, deposit or
+#: playthrough"). What the operator deposits and the bonus an app gives him
+#: for it are his own wagering record, which LAW 5 keeps outside this
+#: codebase, so a table, a column, a setting or a settings row named for one
+#: is where such a ledger would start. Grepped against the tree, the schema
+#: and a fresh build before adding: none names any table, column or setting.
+DEPOSIT_LEDGER_WORDS = ("deposit", "bonus", "playthrough", "play_through",
+                        "rollover", "wagering_requirement")
+
+
+def _deposit_ledger_word(name) -> bool:
+    lowered = str(name or "").lower()
+    return any(word in lowered for word in DEPOSIT_LEDGER_WORDS)
+
+
+def _deposit_ledger_names(conn) -> list[str]:
+    """Every table and column of a database named for a deposit, a bonus or a
+    playthrough ("table", "table.column"), and every name a settings row was
+    written under that is one ("settings row name")."""
+    hits = []
+    tables = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")]
+    for table in tables:
+        if _deposit_ledger_word(table):
+            hits.append(f"a table called {table}")
+        for column in conn.execute(f'PRAGMA table_info("{table}")'):
+            if _deposit_ledger_word(column[1]):
+                hits.append(f"a column called {table}.{column[1]}")
+    if "settings" in tables:
+        for row in conn.execute("SELECT DISTINCT name FROM settings"):
+            if _deposit_ledger_word(row[0]):
+                hits.append(f"a setting written as {row[0]!r}")
+    return hits
+
+
+def _deposit_ledger_in_schema(root: Path) -> list[str]:
+    """The schema the tree declares, built from nothing in memory and read as
+    SQLite reads it: its tables and columns named for a deposit, a bonus or a
+    playthrough. A schema that does not build is named, never passed."""
+    path = Path(root) / "schema.sql"
+    if not path.exists():
+        return []
+    from . import db as _db
+
+    conn = _db.connect(":memory:")
+    try:
+        conn.executescript(path.read_text(encoding="utf-8"))
+        return _deposit_ledger_names(conn)
+    except Exception as exc:  # noqa: BLE001 - named, never swallowed
+        return [f"a schema that does not build ({type(exc).__name__}: {exc}), so "
+                f"nothing says what it could keep"]
+    finally:
+        conn.close()
+
+
+def _deposit_ledger_settings(root: Path) -> list[str]:
+    """The settings the page can write (`settings.EDITABLE`, read from the
+    file's syntax tree, so a planted copy is read as it stands): every name
+    that is a deposit, a bonus or a playthrough."""
+    path = Path(root) / "settings.py"
+    if not path.exists():
+        return []
+    names = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.AnnAssign):
+            targets, value = [node.target], node.value
+        elif isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id == "EDITABLE" \
+                    and isinstance(value, ast.Dict):
+                names += [k.value for k in value.keys
+                          if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+            elif (isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
+                  and target.value.id == "EDITABLE"
+                  and isinstance(target.slice, ast.Constant)):
+                names.append(str(target.slice.value))
+    return [n for n in names if _deposit_ledger_word(n)]
 
 
 def check_no_wagering_ledger(root: Path | None = None, conn=None) -> None:
@@ -14287,8 +14385,21 @@ _ENTRY_CHECK_THE_WRITE = re.compile(
 #: the other's.
 _ENTRY_CHECK_WRITES_BY_MODULE = {
     "gridiron.m4": re.compile(r"^\s*INSERT\s+INTO\s+prop_spread_fits\s*\([^;]*$", re.I),
+    # THE ARITHMETIC WRITES NOTHING AT ALL (2026-10-08, the entry check's step
+    # 4): step 1's arithmetic and the deposit match's live in it, and the
+    # deposit match keeps nothing (reading (a)) -- so no write is its one
+    # write, not even the payout typed. A pattern nothing matches.
+    "gridiron.entry_math": re.compile(r"(?!)"),
 }
 _ENTRY_CHECK_REPLACING = re.compile(r"\bOR\s+REPLACE\b|\bON\s+CONFLICT\b", re.I)
+
+#: A MODULE THAT MAY IMPORT LESS THAN THE CHECK (2026-10-08, the entry check's
+#: step 4): the arithmetic imports the standard library's arithmetic alone,
+#: so nothing it works out -- a break-even, a return, a deposit match -- can
+#: reach the record, a file or another machine.
+_ENTRY_CHECK_IMPORTS_BY_MODULE = {
+    "gridiron.entry_math": frozenset({"__future__", "math"}),
+}
 
 
 def _entry_check_imports(tree, module: str) -> list[str]:
@@ -14320,8 +14431,9 @@ def _entry_check_python_faults(source: str, where: str, module: str) -> list[str
         tree = ast.parse(source, filename=where)
     except SyntaxError as exc:
         return [f"{where} does not parse ({exc}), so nothing says what it reaches"]
+    allowed = _ENTRY_CHECK_IMPORTS_BY_MODULE.get(module, ENTRY_CHECK_IMPORTS_ALLOWED)
     for name in _entry_check_imports(tree, module):
-        if name not in ENTRY_CHECK_IMPORTS_ALLOWED:
+        if name not in allowed:
             faults.append(f"{where} imports {name}, which the entry check may not: it could "
                           f"reach another machine (LAW 5: Gridiron never reads, scrapes or "
                           f"calls any pick'em app)")
@@ -14395,7 +14507,112 @@ def entry_check_reach_faults(root: Path | None = None, *, app_js: str | None = N
             faults.append(f"api.py `{route.name}` does not hand the form to "
                           f"`entry_check.check`, the one door the gate reads")
     js = app_js if app_js is not None else (root / "web" / "app.js").read_text(encoding="utf-8")
-    for name, got in _js_function_bodies(js, ENTRY_CHECK_JS_FUNCTIONS).items():
+    faults += _entry_check_js_reach_faults(js, ENTRY_CHECK_JS_FUNCTIONS, ENTRY_CHECK_ROUTE)
+    # A DEPOSIT MATCH (the entry check's step 4, 2026-10-08): STORES NOTHING
+    # (reading (a)). Every function `entry_check.deposit_match` reaches, its
+    # route and its functions in the page, read for a write, a handle on the
+    # record, a file or the browser's storage -- any write it could make.
+    faults += _deposit_match_reach_faults(root, api_source=api_source, tree=tree)
+    faults += _entry_check_js_reach_faults(js, DEPOSIT_MATCH_JS_FUNCTIONS, DEPOSIT_MATCH_ROUTE)
+    faults += _deposit_match_js_helper_faults(js)
+    return faults
+
+
+#: THE PAGE'S TOP-LEVEL DEFINITIONS (two spaces in, inside the page's one
+#: closure): a function, or a `const`, `let` or `var` -- an arrow function
+#: among them.
+_JS_TOP_LEVEL_DEFINITION = re.compile(
+    r"\n  (?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(|"
+    r"\n  (?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
+
+#: THE TYPED OFFER'S OWN STATE in the page (`const deposit = {...}`), named as
+#: a value -- never a word inside an id ('deposit-form') or another name
+#: (`depositBody`).
+_DEPOSIT_STATE_JS = re.compile(r"(?<![\w$.#'\"/-])deposit(?![\w$'\"-])")
+
+#: A quoted string in the page's script, blanked before names are read off a
+#: body ('entry-label' names nothing); a template literal is kept, because
+#: what it holds inside `${...}` is code.
+_JS_QUOTED = re.compile(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"")
+
+
+def _js_top_level_definitions(js: str) -> dict:
+    """Every top-level definition of the page's script, as {name: (its line,
+    its text to the next definition)}; comments blanked first."""
+    js = _without_comments(js, "js")
+    starts = [(m.start(), m.group(1) or m.group(2))
+              for m in _JS_TOP_LEVEL_DEFINITION.finditer(js)]
+    out = {}
+    for i, (at, name) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else len(js)
+        out.setdefault(name, (js.count(chr(10), 0, at) + 2, js[at:end]))
+    return out
+
+
+def _deposit_match_js_helper_faults(js: str) -> list[str]:
+    """THE DEPOSIT MATCH'S PAGE KEEPS NOTHING, BY ANY HELPER (the prover,
+    2026-10-08). As handed, the page's scan read the deposit match's own nine
+    functions and nothing they call, so a helper of the page's own --
+    `keepOffer(depositBody())` from `checkDeposit`, its body setting
+    `localStorage`, or one writing `document.cookie` -- kept the offer past
+    it. Now every top-level definition the deposit functions name -- called,
+    or handed on as a value -- and every one those name, to the end, is read
+    for the browser's storage and for any request; and the typed offer's own
+    state (`deposit`) may be named by the deposit functions alone, so no other
+    function of the page can carry it anywhere."""
+    defs = _js_top_level_definitions(js)
+    faults = []
+    seen, queue, via = set(), list(DEPOSIT_MATCH_JS_FUNCTIONS), {}
+    while queue:
+        name = queue.pop()
+        if name in seen or name not in defs:
+            continue
+        seen.add(name)
+        body = _JS_QUOTED.sub("''", defs[name][1])
+        for ident in re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)", body):
+            if ident in defs and ident not in seen:
+                via.setdefault(ident, name)
+                queue.append(ident)
+    keeps = ("the deposit match's page keeps nothing once it is closed -- no remembered "
+             "bonus, deposit or playthrough (the entry check's step 4, reading (a))")
+    for name in sorted(seen - set(DEPOSIT_MATCH_JS_FUNCTIONS)):
+        line, body = defs[name]
+        chain = f"`{name}`, which `{via.get(name, '?')}` names"
+        kept = _ENTRY_CHECK_STORAGE_JS.search(body)
+        if kept:
+            faults.append(f"app.js:{line} {chain}, keeps something in the browser's storage "
+                          f"({kept.group(0)!r}): {keeps}")
+        sent = _ENTRY_CHECK_OUTBOUND_JS.search(body) or re.search(r"\bfetch\s*\(", body)
+        if sent:
+            faults.append(f"app.js:{line} {chain}, sends a request ({sent.group(0)!r}): the "
+                          f"deposit match asks its own route and nothing else (LAW 5)")
+    for name, (line, body) in defs.items():
+        if name in DEPOSIT_MATCH_JS_FUNCTIONS or name == "deposit":
+            continue
+        if _DEPOSIT_STATE_JS.search(_JS_QUOTED.sub("''", body)):
+            faults.append(f"app.js:{line} `{name}` names the typed offer (`deposit`) outside "
+                          f"the deposit match's own functions, where nothing reads what it "
+                          f"does with it: {keeps}")
+    return faults
+
+
+#: BROWSER STORAGE (2026-10-08, the entry check's step 4: "no remembered bonus,
+#: deposit or playthrough"): what the page could keep a typed number in after
+#: it is closed -- the browser's own stores, and the page's door to them for
+#: a sort or a filter (`prefSet`, `prefGet`, 3c of 2026-09-25). The check's
+#: page keeps what is typed in its own memory while it is open, and nowhere
+#: else.
+_ENTRY_CHECK_STORAGE_JS = re.compile(
+    r"\blocalStorage\b|\bsessionStorage\b|\bindexedDB\b|document\.cookie|"
+    r"navigator\.storage|\bcaches\.|\bserviceWorker\b|\bprefSet\s*\(|\bprefGet\s*\(")
+
+
+def _entry_check_js_reach_faults(js: str, names, route: str) -> list[str]:
+    """The page's functions for one route of the entry check: each present,
+    fetching its own route and nothing else, naming no address, sending no
+    other request, and keeping nothing in the browser's storage."""
+    faults = []
+    for name, got in _js_function_bodies(js, names).items():
         if got is None:
             faults.append(f"`{name}` is gone from app.js, so nothing says what the entry "
                           f"check's page reaches")
@@ -14410,9 +14627,288 @@ def entry_check_reach_faults(root: Path | None = None, *, app_js: str | None = N
                           f"{_ENTRY_CHECK_OUTBOUND_JS.search(body).group(0)!r}: the entry "
                           f"check asks its own route and nothing else (LAW 5)")
         for call in re.finditer(r"\bfetch\s*\(\s*([^,)]*)", body):
-            if call.group(1).strip() != "'" + ENTRY_CHECK_ROUTE + "'":
+            if call.group(1).strip() != "'" + route + "'":
                 faults.append(f"app.js:{line} `{name}` fetches {call.group(1).strip()[:60]}: "
                               f"the entry check asks its own route and nothing else (LAW 5)")
+        kept = _ENTRY_CHECK_STORAGE_JS.search(body)
+        if kept:
+            faults.append(f"app.js:{line} `{name}` keeps what is typed in the browser's "
+                          f"storage ({kept.group(0)!r}): the entry check's page keeps "
+                          f"nothing once it is closed -- no remembered bonus, deposit or "
+                          f"playthrough (the entry check's step 4, reading (a))")
+    return faults
+
+
+#: THE DEPOSIT MATCH'S OWN CODE (the entry check's step 4, 2026-10-08): the
+#: function its route hands the form to, its route, and its functions in the
+#: page's script.
+DEPOSIT_MATCH_FUNCTION = "deposit_match"
+DEPOSIT_MATCH_ROUTE = "/api/deposit-match"
+DEPOSIT_MATCH_JS_FUNCTIONS = (
+    "depositPayoutEmpty", "fillDepositPayout", "depositChanged", "depositPayoutBlock",
+    "drawDepositForm", "depositBody", "checkDeposit", "paintDepositResult",
+    "renderDepositMatch",
+)
+
+#: THE MODULES WHOSE FUNCTIONS THE DEPOSIT MATCH MAY REACH, each function it
+#: reaches read: the check's form reader and lines, the arithmetic, the words
+#: and the one bar.
+_DEPOSIT_MATCH_MODULES = ("entry_check.py", "entry_math.py", "language.py", "picks.py")
+
+#: A HANDLE, A WRITE, A FILE OR STEP 1'S OWN WRITE, BY NAME: what no function
+#: the deposit match reaches may name (reading (a): it stores nothing).
+_DEPOSIT_MATCH_FORBIDDEN_NAMES = frozenset({
+    "db", "sqlite3", "conn", "connection", "cursor", "remember", "remembered",
+    "settings", "TABLE", "open", "m4", "Path",
+})
+_DEPOSIT_MATCH_FORBIDDEN_CALLS = frozenset({
+    "execute", "executemany", "executescript", "commit", "write_text", "write_bytes",
+    "open_db", "connect", "backup", "remember", "set_value", "read_only",
+    "read_the_live_record", "record_fit", "dump", "setItem",
+})
+
+#: A WRITE BY ANOTHER NAME (the prover, 2026-10-08): as handed, the scan read
+#: the names above as written and nothing else, so each of these got past it
+#: -- `from .db import open_db as h, set_meta as keep` in the check with
+#: `keep(h(), ...)` in the deposit match; step 1's write bound to another
+#: name at the module's top (`note = remember`); and `from .settings import
+#: set_value as sv` in the words, called from the deposit match's own words.
+#: Now every name a file the deposit match reaches binds to one of these
+#: modules -- by an import at any depth, under any name -- or to a forbidden
+#: name, and every module-level name assigned from one, is a door, and a
+#: function the deposit match reaches may name none of them. The record's
+#: door, the settings and M4's fits; the driver, files, folders, logs and
+#: anything run or imported by name; and every road to another machine.
+_DEPOSIT_MATCH_DOOR_MODULES = frozenset({
+    "gridiron.db", "gridiron.settings", "gridiron.m4", "sqlite3", "pathlib", "io", "os",
+    "shutil", "tempfile", "pickle", "shelve", "dbm", "logging", "importlib", "builtins",
+    "subprocess", "socket", "ssl", "urllib", "http", "requests", "ctypes",
+})
+
+#: AND NO CALL INTO A MODULE THE SCAN DOES NOT READ (the prover, 2026-10-08;
+#: the stricter default): the deposit match may call the functions of its four
+#: modules -- each read -- and the standard library's arithmetic and text; a
+#: call to a function of any other module of this project (`config.keep(...)`,
+#: or one imported by name) is named, because nothing reads what it writes.
+#: Reading a constant (`config.PICK_MIN_EDGE`) is not a call.
+_DEPOSIT_MATCH_CALLABLE_MODULES = frozenset({"math", "re", "json", "unicodedata",
+                                             "datetime", "typing", "dataclasses"})
+
+
+def _deposit_match_bound(tree, module: str) -> tuple[set, dict]:
+    """What a file the deposit match reaches binds by import, at any depth:
+    the DOORS (names bound to `_DEPOSIT_MATCH_DOOR_MODULES` or to a forbidden
+    name, and every module-level name assigned from a door, to a fixed point)
+    and every other imported name with the module it came from."""
+    package = module.rsplit(".", 1)[0]
+    doors: set[str] = set()
+    imported: dict[str, str] = {}
+
+    def door_module(name: str) -> bool:
+        return name in _DEPOSIT_MATCH_DOOR_MODULES or name.split(".")[0] in \
+            _DEPOSIT_MATCH_DOOR_MODULES
+
+    forbidden = _DEPOSIT_MATCH_FORBIDDEN_NAMES | _DEPOSIT_MATCH_FORBIDDEN_CALLS
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                bound = a.asname or a.name.split(".")[0]
+                imported[bound] = a.name
+                if door_module(a.name):
+                    doors.add(bound)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".")
+                root = ".".join(parts[:len(parts) - node.level + 1])
+                base = f"{root}.{base}" if base else root
+            for a in node.names:
+                bound = a.asname or a.name
+                full = f"{base}.{a.name}"
+                imported[bound] = full if node.module is None else base
+                if door_module(base) or door_module(full) or a.name in forbidden:
+                    doors.add(bound)
+    changed = True
+    while changed:
+        changed = False
+        for node in tree.body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+                continue
+            named = {n.id for n in ast.walk(node.value) if isinstance(n, ast.Name)}
+            attrs = {n.attr for n in ast.walk(node.value) if isinstance(n, ast.Attribute)}
+            if not (named & (forbidden | doors) or attrs & _DEPOSIT_MATCH_FORBIDDEN_CALLS):
+                continue
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target]):
+                for n in ast.walk(target):
+                    if isinstance(n, ast.Name) and n.id not in doors:
+                        doors.add(n.id)
+                        changed = True
+    return doors, imported
+
+
+def _module_aliases(tree) -> dict[str, str]:
+    """The project modules a file imports by name (`from . import x` or
+    `from . import x as y`, at any depth), as {the name it uses: the file}."""
+    out = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None:
+            for alias in node.names:
+                out[alias.asname or alias.name] = f"{alias.name}.py"
+    return out
+
+
+def _deposit_match_reached(sources: dict, trees: dict | None = None) -> tuple[list, list[str]]:
+    """Every function the deposit match reaches, as (file, function node):
+    from `entry_check.deposit_match`, each module-level function it calls by
+    name in its own module, or by `module.function` in another of
+    `_DEPOSIT_MATCH_MODULES` -- and so on, until nothing new is reached.
+    `trees` fills with each file's syntax tree, read once."""
+    trees = {} if trees is None else trees
+    defs, aliases = {}, {}
+    problems = []
+    for name, source in sources.items():
+        try:
+            trees[name] = trees.get(name) or ast.parse(source)
+        except SyntaxError as exc:
+            problems.append(f"gridiron/{name} does not parse ({exc}), so nothing says what "
+                            f"the deposit match reaches")
+            continue
+        defs[name] = {node.name: node for node in trees[name].body
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        aliases[name] = _module_aliases(trees[name])
+    start = defs.get("entry_check.py", {}).get(DEPOSIT_MATCH_FUNCTION)
+    if start is None:
+        problems.append(f"`entry_check.{DEPOSIT_MATCH_FUNCTION}` is gone, so nothing says "
+                        f"what the deposit match reaches")
+        return [], problems
+    seen, queue, reached = set(), [("entry_check.py", start)], []
+    while queue:
+        module, node = queue.pop()
+        if (module, node.name) in seen:
+            continue
+        seen.add((module, node.name))
+        reached.append((module, node))
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            func = call.func
+            if isinstance(func, ast.Name) and func.id in defs.get(module, {}):
+                queue.append((module, defs[module][func.id]))
+            elif (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name)
+                  and aliases.get(module, {}).get(func.value.id) in defs
+                  and func.attr in defs[aliases[module][func.value.id]]):
+                target = aliases[module][func.value.id]
+                queue.append((target, defs[target][func.attr]))
+    return reached, problems
+
+
+def _deposit_match_reach_faults(root: Path, *, api_source: str | None = None,
+                                tree=None) -> list[str]:
+    """THE DEPOSIT MATCH STORES NOTHING (the entry check's step 4, 2026-10-08;
+    reading (a): "the calculator is arithmetic of numbers typed into the page
+    and kept nowhere -- no table, no settings row, no remembered bonus,
+    deposit or playthrough"): every function `entry_check.deposit_match`
+    reaches takes no handle on the record and names none, nor step 1's one
+    write, a file, or a statement that writes; and its route hands the form
+    on alone, opening no handle -- a write it could make, named."""
+    root = Path(root)
+    faults = []
+    sources = {}
+    for name in _DEPOSIT_MATCH_MODULES:
+        path = root / name
+        if path.exists():
+            sources[name] = path.read_text(encoding="utf-8")
+    trees: dict = {}
+    reached, problems = _deposit_match_reached(sources, trees)
+    faults += problems
+    keeps = ("the deposit match keeps nothing it is typed -- no table, no settings row, "
+             "no remembered bonus, deposit or playthrough (the entry check's step 4, "
+             "reading (a); LAW 5's no ledger)")
+    bound = {name: _deposit_match_bound(tree, f"gridiron.{name[:-3]}")
+             for name, tree in trees.items()}
+    readable = {f"gridiron.{name[:-3]}" for name in _DEPOSIT_MATCH_MODULES}
+    for module, node in reached:
+        where = f"gridiron/{module}:{node.lineno} `{node.name}`"
+        doors, imported = bound.get(module, (set(), {}))
+        named_doors = (_DEPOSIT_MATCH_FORBIDDEN_NAMES | _DEPOSIT_MATCH_FORBIDDEN_CALLS
+                       | doors)
+        args = node.args
+        for arg in args.posonlyargs + args.args + args.kwonlyargs:
+            if arg.arg in ("conn", "connection", "cursor"):
+                faults.append(f"{where}, reached by the deposit match, takes a handle on "
+                              f"the record ({arg.arg}): {keeps}")
+        # A CALL INTO A MODULE THE SCAN DOES NOT READ (the prover, 2026-10-08).
+        for call in ast.walk(node):
+            if not isinstance(call, ast.Call):
+                continue
+            func = call.func
+            base = (func.value.id if isinstance(func, ast.Attribute)
+                    and isinstance(func.value, ast.Name) else
+                    func.id if isinstance(func, ast.Name) else None)
+            origin = imported.get(base) if base is not None else None
+            if origin is None or base in doors:
+                continue
+            if origin.startswith("gridiron.") and not any(
+                    origin == m or origin.startswith(m + ".") for m in readable):
+                faults.append(f"{where}, reached by the deposit match, calls into "
+                              f"`{origin}` (`{base}`), a module this scan does not read, so "
+                              f"nothing says what it writes: {keeps}")
+            elif (not origin.startswith("gridiron")
+                  and origin.split(".")[0] not in _DEPOSIT_MATCH_CALLABLE_MODULES):
+                faults.append(f"{where}, reached by the deposit match, calls into "
+                              f"`{origin}` (`{base}`), which is neither its arithmetic nor its "
+                              f"text: {keeps}")
+        docstrings = _docstring_nodes(node)
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Name) and inner.id in named_doors:
+                faults.append(f"{where}, reached by the deposit match, names `{inner.id}`"
+                              + ("" if inner.id in _DEPOSIT_MATCH_FORBIDDEN_NAMES else
+                                 ", a door to the record, a setting, a file or another "
+                                 "machine by another name")
+                              + f": {keeps}")
+            elif (isinstance(inner, ast.Attribute)
+                  and inner.attr in _DEPOSIT_MATCH_FORBIDDEN_CALLS):
+                faults.append(f"{where}, reached by the deposit match, calls "
+                              f"`.{inner.attr}`: {keeps}")
+            elif (isinstance(inner, ast.Constant) and isinstance(inner.value, str)
+                  and id(inner) not in docstrings
+                  and _ENTRY_CHECK_WRITE.search(inner.value)):
+                faults.append(f"{where}, reached by the deposit match, hands SQLite a write "
+                              f"({inner.value.strip()[:60]!r}): {keeps}")
+    api_source = (api_source if api_source is not None
+                  else (root / "api.py").read_text(encoding="utf-8"))
+    tree = tree if tree is not None else ast.parse(api_source)
+    route = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for deco in node.decorator_list:
+                if (isinstance(deco, ast.Call) and deco.args
+                        and isinstance(deco.args[0], ast.Constant)
+                        and deco.args[0].value == DEPOSIT_MATCH_ROUTE):
+                    route = node
+    if route is None:
+        faults.append(f"api.py serves no {DEPOSIT_MATCH_ROUTE}, so nothing says what the "
+                      f"deposit match's route reaches")
+        return faults
+    segment = ast.get_source_segment(api_source, route) or ""
+    body = "\n".join(ast.get_source_segment(api_source, stmt) or ""
+                     for stmt in route.body
+                     if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)))
+    faults += [f.replace("gridiron/api.py", f"api.py `{route.name}`")
+               for f in _entry_check_python_faults(segment, "gridiron/api.py", "gridiron.api")
+               if "imports" not in f]
+    if f"entry_check.{DEPOSIT_MATCH_FUNCTION}(" not in body:
+        faults.append(f"api.py `{route.name}` does not hand the form to "
+                      f"`entry_check.{DEPOSIT_MATCH_FUNCTION}`, the one door the gate reads")
+    for pattern, what in ((r"\bget_\w*conn\s*\(", "opens a handle on the record"),
+                          (r"\bdb\.\w+", "reaches the record's door"),
+                          (r"\.(?:execute|executemany|executescript|commit)\s*\(",
+                           "hands SQLite a statement"),
+                          (r"\b(?:open|write_text|write_bytes)\s*\(", "writes a file")):
+        hit = re.search(pattern, body)
+        if hit:
+            faults.append(f"api.py `{route.name}` {what} ({hit.group(0)!r}): the deposit "
+                          f"match's route hands on the form alone, and {keeps}")
     return faults
 
 
@@ -15112,6 +15608,521 @@ def check_the_model_only_flags() -> None:
 
 
 _check_the_m4_fixtures()
+
+
+# ---------------------------------------------------------------------------
+# THE ENTRY CHECK, STEP 4: A DEPOSIT MATCH (the brief of 2026-09-30; built
+# 2026-10-08)
+# ---------------------------------------------------------------------------
+#
+# The brief: "Step 4, deposit match calculator: typed bonus, playthrough
+# multiple, entry type and payout used for playthrough; output the bonus's
+# expected value after playthrough at coin-flip legs, with the playthrough
+# cost shown, and 'read the offer's terms; this assumes the numbers you
+# typed'." Its readings (a)-(e) are recorded in docs/REPAIR_STATE.md.
+#
+# BY WORKED EXAMPLES, NOT ON THE RECORD (the deposit match reads none and
+# keeps nothing): `deposit_match_faults` runs the shipped
+# `entry_check.deposit_match` on each example worked by hand, WORKS EVERY
+# FIGURE OUT AGAIN by the audit's own arithmetic from the numbers typed --
+# never from the answer -- and reads every figure the page draws off its own
+# words; it holds the words to units (no currency), the terms the brief leaves
+# open to being said, the brief's sentence to standing beside every answer,
+# and the page to drawing the server's verdict. What the deposit match could
+# keep is `entry_check_reach_faults`' and `check_no_wagering_ledger`'s.
+
+def _dm_form(entry_type: str, legs, payout: dict, *, bonus="1", playthrough="5",
+             confirmed: bool = True) -> dict:
+    return {"entry_type": entry_type, "legs": str(legs), "payout": payout,
+            "payout_confirmed": confirmed, "bonus": bonus, "playthrough": playthrough}
+
+
+#: THE WORKED EXAMPLES (2026-10-08), each by hand, per unit of bonus: each unit
+#: staked returns r = M / 2^N - 1 (power) or the sum of C(N,k)/2^N times what k
+#: right pays, less one (flex); a playthrough P stakes P, costs -P r, and
+#: leaves the bonus at 1 + P r. The task's own: a 1-unit bonus at 5x on 2-leg
+#: power at 3x (r -0.25, cost 1.25, after -0.25, red); the same at 4.5x
+#: (+0.125, a gain of 0.625, after +1.625 -- no outline, 2.86 points under the
+#: bar); a flex table; a playthrough of 1x. Held to the audit's own
+#: arithmetic at import (`_check_the_deposit_match_fixtures`).
+DEPOSIT_MATCH_WORKED_EXAMPLES = (
+    {"name": "a 1-unit bonus at a 5x playthrough, staked in 2-leg power entries at 3x",
+     "form": _dm_form("power", 2, {"multiplier": "3"}),
+     "power": (3.0, 2), "playthrough": 5.0, "breakeven": 0.577350,
+     "per_unit_staked": -0.25, "staked": 5.0, "cost": 1.25, "after": -0.25,
+     "signal": "costs",
+     "words": ("57.74%", "-0.25 per unit staked", "5 units per unit of bonus",
+               "The playthrough's expected cost", "1.25 per unit of bonus",
+               "-0.25 per unit of bonus",
+               "A 1-unit bonus with a 5x playthrough, staked in 2-pick power entries (3x)")},
+    {"name": "the same at 4.5x",
+     "form": _dm_form("power", 2, {"multiplier": "4.5"}),
+     "power": (4.5, 2), "playthrough": 5.0, "breakeven": 0.471405,
+     "per_unit_staked": 0.125, "staked": 5.0, "cost": -0.625, "after": 1.625,
+     "signal": "none",
+     "words": ("47.14%", "+0.125 per unit staked", "The playthrough's expected gain",
+               "0.625 per unit of bonus", "+1.625 per unit of bonus",
+               "2.86 points over its break-even")},
+    {"name": "a 5x playthrough on 2-leg power entries at 4.52x, 2.96 points under the bar",
+     "form": _dm_form("power", 2, {"multiplier": "4.52"}),
+     "power": (4.52, 2), "playthrough": 5.0, "breakeven": 0.470360,
+     "per_unit_staked": 0.13, "staked": 5.0, "cost": -0.65, "after": 1.65,
+     "signal": "none", "words": ("2.96 points over its break-even", "+1.65 per unit of bonus")},
+    {"name": "a 5x playthrough on 2-leg power entries at 5x",
+     "form": _dm_form("power", 2, {"multiplier": "5"}),
+     "power": (5.0, 2), "playthrough": 5.0, "breakeven": 0.447214,
+     "per_unit_staked": 0.25, "staked": 5.0, "cost": -1.25, "after": 2.25,
+     "signal": "clears",
+     "words": ("44.72%", "1.25 per unit of bonus", "+2.25 per unit of bonus",
+               "Clears the bar at coin flips")},
+    {"name": "a 3x playthrough, typed '3x', on a 5-leg flex table paying 10x, 2x and 0.4x",
+     "form": _dm_form("flex", 5, {"table": {"5": "10", "4": "2", "3": "0.4"}},
+                      playthrough="3x"),
+     "flex": ({5: 10.0, 4: 2.0, 3: 0.4}, 5), "playthrough": 3.0, "breakeven": 0.542525,
+     "per_unit_staked": -0.25, "staked": 3.0, "cost": 0.75, "after": 0.25,
+     "signal": "none",
+     "words": ("54.25%", "3 units per unit of bonus", "0.75 per unit of bonus",
+               "+0.25 per unit of bonus", "4.25 points under its break-even")},
+    {"name": "a 5x playthrough on a 6-leg flex table paying 25x, 2x and 0.4x",
+     "form": _dm_form("flex", 6, {"table": {"6": "25", "5": "2", "4": "0.4"}}),
+     "flex": ({6: 25.0, 5: 2.0, 4: 0.4}, 6), "playthrough": 5.0,
+     "per_unit_staked": -0.328125, "staked": 5.0, "cost": 1.640625, "after": -0.640625,
+     "signal": "costs", "words": ("Costs at coin flips",)},
+    {"name": "a playthrough of 1x on 2-leg power entries at 3x",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, playthrough="1"),
+     "power": (3.0, 2), "playthrough": 1.0, "breakeven": 0.577350,
+     "per_unit_staked": -0.25, "staked": 1.0, "cost": 0.25, "after": 0.75,
+     "signal": "none",
+     "words": ("1 unit per unit of bonus", "0.25 per unit of bonus",
+               "+0.75 per unit of bonus", "7.74 points under its break-even")},
+    {"name": "a 50-unit bonus at a 5x playthrough on 2-leg power entries at 3x",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, bonus="50"),
+     "power": (3.0, 2), "playthrough": 5.0,
+     "per_unit_staked": -0.25, "staked": 5.0, "cost": 1.25, "after": -0.25,
+     "signal": "costs",
+     "words": ("A 50-unit bonus", "1.25 per unit of bonus", "-0.25 per unit of bonus")},
+    {"name": "a 4x playthrough that costs the bonus exactly, on 2-leg power at 3x",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, playthrough="4"),
+     "power": (3.0, 2), "playthrough": 4.0,
+     "per_unit_staked": -0.25, "staked": 4.0, "cost": 1.0, "after": 0.0,
+     "signal": "none", "words": ("1.00 per unit of bonus", "cost the bonus exactly")},
+    # A FIGURE THAT IS NOT NOTHING, DRAWN WITH THE SIGN IT HAS (the prover,
+    # 2026-10-08): by hand, 2.999999 / 4 - 1 = -0.25000025 a unit staked; 4
+    # staked cost 1.000001; the bonus after it 1 - 1.000001 = -0.000001 --
+    # below zero, red -- drawn "+0.00" as handed. And 3.99999 / 4 - 1 =
+    # -0.0000025 a unit staked, drawn "+0.00" as handed; 5 staked cost
+    # 0.0000125, the bonus after it +0.9999875, no outline.
+    {"name": "a bonus a millionth of a unit under nothing: 2.999999x on two legs, a 4x "
+             "playthrough",
+     "form": _dm_form("power", 2, {"multiplier": "2.999999"}, playthrough="4"),
+     "power": (2.999999, 2), "playthrough": 4.0,
+     "per_unit_staked": -0.25000025, "staked": 4.0, "cost": 1.000001, "after": -0.000001,
+     "signal": "costs",
+     "words": ("-0.000001 per unit of bonus", "Costs at coin flips",
+               "comes to -0.000001 per unit of bonus")},
+    {"name": "an entry returning a hair under its cost: 3.99999x on two legs, a 5x "
+             "playthrough",
+     "form": _dm_form("power", 2, {"multiplier": "3.99999"}),
+     "power": (3.99999, 2), "playthrough": 5.0,
+     "per_unit_staked": -0.0000025, "staked": 5.0, "cost": 0.0000125, "after": 0.9999875,
+     "signal": "none", "words": ("The playthrough's expected cost",)},
+    {"name": "an entry returning exactly its cost, 2 legs at 4x, a 5x playthrough",
+     "form": _dm_form("power", 2, {"multiplier": "4"}),
+     "power": (4.0, 2), "playthrough": 5.0, "breakeven": 0.5,
+     "per_unit_staked": 0.0, "staked": 5.0, "cost": 0.0, "after": 1.0,
+     "signal": "none",
+     "words": ("+0.00 per unit staked", "0.00 per unit of bonus", "+1.00 per unit of bonus",
+               "exactly at its break-even")},
+    {"name": "a 10x playthrough on 3-leg power entries at 5x",
+     "form": _dm_form("power", 3, {"multiplier": "5"}, playthrough="10"),
+     "power": (5.0, 3), "playthrough": 10.0, "breakeven": 0.584804,
+     "per_unit_staked": -0.375, "staked": 10.0, "cost": 3.75, "after": -2.75,
+     "signal": "costs", "words": ("10 units per unit of bonus", "3.75 per unit of bonus")},
+    {"name": "a 7.5x playthrough on a 3-leg flex table paying 2.25x and 1.25x",
+     "form": _dm_form("flex", 3, {"table": {"3": "2.25", "2": "1.25"}}, playthrough="7.5"),
+     "flex": ({3: 2.25, 2: 1.25}, 3), "playthrough": 7.5, "breakeven": 0.590942,
+     "per_unit_staked": -0.25, "staked": 7.5, "cost": 1.875, "after": -0.875,
+     "signal": "costs", "words": ("7.5 units per unit of bonus", "1.875 per unit of bonus")},
+    # NOTHING FROM A PAYOUT NOT CONFIRMED (step 1's reading (e)).
+    {"name": "a payout not confirmed",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, confirmed=False),
+     "computed": False, "words": ("nothing is worked out from a payout until you do",)},
+    # REFUSED, IN WORDS
+    {"name": "a bonus of nothing", "form": _dm_form("power", 2, {"multiplier": "3"}, bonus="0"),
+     "refused": True, "words": ("Type the bonus",)},
+    {"name": "no bonus typed", "form": _dm_form("power", 2, {"multiplier": "3"}, bonus=""),
+     "refused": True},
+    {"name": "a playthrough in words",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, playthrough="five"),
+     "refused": True, "words": ("Type the playthrough",)},
+    {"name": "a playthrough of nothing",
+     "form": _dm_form("power", 2, {"multiplier": "3"}, playthrough="0"), "refused": True},
+    {"name": "an entry of nine legs", "form": _dm_form("power", 9, {"multiplier": "3"}),
+     "refused": True, "words": ("2 to 8",)},
+    {"name": "an entry of two and a half legs",
+     "form": _dm_form("power", "2.5", {"multiplier": "3"}), "refused": True},
+    {"name": "a payout of 1x", "form": _dm_form("power", 2, {"multiplier": "1"}),
+     "refused": True},
+    {"name": "a flex table paying less for more legs right",
+     "form": _dm_form("flex", 3, {"table": {"3": "1.5", "2": "2"}}), "refused": True},
+)
+
+#: THE PLAYTHROUGHS THE PROPERTY CHECK READS beside the step-1 spread of
+#: payouts: 1x, a 5x, a fraction and a long one.
+DEPOSIT_MATCH_PLAYTHROUGHS = (1.0, 5.0, 10.5, 40.0)
+
+#: WHAT A DEPOSIT MATCH'S ANSWER CARRIES AS CODES, not words.
+_DM_CODES = ("signal", "numbers")
+
+#: A FIGURE IN DOLLARS (reading (b): "no currency symbol, no 'dollars'"): a
+#: currency's sign or name anywhere the deposit match speaks.
+_DEPOSIT_CURRENCY = re.compile(
+    r"[$€£¥¢]|(?<![A-Za-z])(?:dollars?|usd|cents?|bucks|euros?)(?![A-Za-z])", re.I)
+
+#: A figure in a line's words, signed or not, and a break-even's per cent.
+_DM_FIGURE = re.compile(r"[+-]?\d+(?:\.\d+)?")
+_DM_PERCENT = re.compile(r"(\d+(?:\.\d+)?)%")
+
+#: Half the last place the page draws a return in (five places).
+_DM_DRAWN = 5.000001e-6
+
+
+def _own_deposit_numbers(ex: dict) -> dict | None:
+    """The audit's own figures for a worked example, from the numbers typed:
+    the break-even and the return at coin flips by `_own_entry_numbers`, then
+    the playthrough's stake, cost and the bonus after it, per unit of bonus."""
+    own = _own_entry_numbers(ex)
+    if own is None:
+        return None
+    breakeven, r = own
+    p = float(ex["playthrough"])
+    return {"breakeven": breakeven, "per_unit_staked": r, "staked": p,
+            "cost": -p * r, "after": 1.0 + p * r}
+
+
+def _own_deposit_signal(own: dict) -> str:
+    """Reading (d), by the audit's own arithmetic: green only where the bonus
+    after its playthrough is above zero and every leg's break-even is three
+    points or more under an even chance; red where the bonus after it is
+    below zero; none between."""
+    noise = 1e-9
+    if own["after"] > noise and 0.5 - own["breakeven"] >= PICK_MIN_EDGE_AS_RULED - noise:
+        return "clears"
+    if own["after"] < -noise:
+        return "costs"
+    return "none"
+
+
+def _check_the_deposit_match_fixtures() -> None:
+    """THE HAND-WORKED NUMBERS HELD AT IMPORT: each example's figures agree with
+    the audit's own arithmetic, and its outline with reading (d)'s."""
+    problems = []
+    for ex in DEPOSIT_MATCH_WORKED_EXAMPLES:
+        own = _own_deposit_numbers(ex)
+        if own is None:
+            continue
+        for key in ("breakeven", "per_unit_staked", "staked", "cost", "after"):
+            if key in ex and abs(own[key] - ex[key]) > 5e-7:
+                problems.append(f"{ex['name']}: {key} {own[key]!r} against {ex[key]!r}")
+        if ex.get("signal") != _own_deposit_signal(own):
+            problems.append(f"{ex['name']}: the outline {ex.get('signal')!r} against "
+                            f"{_own_deposit_signal(own)!r}")
+    if problems:
+        raise LawViolation("THE DEPOSIT MATCH'S WORKED EXAMPLES DISAGREE WITH THE AUDIT'S "
+                           "OWN ARITHMETIC:" + _NL2 + _NL2.join(problems))
+
+
+def _deposit_currency_faults(node, where: str) -> list[str]:
+    """A figure in dollars: a currency's sign or name in any word the deposit
+    match sends (reading (b))."""
+    faults = []
+
+    def walk(value, path):
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if key not in _DM_CODES:
+                    walk(inner, f"{path}.{key}")
+        elif isinstance(value, list):
+            for i, inner in enumerate(value):
+                walk(inner, f"{path}[{i}]")
+        elif isinstance(value, str):
+            hit = _DEPOSIT_CURRENCY.search(value)
+            if hit:
+                faults.append(f"{path} says {value[:80]!r}: a figure in dollars ({hit.group(0)!r}) "
+                              f"-- the deposit match speaks in units only, every figure per "
+                              f"unit of bonus (the entry check's step 4, reading (b))")
+
+    walk(node, where)
+    return faults
+
+
+def _dm_line(out: dict, label: str) -> dict | None:
+    return next((line for line in out.get("lines") or [] if line.get("label") == label), None)
+
+
+def _dm_drawn_faults(name: str, out: dict, own: dict) -> list[str]:
+    """EVERY FIGURE THE PAGE DRAWS, read off its words and held to the audit's
+    own arithmetic: the break-even, the return per unit staked, the stake, the
+    playthrough's cost (or gain, the label saying which) and the bonus after
+    it -- each but the first two per unit of bonus -- and the verdict's figure."""
+    from . import language as _language
+
+    words = _language.deposit_match_words()
+    faults = []
+    noise = 1e-9
+
+    def figure(line, what, want, *, signed=True, unit="per unit of bonus"):
+        if line is None:
+            faults.append(f"{name}: no line states {what}, where it is {want:+.6f} per unit "
+                          f"of bonus worked by hand (the brief: \"with the playthrough cost "
+                          f"shown\")")
+            return
+        said = line.get("value_words") or ""
+        found = _DM_FIGURE.findall(said)
+        if not found:
+            faults.append(f"{name}: {what} is drawn {said!r}, with no figure")
+            return
+        got = float(found[0])
+        # THE SIGN IT HAS (the prover, 2026-10-08): within half the last place
+        # drawn, "+0.00" passed for a bonus a millionth of a unit under
+        # nothing beside its red outline. A figure that is not nothing (beyond
+        # float noise) is never drawn as nothing, nor with the other sign.
+        if abs(want) > noise and (got == 0.0 or (signed and (got < 0.0) != (want < 0.0))):
+            faults.append(f"{name}: {what} is drawn {said!r}, where it is {want:+.9f} worked "
+                          f"by hand: drawn with a sign it does not have, or as nothing")
+        if not signed:
+            got = abs(got)
+            want = abs(want)
+        if abs(got - want) > _DM_DRAWN:
+            faults.append(f"{name}: {what} is drawn {said!r}, where it is {want:+.6f} worked "
+                          f"by hand")
+        if unit not in said or len(found) != 1:
+            faults.append(f"{name}: {what} is drawn {said!r}, not as one figure {unit} "
+                          f"(reading (b))")
+
+    be_line = _dm_line(out, words["line_breakeven"])
+    got = _DM_PERCENT.findall((be_line or {}).get("value_words") or "")
+    if not got or abs(float(got[0]) - own["breakeven"] * 100.0) > 0.005 + noise:
+        faults.append(f"{name}: the break-even per leg is drawn "
+                      f"{(be_line or {}).get('value_words')!r}, where it is "
+                      f"{own['breakeven'] * 100:.4f}% worked by hand")
+    figure(_dm_line(out, words["line_entry"]), "what each unit staked returns",
+           own["per_unit_staked"], unit="per unit staked")
+    figure(_dm_line(out, words["line_staked"]), "the stake the playthrough asks", own["staked"])
+    cost, gain = _dm_line(out, words["line_cost"]), _dm_line(out, words["line_gain"])
+    if cost is not None and gain is not None:
+        faults.append(f"{name}: the playthrough's cost and its gain are both drawn")
+    if own["cost"] < -noise and gain is None:
+        faults.append(f"{name}: the playthrough's expected gain of {-own['cost']:.6f} per unit "
+                      f"of bonus is not labelled a gain (worked by hand)")
+    if own["cost"] >= -noise and cost is None and gain is not None:
+        faults.append(f"{name}: the playthrough's expected cost of {own['cost']:.6f} per unit "
+                      f"of bonus is labelled a gain (worked by hand)")
+    figure(cost or gain, "the playthrough's expected cost", own["cost"], signed=False)
+    figure(_dm_line(out, words["line_after"]), "the bonus after its playthrough", own["after"])
+    if abs(own["after"]) > noise:
+        verdict = out.get("verdict_words") or ""
+        # ITS OWN SIGN, AND NEVER NOTHING (the prover, 2026-10-08): "Costs at
+        # coin flips: ... comes to +0.00" stated a bonus under nothing as above
+        # it.
+        if not any(abs(float(f) - own["after"]) <= _DM_DRAWN and float(f) != 0.0
+                   and (float(f) < 0.0) == (own["after"] < 0.0)
+                   for f in _DM_FIGURE.findall(verdict.split(":", 1)[-1])):
+            faults.append(f"{name}: the verdict {verdict[:90]!r} does not state the bonus after "
+                          f"its playthrough, {own['after']:+.6f} per unit of bonus worked by hand")
+    return faults
+
+
+def _deposit_match_example_faults(ex: dict) -> list[str]:
+    from . import entry_check as _ec
+
+    name = f"the deposit match's {ex['name']}"
+    try:
+        out = _ec.deposit_match(json.loads(json.dumps(ex["form"])))
+    except Exception as exc:  # noqa: BLE001 - named, never swallowed
+        return [f"{name} raised {type(exc).__name__}: {exc}"]
+    faults = entry_check_words_faults(out, name) + _deposit_currency_faults(out, name)
+    if ex.get("refused"):
+        if not out.get("refused_words") or out.get("computed"):
+            faults.append(f"{name} was not refused in words: {out.get('refused_words')!r}")
+    if ex.get("computed") is False:
+        if out.get("computed") or out.get("numbers") is not None or out.get("signal") != "none":
+            faults.append(f"{name}: worked out numbers or an outline ({out.get('signal')!r}) "
+                          f"from a payout the operator did not confirm (step 1's reading (e))")
+    own = _own_deposit_numbers(ex)
+    if own is not None:
+        numbers = out.get("numbers") or {}
+        for key, what in (("breakeven", "the break-even per leg"),
+                          ("per_unit_staked", "what each unit staked returns"),
+                          ("staked", "the stake the playthrough asks, per unit of bonus"),
+                          ("cost", "the playthrough's expected cost, per unit of bonus"),
+                          ("after", "the bonus after its playthrough, per unit of bonus")):
+            got = numbers.get(key)
+            want = ex.get(key, own[key])
+            if got is None or abs(float(got) - want) > 5e-6:
+                faults.append(f"{name}: {what} {got!r}, where it is {want!r} worked by hand")
+        faults += _dm_drawn_faults(name, out, own)
+        if out.get("signal") != _own_deposit_signal(own):
+            faults.append(f"{name}: the outline is {out.get('signal')!r}, where reading (d) "
+                          f"gives {_own_deposit_signal(own)!r} (green only where the bonus "
+                          f"after its playthrough is above zero and every leg's break-even is "
+                          f"3 points or more under an even chance, red where the bonus after "
+                          f"it is below zero, none between)")
+        if out.get("assumes_words") != "Read the offer's terms; this assumes the numbers you typed.":
+            faults.append(f"{name}: the brief's sentence is not beside the answer: "
+                          f"{out.get('assumes_words')!r}")
+    text = json.dumps(out, ensure_ascii=False)
+    for want in ex.get("words") or ():
+        if want not in text:
+            faults.append(f"{name} does not say {want!r}")
+    return faults
+
+
+def _deposit_match_property_faults() -> list[str]:
+    """The shipped arithmetic against the audit's own over step 1's spread of
+    payouts and four playthroughs: each figure per unit of bonus."""
+    from . import entry_math as _em
+
+    faults = []
+    cases = ([({"multiplier": m}, n, {"power": (m, n)}) for m, n in ENTRY_CHECK_POWER_SPREAD]
+             + [({"table": dict(t)}, n, {"flex": (t, n)}) for t, n in ENTRY_CHECK_FLEX_SPREAD])
+    for payout, n, spec in cases:
+        for p in DEPOSIT_MATCH_PLAYTHROUGHS:
+            own = _own_deposit_numbers(dict(spec, playthrough=p))
+            try:
+                got = _em.deposit_match(payout, n, playthrough=p)
+            except Exception as exc:  # noqa: BLE001 - named, never swallowed
+                faults.append(f"the deposit match of {payout} on {n} legs at {p:g}x raised "
+                              f"{type(exc).__name__}: {exc}")
+                continue
+            for key in ("per_unit_staked", "staked", "cost", "after"):
+                if abs(float(got.get(key, float("nan"))) - own[key]) > 1e-9 \
+                        or got.get(key) is None:
+                    faults.append(f"the deposit match of {payout} on {n} legs at a {p:g}x "
+                                  f"playthrough: {key} {got.get(key)!r}, where it is "
+                                  f"{own[key]!r} by the audit's own arithmetic")
+    return faults
+
+
+def _deposit_match_panel_faults() -> list[str]:
+    """The panel's words: plain, no advice, no pressure, no currency; and the
+    terms the brief leaves open said as the operator must type them (reading
+    (c)): a playthrough counted on the deposit and the bonus together, and a
+    bonus that can only be staked."""
+    from . import entry_check as _ec
+
+    panel = _ec.deposit_panel()
+    faults = (entry_check_words_faults(panel, "the deposit match's panel")
+              + _deposit_currency_faults(panel, "the deposit match's panel"))
+    terms = " ".join(panel.get("terms") or [])
+    for want, what in (("multiple of the bonus", "how the playthrough is typed"),
+                       ("deposit and the bonus together",
+                        "a playthrough counted on the deposit and the bonus together"),
+                       ("can only be staked", "a bonus that can only be staked")):
+        if want not in terms:
+            faults.append(f"the deposit match's panel does not say {what} ({want!r}): a term "
+                          f"the brief leaves open, said as the operator must type it, never "
+                          f"assumed (reading (c))")
+    if [o.get("key") for o in panel.get("legs") or []] != [str(n) for n in range(2, 9)]:
+        faults.append(f"the deposit match's panel offers sizes {panel.get('legs')!r}, where an "
+                      f"entry has 2 to 8 legs")
+    return faults
+
+
+#: The fill: an empty payout, or one the page filled, is filled again from
+#: step 1's last one typed for THIS app, type and size -- only once an app is
+#: chosen -- and never confirmed (reading (a)).
+_DEPOSIT_REFILL = re.compile(
+    r"if\s*\(\s*!depositPayoutEmpty\(\)\s*&&\s*!deposit\.filled\s*\)\s*return;[\s\S]{0,200}?"
+    r"deposit\.app\s*\?[\s\S]{0,120}?r\.app\s*===\s*deposit\.app\s*&&\s*"
+    r"r\.entry_type\s*===\s*deposit\.type\s*&&\s*r\.legs\s*===\s*Number\(deposit\.legs\)"
+    r"[\s\S]{0,400}?deposit\.filled\s*=\s*!!got;[\s\S]{0,200}?deposit\.confirmed\s*=\s*false;")
+
+
+def _deposit_match_page_faults(js: str | None = None) -> list[str]:
+    """THE PAGE DRAWS THE SERVER'S ANSWER: the verdict's outline from the
+    server's own verdict (reading (d)) and no outline by name; every line's
+    words and the brief's sentence; no figure in dollars of its own making;
+    a payout confirmed only by the operator's tick, and filled in only from
+    step 1's last one typed for the app, type and size chosen (reading (a))."""
+    if js is None:
+        js = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    bodies = _js_function_bodies(js, DEPOSIT_MATCH_JS_FUNCTIONS)
+    faults = []
+    for name, got in bodies.items():
+        if got is None:
+            faults.append(f"`{name}` is gone from app.js, so nothing says what the deposit "
+                          f"match draws, fills its payout with, or outlines")
+            continue
+        line, body = got
+        for field in _RAIL_TILE_NUMBERS:
+            if re.search(r"\.%s\b" % field, body):
+                faults.append(f"app.js:{line} `{name}` reads `{field}`, a prop tile's line or "
+                              f"the model's chance, into the deposit match: it is arithmetic of "
+                              f"the numbers typed, at coin flips")
+        for m in re.finditer(r"deposit\.confirmed\s*=(?!=)\s*([^;\n]+)", body):
+            if m.group(1).strip() not in ("false", "confirm.checked"):
+                faults.append(f"app.js:{line} `{name}` sets the payout confirmed to "
+                              f"{m.group(1).strip()!r}: the page confirms a payout itself "
+                              f"(only the operator confirms it)")
+        if re.search(r"\.checked\s*=\s*true\b", body):
+            faults.append(f"app.js:{line} `{name}` ticks a box itself: only the operator "
+                          f"confirms a payout")
+        if re.search(r"""['"]sig-(?:clears|costs|won|lost)['"]""", body):
+            faults.append(f"app.js:{line} `{name}` puts an outline class on by name: an "
+                          f"outline the server's verdict did not give (reading (d))")
+        for literal in _JS_STRING_LITERAL.findall(body):
+            if re.search(r"\$\s*\d|[€£¥¢]|(?<![A-Za-z])(?:dollars?|usd)(?![A-Za-z])",
+                         literal, re.I) or literal.strip("'\"`").strip() == "$":
+                faults.append(f"app.js:{line} `{name}` draws {literal[:40]}: a figure in "
+                              f"dollars -- the deposit match speaks in units only (reading (b))")
+    paint = bodies.get("paintDepositResult")
+    if paint is not None:
+        for want, what in (("signalClass(d.signal)", "the verdict's outline from the server's "
+                                                     "own verdict (reading (d))"),
+                           ("d.verdict_words", "the verdict's words"),
+                           ("line.value_words", "each line's figure"),
+                           ("d.assumes_words", "the brief's sentence, \"Read the offer's "
+                                               "terms; this assumes the numbers you typed.\"")):
+            if want not in paint[1]:
+                faults.append(f"app.js:{paint[0]} `paintDepositResult` does not draw {what}")
+    fill = bodies.get("fillDepositPayout")
+    if fill is not None and not _DEPOSIT_REFILL.search(fill[1]):
+        faults.append(f"app.js:{fill[0]} `fillDepositPayout` fills a payout other than step "
+                      f"1's last one typed for the app, entry type and size chosen, or "
+                      f"before an app is chosen, or leaves it confirmed (reading (a): "
+                      f"offered pre-filled and unconfirmed)")
+    return faults
+
+
+def deposit_match_faults(*, js: str | None = None) -> list[str]:
+    """THE DEPOSIT MATCH IS ITS OWN ARITHMETIC (gate step 2; the entry check's
+    step 4, 2026-10-08): the shipped `entry_check.deposit_match` on each worked
+    example, every figure worked out again and read off the words drawn; the
+    shipped arithmetic against the audit's own over a spread; the panel's
+    words and terms; and the page. `js` takes a planted app.js."""
+    faults = []
+    for ex in DEPOSIT_MATCH_WORKED_EXAMPLES:
+        faults += _deposit_match_example_faults(ex)
+    faults += _deposit_match_property_faults()
+    faults += _deposit_match_panel_faults()
+    faults += _deposit_match_page_faults(js)
+    return faults
+
+
+def check_the_deposit_match_is_its_own_arithmetic() -> None:
+    faults = deposit_match_faults()
+    if faults:
+        raise LawViolation(
+            "THE DEPOSIT MATCH IS NOT ITS OWN ARITHMETIC (GRIDIRON_ENTRY_CHECK step 4, "
+            "2026-10-08: \"output the bonus's expected value after playthrough at "
+            "coin-flip legs, with the playthrough cost shown, and 'read the offer's "
+            "terms; this assumes the numbers you typed'\"; reading (b): every figure "
+            "per unit of bonus, never in dollars):"
+            + _NL2 + _NL2.join(faults[:10]))
+
+
+_check_the_deposit_match_fixtures()
 
 
 # ---------------------------------------------------------------------------

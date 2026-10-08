@@ -804,6 +804,15 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_m4_read_in_the_prediction_closure",
         "plant_an_unproven_number_drawn_as_proven",
         "plant_a_discount_priced_where_m4_cannot",
+        # THE ENTRY CHECK, STEP 4 (built 2026-10-08): a deposit match, per
+        # unit of bonus, kept nowhere -- reading (e)'s four ("a playthrough
+        # cost left out ... a bonus counted twice ... a deposit or bonus stored
+        # anywhere ... a figure in dollars") and the colour reading (d) gives.
+        "plant_a_playthrough_cost_left_out",
+        "plant_a_bonus_counted_twice",
+        "plant_a_deposit_or_bonus_stored",
+        "plant_a_deposit_figure_in_dollars",
+        "plant_a_deposit_match_outlined_where_reading_d_gives_none",
         # OPERATOR QUESTION 38 (A) AND ITS TWO RULINGS (2026-10-06, second
         # set; built 2026-10-07): "Planting: a finished game's pick priced;
         # an in-play read used as a close."

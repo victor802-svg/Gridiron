@@ -48,6 +48,14 @@ return at its chances beside the return at coin flips; and the model's
 record for the stat. The model only flags: the outline stays reading (h)'s
 at coin flips. M4 is outside the prediction closure (LAW 1), and the line
 the operator types goes no further than it.
+
+STEP 4, A DEPOSIT MATCH (2026-10-08; the brief's step 4): `deposit_match` --
+the bonus after its playthrough at coin flips, per unit of bonus, with the
+playthrough's cost shown and "Read the offer's terms; this assumes the
+numbers you typed.", from `entry_math.deposit_match` (step 1's own return of
+the entry the playthrough is staked in). It is handed the form alone and
+WRITES NOTHING: no bonus, deposit or playthrough is kept anywhere (reading
+(a)). Step 3, the record of taken entries, is not built (question 45).
 """
 
 from __future__ import annotations
@@ -907,6 +915,178 @@ def check(conn: sqlite3.Connection, body, *, now=None, remember_it: bool = True)
     return out
 
 
+# ---------------------------------------------------------------------------
+# a deposit match (step 4)
+# ---------------------------------------------------------------------------
+#
+# THE BRIEF, STEP 4 (2026-09-30): "deposit match calculator: typed bonus,
+# playthrough multiple, entry type and payout used for playthrough; output the
+# bonus's expected value after playthrough at coin-flip legs, with the
+# playthrough cost shown, and 'read the offer's terms; this assumes the
+# numbers you typed'". Built 2026-10-08, readings (a)-(e) recorded in
+# docs/REPAIR_STATE.md. STEP 3 IS NOT BUILT (question 45): nothing here keeps
+# what the operator deposits, stakes, plays through or wins.
+
+#: THE PLAYTHROUGH A FORM MAY TYPE (2026-10-08): a mistyped key's bound, as the
+#: payout's is -- never a fact about any offer.
+PLAYTHROUGH_CEILING = 1000.0
+
+
+def read_deposit_form(body) -> dict:
+    """A DEPOSIT MATCH AS THE OPERATOR TYPED IT (step 4, 2026-10-08): the entry
+    the playthrough is staked in -- power or flex, how many legs, and the
+    payout the app shows for it, read and bounded by step 1's own reader
+    (`_payout`: one reader, so the two can never read a payout two ways) --
+    whether he confirmed that payout, the bonus in his own units and the
+    playthrough as a multiple of the bonus. Or `EntryRefused` with words.
+
+    NO APP IS READ: the app only chooses which payout the page offers filled
+    in, from step 1's table (reading (a)); nothing here reads or keeps one."""
+    if not isinstance(body, dict):
+        raise _refuse("not_a_deposit")
+    entry_type = str(body.get("entry_type") or "")
+    if entry_type not in ENTRY_TYPES:
+        raise _refuse("entry_type")
+    try:
+        legs = _number(body.get("legs"))
+    except ValueError:
+        legs = None
+    if (legs is None or legs != int(legs)
+            or not entry_math.MIN_LEGS <= legs <= entry_math.MAX_LEGS):
+        raise _refuse("deposit_legs")
+    legs = int(legs)
+    payout = _payout(body.get("payout"), legs, entry_type, what="payout")
+    if payout is None:
+        raise _refuse("payout_missing")
+    try:
+        bonus = _number(body.get("bonus"))
+    except ValueError:
+        raise _refuse("bonus") from None
+    if bonus is None or bonus <= 0.0 or bonus > UNITS_CEILING:
+        raise _refuse("bonus")
+    try:
+        playthrough = _number(body.get("playthrough"), strip="x")
+    except ValueError:
+        raise _refuse("playthrough") from None
+    if playthrough is None or playthrough <= 0.0 or playthrough > PLAYTHROUGH_CEILING:
+        raise _refuse("playthrough")
+    return {"entry_type": entry_type, "legs": legs, "payout": payout,
+            "confirmed": body.get("payout_confirmed") is True,
+            "bonus": bonus, "playthrough": playthrough}
+
+
+def _deposit_lines(words: dict, payout: dict, legs: int, breakeven: float,
+                   match: dict) -> list[dict]:
+    """THE DEPOSIT MATCH'S LINES, each a label, its figure in words and a tip:
+    the entry's break-even per leg, what each unit staked returns at coin
+    flips, the stake the playthrough asks, its expected cost -- or gain, the
+    label says which -- and the bonus after it. THE COST IS ALWAYS SHOWN (the
+    brief: "with the playthrough cost shown"); every figure but the break-even
+    and the return per unit staked is per unit of bonus (reading (b))."""
+    gain = match["cost"] < -entry_math.FLOAT_NOISE
+    return [
+        {"label": words["line_breakeven"],
+         "value_words": language.entry_check_breakeven_words(breakeven),
+         "tip": language.entry_check_breakeven_tip(payout, legs)},
+        {"label": words["line_entry"],
+         "value_words": language.deposit_match_entry_words(match["per_unit_staked"]),
+         "tip": words["entry_tip"]},
+        {"label": words["line_staked"],
+         "value_words": language.deposit_match_staked_words(match["staked"]),
+         "tip": words["staked_tip"]},
+        {"label": words["line_gain" if gain else "line_cost"],
+         "value_words": language.deposit_match_cost_words(match["cost"]),
+         "tip": words["cost_tip"]},
+        {"label": words["line_after"],
+         "value_words": language.deposit_match_after_words(match["after"]),
+         "tip": words["after_tip"]},
+    ]
+
+
+def deposit_match(body) -> dict:
+    """A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, built 2026-10-08): the
+    bonus after its playthrough, at coin flips, with the playthrough's cost
+    shown, and the brief's own sentence beside it.
+
+    THE ARITHMETIC OF NUMBERS TYPED INTO THE PAGE, KEPT NOWHERE (reading (a)):
+    it is handed the form and nothing else -- no handle on the record, which
+    the route never opens for it -- and writes nothing anywhere.
+    `audit.entry_check_reach_faults` reads every function this one reaches,
+    and its route and its page, for a write, a handle or browser storage, and
+    `audit.check_no_wagering_ledger` names a table, a column or a setting
+    that could hold a deposit, a bonus or a playthrough.
+
+    ONCE THE PAYOUT IS CONFIRMED (step 1's rule, reading (e)): per unit of
+    bonus (reading (b)), by `entry_math.deposit_match` -- step 1's own return
+    per unit staked of that entry, one calculator -- the playthrough's stake,
+    its expected cost and the bonus after it (reading (c)). THE COLOUR,
+    reading (d), step 1's reading (h) applied to the bonus: green only where
+    the bonus after its playthrough is above zero AND every leg's break-even
+    is three points or more under an even chance (B.2, through its one door,
+    `picks.clears_the_pick_bar`); red where the bonus after its playthrough
+    is below zero; none between. No model and no record is behind it."""
+    words = language.deposit_match_words()
+    out = {"open": True, "refused_words": None, "ask_words": None, "computed": False,
+           "signal": "none", "verdict_words": None, "verdict_tip": None,
+           "summary_words": None, "lines": [], "assumes_words": None, "numbers": None}
+    try:
+        form = read_deposit_form(body)
+    except EntryRefused as exc:
+        out["refused_words"] = str(exc)
+        return out
+    if not form["confirmed"]:
+        # NOTHING IS WORKED OUT FROM A PAYOUT NOT CONFIRMED (step 1's reading
+        # (e)): one the page filled in is the last one typed in step 1,
+        # offered for the app, type and size he chose, and never confirmed.
+        out["ask_words"] = words["confirm_first"]
+        return out
+    payout, legs = form["payout"], form["legs"]
+    breakeven = entry_math.breakeven(payout, legs)
+    match = entry_math.deposit_match(payout, legs, playthrough=form["playthrough"])
+    edge = entry_math.edge_at_a_coin_flip(breakeven)
+    if match["after"] > entry_math.FLOAT_NOISE and picks.clears_the_pick_bar(edge):
+        signal = "clears"
+    elif entry_math.costs(match["after"]):
+        signal = "costs"
+    else:
+        signal = "none"
+    points = _drawn_points(edge * 100.0)
+    out.update(
+        computed=True, signal=signal,
+        verdict_words=language.deposit_match_verdict_words(
+            signal, match["after"], points, raw=edge * 100.0),
+        verdict_tip=language.deposit_match_verdict_tip(config.PICK_MIN_EDGE),
+        summary_words=language.deposit_match_summary_words(
+            form["bonus"], form["playthrough"], legs, form["entry_type"],
+            language.entry_check_payout_words(payout, legs)),
+        lines=_deposit_lines(words, payout, legs, breakeven, match),
+        assumes_words=words["assumes"],
+        numbers={"breakeven": round(breakeven, 6), "edge_points": round(edge * 100.0, 6),
+                 "per_unit_staked": round(match["per_unit_staked"], 6),
+                 "staked": round(match["staked"], 6), "cost": round(match["cost"], 6),
+                 "after": round(match["after"], 6), "legs": legs,
+                 "payout": _field_values(payout)})
+    return out
+
+
+def deposit_panel() -> dict:
+    """WHAT THE PROPS PAGE DRAWS THE DEPOSIT MATCH FROM (step 4, 2026-10-08):
+    its words, the terms it reads the numbers under (reading (c): as the
+    operator must type them, never assumed), and the sizes an entry may have.
+    The apps, entry types, flex rows and payouts last typed are the step-1
+    panel's own. Reads nothing."""
+    words = language.deposit_match_words()
+    return {
+        "heading": words["heading"],
+        "intro": words["intro"],
+        "labels": {k: v for k, v in words.items() if isinstance(v, str)},
+        "terms": list(words["terms"]),
+        "legs": [{"key": str(n), "label": language.deposit_match_legs_words(n)}
+                 for n in range(entry_math.MIN_LEGS, entry_math.MAX_LEGS + 1)],
+        "note": words["note"],
+    }
+
+
 def panel(conn: sqlite3.Connection, *, sport: str, tiles: list[dict],
           now=None) -> dict:
     """WHAT THE PROPS PAGE DRAWS THE FORM FROM: its words, the apps, entry
@@ -952,4 +1132,7 @@ def panel(conn: sqlite3.Connection, *, sport: str, tiles: list[dict],
                                for k in range(n, 0, -1)]
                       for n in range(entry_math.MIN_LEGS, entry_math.MAX_LEGS + 1)},
         "note": words["note"],
+        # A DEPOSIT MATCH (step 4, 2026-10-08): a section of this panel, its
+        # arithmetic the same module's (`deposit_match`), stored nowhere.
+        "deposit": deposit_panel(),
     }

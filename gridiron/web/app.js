@@ -2515,6 +2515,7 @@ const Gridiron = (function () {
       const lines = document.getElementById('entry-lines');
       if (lines) lines.innerHTML = '';
       if (note) note.textContent = '';
+      renderDepositMatch(null);
       rail.hidden = false;
       return;
     }
@@ -2524,8 +2525,211 @@ const Gridiron = (function () {
     fillEntryPayout(ec);
     drawEntryForm(ec);
     if (note) note.textContent = ec.note || '';
+    renderDepositMatch(ec);
     // DRAWN NOW THAT IT CAN ACT (2026-09-29): every field has its label.
     rail.hidden = false;
+  }
+
+  // A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, the brief of 2026-09-30:
+  // "typed bonus, playthrough multiple, entry type and payout used for
+  // playthrough; output the bonus's expected value after playthrough at
+  // coin-flip legs, with the playthrough cost shown"; built 2026-10-08). A
+  // SECTION OF THE CHECK'S PANEL, ONE CALCULATOR: the server answers
+  // (`/api/deposit-match`, `entry_check.deposit_match`, step 1's own
+  // arithmetic of the entry), and every word and the outline are its own.
+  // STORES NOTHING (reading (a)): what he types lives in this object while the
+  // page is open and nowhere else -- no browser storage, no record. A PAYOUT
+  // THE PAGE FILLS IN is step 1's last one typed for the app, type and size he
+  // chose, offered and never confirmed by the page (reading (e)).
+  const deposit = {
+    app: '', type: 'power', legs: '2',
+    payout: { multiplier: '', table: {} },
+    filled: false, offered: null, confirmed: false,
+    bonus: '', playthrough: '',
+    result: null, changed: false,
+  };
+
+  function depositPayoutEmpty() {
+    if (deposit.type === 'power') return !String(deposit.payout.multiplier || '').trim();
+    return !Object.values(deposit.payout.table || {}).some(v => String(v || '').trim());
+  }
+
+  // STEP 1'S LAST PAYOUT TYPED FOR THIS APP, ENTRY TYPE AND SIZE, offered
+  // filled in only once he chooses the app (reading (a)), and never confirmed
+  // by the page; a payout he typed himself stays his.
+  function fillDepositPayout(ec) {
+    if (!depositPayoutEmpty() && !deposit.filled) return;
+    const got = deposit.app ? (ec.remembered || []).find(r => r.app === deposit.app
+      && r.entry_type === deposit.type && r.legs === Number(deposit.legs)) : null;
+    const keys = ['app', 'entry_type', 'legs', 'typed_utc'];
+    if (got && deposit.filled && deposit.offered && keys.every(k => deposit.offered[k] === got[k])) return;
+    const fields = got ? got.fields : {};
+    deposit.payout = { multiplier: fields.multiplier || '',
+                       table: Object.assign({}, fields.table || {}) };
+    deposit.filled = !!got;
+    deposit.offered = got || null;
+    deposit.confirmed = false;
+  }
+
+  // ANY CHANGE puts the last answer aside, and a change of app, type or size
+  // asks for the payout to be confirmed again.
+  function depositChanged(sized) {
+    if (sized) { deposit.confirmed = false; if (entryPanel) fillDepositPayout(entryPanel); }
+    if (deposit.result) deposit.changed = true;
+  }
+
+  function depositPayoutBlock(ec, words, fieldsFor) {
+    const block = el('div', 'entry-pays-rows');
+    if (deposit.type === 'power') {
+      block.appendChild(entryField(words.payout_power, entryInput(deposit.payout.multiplier, 'number', (v) => {
+        deposit.payout.multiplier = v; fieldsFor(); }), 'entry-half'));
+    } else {
+      ((ec.flex_rows || {})[String(deposit.legs)] || []).forEach(r => {
+        const key = String(r.right);
+        block.appendChild(entryField(r.label, entryInput((deposit.payout.table || {})[key], 'number', (v) => {
+          deposit.payout.table[key] = v; fieldsFor(); }), 'entry-half'));
+      });
+      block.appendChild(el('p', 'footnote entry-note-small', words.payout_flex_note || ''));
+    }
+    return block;
+  }
+
+  function drawDepositForm(ec) {
+    const host = document.getElementById('deposit-form');
+    if (!host) return;
+    const dm = ec.deposit || {};
+    const words = dm.labels || {};
+    host.innerHTML = '';
+    const head = el('div', 'entry-head-row');
+    const apps = [{ key: '', label: words.app_none || '' }].concat(ec.apps || []);
+    head.appendChild(entryField(words.app, entrySelect(apps, deposit.app, (v) => {
+      deposit.app = v; depositChanged(true); drawDepositForm(ec); }), 'entry-wide'));
+    head.appendChild(entryField(words.entry, entrySelect(ec.types, deposit.type, (v) => {
+      deposit.type = v; depositChanged(true); drawDepositForm(ec); })));
+    head.appendChild(entryField(words.legs, entrySelect(dm.legs, deposit.legs, (v) => {
+      deposit.legs = v; depositChanged(true); drawDepositForm(ec); })));
+    host.appendChild(head);
+    const pays = el('div', 'entry-block');
+    pays.appendChild(el('h5', 'entry-sub', words.payout_heading || ''));
+    const confirm = el('input', 'entry-confirm-box');
+    confirm.type = 'checkbox';
+    confirm.checked = deposit.confirmed === true;
+    confirm.onchange = () => { deposit.confirmed = confirm.checked; depositChanged(false); paintDepositResult(); };
+    pays.appendChild(depositPayoutBlock(ec, words, () => {
+      // A PAYOUT HE TYPES IS HIS, and is confirmed again.
+      deposit.filled = false; deposit.offered = null; deposit.confirmed = false;
+      confirm.checked = false; depositChanged(false); paintDepositResult();
+      const said = document.getElementById('deposit-offered');
+      if (said) said.hidden = true;
+    }));
+    const offered = el('p', 'entry-offered', (deposit.filled && deposit.offered) ? deposit.offered.words : '');
+    offered.id = 'deposit-offered';
+    offered.hidden = !(deposit.filled && deposit.offered);
+    pays.appendChild(offered);
+    const label = el('label', 'entry-confirm');
+    label.appendChild(confirm);
+    label.appendChild(el('span', 'entry-confirm-words', words.confirm || ''));
+    pays.appendChild(label);
+    host.appendChild(pays);
+    const offer = el('div', 'entry-block');
+    offer.appendChild(el('h5', 'entry-sub', words.offer_heading || ''));
+    const set = (field) => (value) => { deposit[field] = value; depositChanged(false); paintDepositResult(); };
+    offer.appendChild(entryField(words.bonus, entryInput(deposit.bonus, 'number', set('bonus')),
+                                 'entry-half', words.bonus_tip));
+    offer.appendChild(entryField(words.playthrough, entryInput(deposit.playthrough, 'number', set('playthrough')),
+                                 'entry-half', words.playthrough_tip));
+    // THE TERMS IT READS THE NUMBERS UNDER, said as he must type them
+    // (reading (c)): never assumed.
+    (dm.terms || []).forEach(t => offer.appendChild(el('p', 'footnote entry-note-small', t)));
+    host.appendChild(offer);
+    const work = el('button', 'entry-check', words.check || '');
+    work.type = 'button';
+    work.id = 'deposit-check';
+    work.onclick = () => checkDeposit(ec).catch(showError);
+    host.appendChild(work);
+    paintDepositResult();
+  }
+
+  // THE OFFER AS THE SERVER READS IT: every field as typed, and whether he
+  // ticked the box. No app: it only chose what the page offered.
+  function depositBody() {
+    const payout = deposit.type === 'power'
+      ? { multiplier: deposit.payout.multiplier } : { table: Object.assign({}, deposit.payout.table) };
+    return { entry_type: deposit.type, legs: deposit.legs, payout: payout,
+             payout_confirmed: deposit.confirmed === true,
+             bonus: deposit.bonus, playthrough: deposit.playthrough };
+  }
+
+  async function checkDeposit(ec) {
+    const button = document.getElementById('deposit-check');
+    const seq = sportSeq;
+    if (button) button.disabled = true;
+    try {
+      const res = await fetch('/api/deposit-match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'X-Gridiron-Form': csrfToken || '' },
+        body: JSON.stringify(depositBody()),
+      });
+      const answer = await res.json();
+      if (stale(seq)) return;
+      deposit.result = res.ok ? answer : { refused_words: answer.detail || '' };
+      deposit.changed = false;
+      paintDepositResult();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  // THE ANSWER: reading (d)'s outline on the verdict -- the server's own --
+  // the offer said back, the lines with the playthrough's cost among them,
+  // and the brief's sentence.
+  function paintDepositResult() {
+    const host = document.getElementById('deposit-lines');
+    if (!host || !entryPanel) return;
+    const words = ((entryPanel.deposit || {}).labels) || {};
+    const d = deposit.result;
+    host.innerHTML = '';
+    if (!d) return;
+    if (deposit.changed) { host.appendChild(el('p', 'entry-ask', words.changed || '')); return; }
+    if (d.refused_words) { host.appendChild(el('p', 'entry-ask', d.refused_words)); return; }
+    if (d.ask_words) host.appendChild(el('p', 'entry-ask', d.ask_words));
+    if (!d.computed) return;
+    const verdict = el('div', 'verdict ' + signalClass(d.signal));
+    verdict.appendChild(tip(el('span', 'v-words', d.verdict_words || ''), d.verdict_tip));
+    host.appendChild(verdict);
+    if (d.summary_words) host.appendChild(el('p', 'entry-said', d.summary_words));
+    (d.lines || []).forEach(line => {
+      const row = el('div', 'entry-line');
+      row.appendChild(el('span', 'entry-label', line.label || ''));
+      row.appendChild(tip(el('span', 'entry-value', line.value_words || ''), line.tip));
+      host.appendChild(row);
+    });
+    if (d.assumes_words) host.appendChild(el('p', 'entry-said', d.assumes_words));
+  }
+
+  function renderDepositMatch(ec) {
+    const section = document.getElementById('deposit-match');
+    const form = document.getElementById('deposit-form');
+    if (!section || !form) return;
+    const dm = ec ? ec.deposit : null;
+    if (!dm) {
+      // NFL PLAYER PROPS ONLY (scope v1), as the check above.
+      form.innerHTML = '';
+      const lines = document.getElementById('deposit-lines');
+      if (lines) lines.innerHTML = '';
+      section.hidden = true;
+      return;
+    }
+    const heading = document.getElementById('deposit-heading');
+    const intro = document.getElementById('deposit-intro');
+    const note = document.getElementById('deposit-note');
+    if (heading) heading.textContent = dm.heading || '';
+    if (intro) intro.textContent = dm.intro || '';
+    fillDepositPayout(ec);
+    drawDepositForm(ec);
+    if (note) note.textContent = dm.note || '';
+    section.hidden = false;
   }
 
   async function renderProps() {

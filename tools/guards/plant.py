@@ -14615,6 +14615,550 @@ def plant_a_discount_priced_where_m4_cannot() -> Result:
     return _m4_result(violation, missed, first)
 
 
+# ---------------------------------------------------------------------------
+# THE ENTRY CHECK, STEP 4: A DEPOSIT MATCH (the brief of 2026-09-30; built
+# 2026-10-08)
+# ---------------------------------------------------------------------------
+#
+# The brief: "deposit match calculator: typed bonus, playthrough multiple,
+# entry type and payout used for playthrough; output the bonus's expected
+# value after playthrough at coin-flip legs, with the playthrough cost shown,
+# and 'read the offer's terms; this assumes the numbers you typed'." Reading
+# (e)'s plantings: a playthrough cost left out (the bonus shown at face
+# value); a bonus counted twice (added to the EV and again to the
+# playthrough); a deposit or bonus stored anywhere (a write the reach scan
+# names); a figure in dollars -- and the colour reading (d) gives. Each runs
+# on the shipped code, swapping one door at a time (or on a planted copy of
+# the files the scans read), and the gate's step 2 must make the call
+# (`audit.check_the_deposit_match_is_its_own_arithmetic`, which works every
+# figure out again from the numbers typed and reads each off the words drawn;
+# `check_the_entry_check_reaches_no_app` and `check_no_wagering_ledger` for
+# what it could keep). Each ESCAPES on feb1b44 (no deposit match, no check,
+# and a no-ledger scan that does not know a deposit, a bonus or a
+# playthrough) and is caught here.
+
+LAW_DEPOSIT = "THE ENTRY CHECK, STEP 4: A DEPOSIT MATCH, PER UNIT OF BONUS, KEPT NOWHERE"
+_DM_CHECK = "check_the_deposit_match_is_its_own_arithmetic"
+_DM_GUARD = "audit.deposit_match_faults"
+
+
+def _dm_modules():
+    """`gridiron.entry_check`, `gridiron.entry_math` and `gridiron.language`, or
+    None on a release with no deposit match (feb1b44 and every one before)."""
+    try:
+        from gridiron import entry_check, entry_math, language
+    except ImportError:
+        return None
+    if not hasattr(entry_check, "deposit_match") or not hasattr(entry_math, "deposit_match"):
+        return None
+    return entry_check, entry_math, language
+
+
+def _dm_shipped_clean(missed: list) -> bool:
+    """The deposit match exists, the gate has its check, and the shipped code
+    passes it -- or the planting says which is missing."""
+    if _dm_modules() is None:
+        missed.append("there is no deposit match on this release: nothing works out a bonus "
+                      "after its playthrough, the playthrough's cost, or says the offer's terms")
+        return False
+    scan = getattr(audit, "deposit_match_faults", None)
+    if scan is None:
+        missed.append("the gate has no check of the deposit match's arithmetic")
+        return False
+    faults = scan()
+    if faults:
+        missed.append(f"the shipped deposit match is named: {faults[:2]}")
+        return False
+    return True
+
+
+def _dm_planted(forms: dict, want: str, missed: list, *, js: str | None = None) -> str | None:
+    """Each form plants (handing back its undo); the gate's check of the
+    deposit match must name it in a fault holding `want`."""
+    first = None
+    for what, plant in forms.items():
+        undo = plant()
+        try:
+            faults = audit.deposit_match_faults(js=js)
+        finally:
+            undo()
+        hit = [f for f in faults if want in f]
+        if not hit:
+            missed.append(f"{what} passed the check: {faults[:2]}")
+        else:
+            first = first or f"{what}: {hit[0]}"
+    return first
+
+
+def _dm_result(violation: str, missed: list, first, *, checks=(_DM_CHECK,),
+               guard: str = _DM_GUARD) -> Result:
+    for check in checks:
+        if not _step_2_calls(check):
+            missed.append(f"the gate's step 2 does not call `audit.{check}`")
+    if missed:
+        return Result(LAW_DEPOSIT, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_DEPOSIT, violation, guard, True, first or "")
+
+
+def _dm_page(js: str, function: str, old: str, new: str) -> str | None:
+    """The page's script with `old` put back to `new` inside one function's
+    body only (two functions draw a line the same way), or None where the
+    function or the anchor in it is gone."""
+    start = js.find(f"\n  function {function}(")
+    if start < 0:
+        start = js.find(f"\n  async function {function}(")
+    at = js.find(old, start) if start >= 0 else -1
+    end = js.find("\n  function ", start + 1) if start >= 0 else -1
+    if at < 0 or (end >= 0 and at > end):
+        return None
+    return js[:at] + new + js[at + len(old):]
+
+
+def plant_a_playthrough_cost_left_out() -> Result:
+    """READING (e)'S FIRST PLANTING: "a playthrough cost left out (the bonus
+    shown at face value)". The brief: "output the bonus's expected value after
+    playthrough at coin-flip legs, with the playthrough cost shown". A 1-unit
+    bonus at a 5x playthrough on 2-leg power entries at 3x stakes 5 units at
+    -0.25 each: it costs 1.25 and leaves -0.25 -- not the bonus's face. Planted
+    three ways: the bonus after its playthrough shown at its face with the
+    cost still beside it, the playthrough costing nothing and the bonus at its
+    face, and the cost's line left off the answer -- each named by the gate's
+    check, which works every figure out again from the numbers typed and reads
+    each off the words drawn, and step 2 making the call.
+
+    AS RELEASED (feb1b44): there is no deposit match, and no check.
+    """
+    violation = "a playthrough cost left out (the bonus shown at face value)"
+    missed: list[str] = []
+    first = None
+    if _dm_shipped_clean(missed):
+        ec, em, _lang = _dm_modules()
+        real_match, real_lines = em.deposit_match, ec._deposit_lines
+
+        def face_value(payout, legs, **kw):
+            return dict(real_match(payout, legs, **kw), after=1.0)
+
+        def costs_nothing(payout, legs, **kw):
+            return dict(real_match(payout, legs, **kw), cost=0.0, after=1.0)
+
+        def cost_line_dropped(words, payout, legs, breakeven, match):
+            return [line for line in real_lines(words, payout, legs, breakeven, match)
+                    if line["label"] not in (words["line_cost"], words["line_gain"])]
+
+        first = _dm_planted({
+            "the bonus after its playthrough shown at its face, the cost beside it":
+                lambda: _ec_swap(em, "deposit_match", face_value),
+            "the playthrough costing nothing and the bonus at its face":
+                lambda: _ec_swap(em, "deposit_match", costs_nothing),
+        }, "worked by hand", missed)
+        first = _dm_planted({
+            "the playthrough's cost left off the answer":
+                lambda: _ec_swap(ec, "_deposit_lines", cost_line_dropped),
+        }, "no line states the playthrough's expected cost", missed) or first
+    return _dm_result(violation, missed, first)
+
+
+def plant_a_bonus_counted_twice() -> Result:
+    """READING (e)'S SECOND PLANTING: "a bonus counted twice (added to the EV
+    and again to the playthrough)". The bonus after its playthrough is the
+    bonus, ONCE, plus the playthrough's stake, ONCE, times what each unit
+    staked returns: 1 + P x r per unit of bonus. Planted three ways: the bonus
+    added to the expected figure again (a 5x playthrough at 3x leaves +0.75
+    where it leaves -0.25), the bonus added again to the stake the playthrough
+    asks (6 staked where it is 5, costing 1.5), and both -- each named by the
+    gate's check, and step 2 making the call.
+
+    AS RELEASED (feb1b44): there is no deposit match, and no check.
+    """
+    violation = "a bonus counted twice (added to the EV and again to the playthrough)"
+    missed: list[str] = []
+    first = None
+    if _dm_shipped_clean(missed):
+        _ec, em, _lang = _dm_modules()
+        real_match = em.deposit_match
+
+        def added_again(payout, legs, **kw):
+            got = real_match(payout, legs, **kw)
+            return dict(got, after=got["after"] + 1.0)
+
+        def staked_again(payout, legs, *, playthrough, **kw):
+            return real_match(payout, legs, playthrough=playthrough + 1.0, **kw)
+
+        def both(payout, legs, *, playthrough, **kw):
+            got = real_match(payout, legs, playthrough=playthrough + 1.0, **kw)
+            return dict(got, after=got["after"] + 1.0)
+
+        first = _dm_planted({
+            "the bonus added to the expected figure a second time":
+                lambda: _ec_swap(em, "deposit_match", added_again),
+            "the bonus added again to the stake the playthrough asks":
+                lambda: _ec_swap(em, "deposit_match", staked_again),
+            "the bonus counted twice both ways":
+                lambda: _ec_swap(em, "deposit_match", both),
+        }, "worked by hand", missed)
+    return _dm_result(violation, missed, first)
+
+
+def plant_a_deposit_or_bonus_stored() -> Result:
+    """READING (e)'S THIRD PLANTING: "a deposit or bonus stored anywhere (a write
+    the reach scan names)". Reading (a): "the calculator is arithmetic of
+    numbers typed into the page and kept nowhere -- no table, no settings row,
+    no remembered bonus, deposit or playthrough". Planted on a copy of the
+    files the scans read, nine ways: the bonus written to the record by the
+    deposit match (through step 1's own table, which the module's write rule
+    alone lets by), the bonus handed to step 1's one write, the route opening
+    a writable handle and writing a settings row, the page keeping the offer
+    in the browser's storage, and the arithmetic importing the record's
+    driver and writing -- each named by `audit.entry_check_reach_faults` --
+    and a table for deposit matches in the schema, a column for the bonus on
+    the payouts typed, a setting the page could keep the bonus in, and a
+    settings row written for it in the record -- each named by
+    `audit.check_no_wagering_ledger`; and step 2 making both calls.
+
+    AND FROM ITS PROVER (2026-10-08), ten forms more, each ESCAPING on feb1b44
+    and on the change as handed -- whose reach scan read the forbidden names
+    as written, followed no call out of its four modules, and read the page's
+    nine deposit functions and nothing they name -- and caught here: the
+    record's door and its meta write imported under other names and called
+    bare; step 1's one write bound to another name at the module's top; a
+    settings row written from the deposit match's own words through an import
+    the words made; the offer handed to a module the scan does not read, by
+    `config.x(...)` and by a function imported by name; and on the page a
+    helper of its own keeping the offer in `localStorage`, a cookie written
+    by a helper, an arrow helper's `sessionStorage` handed the bonus in a
+    template, a helper handed on as a value, and another function of the page
+    keeping the typed bonus by `prefSet`.
+
+    AS RELEASED (feb1b44): there is no deposit match to plant a write in, and
+    the no-ledger scan reads a table's name against a list and nothing else:
+    a table, a column, a setting or a settings row for a deposit or a bonus
+    passed it.
+    """
+    violation = "a deposit or bonus stored anywhere"
+    missed: list[str] = []
+    first = None
+    reach = getattr(audit, "entry_check_reach_faults", None)
+    if _dm_modules() is None:
+        missed.append("there is no deposit match on this release, so nothing holds it to "
+                      "keeping nothing")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        (root / "web").mkdir(parents=True)
+        names = ("entry_check.py", "entry_math.py", "m4.py", "language.py", "picks.py",
+                 "api.py", "schema.sql", "settings.py", "web/app.js")
+        shipped = {}
+        for name in names:
+            source = config.PACKAGE_ROOT / name
+            if source.exists():
+                shipped[name] = source.read_text(encoding="utf-8")
+                (root / name).write_text(shipped[name], encoding="utf-8")
+        if reach is not None and reach(root=root):
+            missed.append(f"the shipped entry check is named: {reach(root=root)[:2]}")
+        if audit.wagering_ledger_faults(root=root):
+            missed.append(f"the shipped tree is named: {audit.wagering_ledger_faults(root=root)[:2]}")
+
+        def planted(what: str, name: str, swaps: list, scan, wants: tuple) -> None:
+            """Plant each (anchor, put in its place) in a copy of one file, ask
+            the scan, and put the file back: every want must be named."""
+            nonlocal first
+            text = shipped.get(name, "")
+            changed = text
+            for old, new in swaps:
+                if old not in changed:
+                    missed.append(f"{what}: there is nothing to plant it in on this release "
+                                  f"(gridiron/{name} has no {old.strip()[:50]!r})")
+                    return
+                changed = changed.replace(old, new, 1)
+            (root / name).write_text(changed, encoding="utf-8")
+            try:
+                faults = scan() or []
+            finally:
+                (root / name).write_text(text, encoding="utf-8")
+            for want in wants:
+                hit = [f for f in faults if want in f]
+                if not hit:
+                    missed.append(f"{what} passed the scan ({want!r} named nowhere)")
+                else:
+                    first = first or f"{what}: {hit[0]}"
+
+        def by_reach():
+            return reach(root=root) if reach is not None else []
+
+        def by_ledger():
+            return audit.wagering_ledger_faults(root=root)
+
+        work = '    payout, legs = form["payout"], form["legs"]\n    breakeven = '
+        foot = "\n\ndef deposit_panel() -> dict:"
+        keep = ("\n\ndef _keep_the_offer(form):\n"
+                "    conn = db.open_db()\n"
+                "    conn.execute(\"INSERT INTO pickem_payouts_typed (typed_utc, app,"
+                " entry_type, legs, multiplier) VALUES (?, 'prizepicks', ?, ?, ?)\",\n"
+                "                 (db.utcnow(), form['entry_type'], form['legs'],"
+                " form['bonus']))\n"
+                "    conn.commit()\n")
+        # STEP 1'S OWN TABLE: the module's write rule lets its plain insert by,
+        # so only the read of what the deposit match reaches can name it.
+        planted("the bonus written to the record by the deposit match, through step 1's "
+                "own table", "entry_check.py",
+                [(work, "    _keep_the_offer(form)\n" + work), (foot, keep + foot)],
+                by_reach, ("reached by the deposit match, names `db`",
+                           "reached by the deposit match, hands SQLite a write"))
+        planted("the bonus handed to step 1's one write", "entry_check.py",
+                [(work, "    remember(None, dict(form, app='prizepicks'))\n" + work)],
+                by_reach, ("names `remember`",))
+        planted("the route opening a writable handle and writing a settings row",
+                "api.py", [("    return entry_check.deposit_match(body)",
+                            "    get_entry_conn().execute(\"INSERT INTO settings (changed_utc,"
+                            " name, value) VALUES (?, 'deposit_bonus', ?)\","
+                            " (db.utcnow(), str(body)))\n"
+                            "    return entry_check.deposit_match(body)")],
+                by_reach, ("opens a handle on the record",))
+        planted("the page keeping the offer in the browser's storage", "web/app.js",
+                [("      deposit.changed = false;\n      paintDepositResult();",
+                  "      deposit.changed = false;\n"
+                  "      localStorage.setItem('gridiron-offer', JSON.stringify(depositBody()));\n"
+                  "      paintDepositResult();")], by_reach, ("browser's storage",))
+        planted("the arithmetic importing the record's driver and writing the bonus",
+                "entry_math.py",
+                [("\nimport math\n",
+                  "\nimport math\nimport sqlite3\n\n\ndef _keep(bonus):\n"
+                  "    sqlite3.connect('offers.db').execute("
+                  "'INSERT INTO deposit_offers (bonus) VALUES (?)', (bonus,))\n")],
+                by_reach, ("imports sqlite3", "hands SQLite a write"))
+        # AND FROM ITS PROVER (2026-10-08): A WRITE BY ANOTHER NAME OR ANOTHER
+        # ROAD -- each of these ten got past the reach scan as handed, which
+        # read the forbidden names as written, followed no call out of its
+        # four modules, and read the page's nine functions and nothing they
+        # name.
+        imports = "from . import config, db, entry_math, language, m4, picks\n"
+        another = "a door to the record, a setting, a file or another machine by another name"
+        planted("the record's door and its meta write imported under other names, called "
+                "bare", "entry_check.py",
+                [(imports, imports + "from .db import open_db as _handle, set_meta as _keep\n"),
+                 (work, '    _keep(_handle(), "last_bonus", str(form["bonus"]))\n' + work)],
+                by_reach, (another,))
+        planted("step 1's one write bound to another name at the module's top",
+                "entry_check.py",
+                [(imports, imports + "from .db import open_db as _open\n"),
+                 (foot, "\n\n_note_it = remember" + foot),
+                 (work, '    _note_it(_open(), dict(form, app="prizepicks"))\n' + work)],
+                by_reach, (another,))
+        planted("a settings row written from the deposit match's own words, through an "
+                "import the words made", "language.py",
+                [("from . import subjects as _subjects\n",
+                  "from . import subjects as _subjects\n"
+                  "from .settings import set_value as _sv\nfrom .db import open_db as _od\n"),
+                 ('    return {\n        "heading": "A deposit match",',
+                  '    _sv(_od(), "last_bonus", "1")\n'
+                  '    return {\n        "heading": "A deposit match",')],
+                by_reach, (another,))
+        planted("the offer handed to a module the scan does not read", "entry_check.py",
+                [(work, '    config.note_the_offer(form["bonus"])\n' + work)],
+                by_reach, ("calls into `gridiron.config`",))
+        planted("a function imported by name from a module the scan does not read, called "
+                "from the words", "language.py",
+                [("from . import subjects as _subjects\n",
+                  "from . import subjects as _subjects\nfrom .tasks import note as _note\n"),
+                 ('    return {\n        "heading": "A deposit match",',
+                  '    _note("deposit")\n    return {\n        "heading": "A deposit match",')],
+                by_reach, ("calls into `gridiron.tasks`",))
+        answered = "      deposit.changed = false;\n      paintDepositResult();"
+        planted("the page keeping the offer through a helper of its own", "web/app.js",
+                [("  async function checkDeposit(ec) {",
+                  "  function keepOffer(body) {\n    try { localStorage.setItem('gridiron.offer',"
+                  " JSON.stringify(body)); } catch (e) { }\n  }\n\n"
+                  "  async function checkDeposit(ec) {"),
+                 (answered, "      deposit.changed = false;\n      keepOffer(depositBody());\n"
+                            "      paintDepositResult();")],
+                by_reach, ("`keepOffer`, which `checkDeposit` names, keeps something in the "
+                           "browser's storage",))
+        planted("the page keeping the bonus in a cookie through a helper", "web/app.js",
+                [("  function depositBody() {",
+                  "  function noteIt(k, v) { document.cookie = k + '=' + v; }\n\n"
+                  "  function depositBody() {"),
+                 ("    return { entry_type: deposit.type, legs: deposit.legs, payout: payout,",
+                  "    noteIt('bonus', deposit.bonus);\n"
+                  "    return { entry_type: deposit.type, legs: deposit.legs, payout: payout,")],
+                by_reach, ("`noteIt`, which `depositBody` names, keeps something",))
+        planted("an arrow helper far from the deposit functions, handed the bonus in a "
+                "template", "web/app.js",
+                [("  function prefGet(key, fallback) {",
+                  "  const keepIt = (b) => { try { sessionStorage.setItem('o', b); } catch (e) "
+                  "{ } };\n\n  function prefGet(key, fallback) {"),
+                 (answered, "      deposit.changed = false;\n      keepIt(`${deposit.bonus}`);\n"
+                            "      paintDepositResult();")],
+                by_reach, ("`keepIt`, which `checkDeposit` names, keeps something",))
+        planted("a helper handed on as a value, keeping the answer", "web/app.js",
+                [("  async function checkDeposit(ec) {",
+                  "  function keepAnswer(a) { try { localStorage.setItem('a', JSON.stringify(a));"
+                  " } catch (e) { } return a; }\n\n  async function checkDeposit(ec) {"),
+                 ("      const answer = await res.json();\n      if (stale(seq)) return;\n"
+                  "      deposit.result",
+                  "      const answer = await res.json().then(keepAnswer);\n"
+                  "      if (stale(seq)) return;\n      deposit.result")],
+                by_reach, ("`keepAnswer`, which `checkDeposit` names, keeps something",))
+        planted("another function of the page keeping the typed bonus", "web/app.js",
+                [("    let sortBy = prefGet('props.sort', 'edge');",
+                  "    let sortBy = prefGet('props.sort', 'edge');\n"
+                  "    prefSet('offer', deposit.bonus);")],
+                by_reach, ("`renderProps` names the typed offer (`deposit`) outside",))
+        # THE NO-LEDGER SCAN: the schema, the settings and the record.
+        planted("a table for deposit matches in the schema", "schema.sql",
+                [("CREATE TABLE IF NOT EXISTS pickem_payouts_typed (",
+                  "CREATE TABLE IF NOT EXISTS deposit_offers (id INTEGER PRIMARY KEY,"
+                  " typed_utc TEXT NOT NULL, bonus_units REAL NOT NULL, playthrough REAL"
+                  " NOT NULL);\n\nCREATE TABLE IF NOT EXISTS pickem_payouts_typed (")],
+                by_ledger, ("a table called deposit_offers",))
+        planted("a column for the bonus on the payouts typed", "schema.sql",
+                [("CREATE TABLE IF NOT EXISTS pickem_payouts_typed (\n"
+                  "    id          INTEGER PRIMARY KEY,",
+                  "CREATE TABLE IF NOT EXISTS pickem_payouts_typed (\n"
+                  "    id          INTEGER PRIMARY KEY,\n    bonus_units REAL,")],
+                by_ledger, ("a column called pickem_payouts_typed.bonus_units",))
+        planted("a setting the page could keep the bonus in", "settings.py",
+                [("\ndef _final_pass_rows()",
+                  "\nEDITABLE[\"deposit_bonus\"] = dict(EDITABLE[\"pickem_two_pick_power\"],"
+                  " label=\"The bonus\")\n\n\ndef _final_pass_rows()")],
+                by_ledger, ("a setting called 'deposit_bonus'",))
+        from gridiron import db as _db
+
+        record = _db.connect(Path(tmp) / "a-record.db")
+        try:
+            record.execute("CREATE TABLE settings (id INTEGER PRIMARY KEY, changed_utc TEXT,"
+                           " name TEXT, value TEXT)")
+            record.execute("INSERT INTO settings (changed_utc, name, value) VALUES"
+                           " ('2026-10-08T00:00:00Z', 'deposit_bonus', '50')")
+            record.commit()
+            hit = [f for f in audit.wagering_ledger_faults(root=root, conn=record)
+                   if "a setting written as 'deposit_bonus'" in f]
+            if not hit:
+                missed.append("a settings row written for the bonus in the record passed "
+                              "the scan")
+            else:
+                first = first or f"a settings row written for the bonus: {hit[0]}"
+        finally:
+            record.close()
+    return _dm_result(violation, missed, first,
+                      checks=("check_the_entry_check_reaches_no_app", "check_no_wagering_ledger"),
+                      guard="audit.entry_check_reach_faults, audit.wagering_ledger_faults")
+
+
+def plant_a_deposit_figure_in_dollars() -> Result:
+    """READING (e)'S FOURTH PLANTING: "a figure in dollars". Reading (b):
+    "UNITS, NEVER DOLLARS: ... every figure is per unit of bonus -- no
+    currency symbol, no 'dollars'". Planted four ways: the bonus after its
+    playthrough drawn with a dollar sign, the playthrough's cost in dollars,
+    the offer said back as a bonus in dollars, and the page putting a dollar
+    sign before each figure it draws -- each named by the gate's check, and
+    step 2 making the call.
+
+    AS RELEASED (feb1b44): there is no deposit match, and no check.
+    """
+    violation = "a figure in dollars"
+    missed: list[str] = []
+    first = None
+    if _dm_shipped_clean(missed):
+        _ec, _em, lang = _dm_modules()
+        real_cost, real_summary = lang.deposit_match_cost_words, lang.deposit_match_summary_words
+
+        def after_in_dollars(after):
+            return f"{'-' if after < 0 else '+'}${abs(after):.2f} per unit of bonus"
+
+        def cost_in_dollars(cost):
+            return real_cost(cost).replace(" per unit", " dollars per unit")
+
+        def bonus_in_dollars(bonus, *args):
+            return real_summary(bonus, *args).replace(f"A {bonus:.15g}-unit bonus",
+                                                      f"A ${bonus:.15g} bonus")
+
+        first = _dm_planted({
+            "the bonus after its playthrough drawn with a dollar sign":
+                lambda: _ec_swap(lang, "deposit_match_after_words", after_in_dollars),
+            "the playthrough's cost in dollars":
+                lambda: _ec_swap(lang, "deposit_match_cost_words", cost_in_dollars),
+            "the offer said back as a bonus in dollars":
+                lambda: _ec_swap(lang, "deposit_match_summary_words", bonus_in_dollars),
+        }, "a figure in dollars", missed)
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        put_back = _dm_page(js, "paintDepositResult",
+                            "el('span', 'entry-value', line.value_words || '')",
+                            "el('span', 'entry-value', '$' + (line.value_words || ''))")
+        if put_back is None:
+            missed.append("the deposit match's line moved; the planting must follow it")
+        else:
+            first = _dm_planted({"the page putting a dollar sign before each figure":
+                                 lambda: (lambda: None)}, "a figure in dollars", missed,
+                                js=put_back) or first
+    return _dm_result(violation, missed, first)
+
+
+def plant_a_deposit_match_outlined_where_reading_d_gives_none() -> Result:
+    """THE COLOUR, READING (d) (2026-10-08): step 1's reading (h) applied to
+    the bonus -- green only where the bonus after its playthrough is above zero
+    AND every leg's break-even is three points or more under an even chance,
+    red where the bonus after its playthrough is below zero, and the numbers
+    alone between. Planted four ways: a bonus above zero outlined green whatever
+    the entry's legs (4.5x on two legs, 2.86 points under the bar, leaves
+    +1.625), any cost of the playthrough outlined red (a 1x playthrough at 3x
+    leaves +0.75), the bar read at a tenth (4.52x, 2.96 points), and the page
+    putting the green outline on by name -- each named, and step 2 making the
+    call.
+
+    AND FROM ITS PROVER (2026-10-08): A RED OUTLINE BESIDE A FIGURE DRAWN AT
+    NOTHING. As handed, five places and step 1's signed rule drew the bonus
+    after its playthrough of 2.999999x on two legs at a 4x playthrough --
+    -0.000001 by hand, red -- as "+0.00 per unit of bonus", in its line and in
+    "Costs at coin flips: ... comes to +0.00"; and what each unit staked in
+    3.99999x on two legs returns (-0.0000025) as "+0.00 per unit staked".
+    Planted by putting each line's words back to that rule; each ESCAPES on
+    feb1b44 and on the change as handed (whose check read a figure only to
+    half its last place) and is caught here.
+
+    AS RELEASED (feb1b44): there is no deposit match, and no check.
+    """
+    violation = "a deposit match outlined where reading (d) gives no outline"
+    missed: list[str] = []
+    first = None
+    if _dm_shipped_clean(missed):
+        ec, em, lang = _dm_modules()
+        first = _dm_planted({
+            "a red outline beside the bonus after its playthrough drawn +0.00 (five places "
+            "and step 1's signed rule, as handed)":
+                lambda: _ec_swap(lang, "deposit_match_after_words",
+                                 lambda after: f"{lang._entry_number(after)} per unit of bonus"),
+            "what each unit staked returns drawn +0.00 where it is a hair under nothing "
+            "(as handed)":
+                lambda: _ec_swap(lang, "deposit_match_entry_words",
+                                 lambda r: f"{lang._entry_number(r)} per unit staked"),
+        }, "drawn with a sign it does not have, or as nothing", missed)
+
+        class _Bar:
+            def __init__(self, rule):
+                self.clears_the_pick_bar = rule
+
+        first = _dm_planted({
+            "a bonus above zero outlined green whatever the entry's legs":
+                lambda: _ec_swap(ec, "picks", _Bar(lambda e: True)),
+            "any cost of the playthrough outlined red":
+                lambda: _ec_swap(em, "costs", lambda after: float(after) < 1.0),
+            "the bar read at a tenth of a point":
+                lambda: _ec_swap(ec, "picks", _Bar(
+                    lambda e: e is not None and round(e * 100.0, 1) >= 3.0)),
+        }, "the outline is", missed) or first
+        js = (Path(audit.__file__).parent / "web" / "app.js").read_text(encoding="utf-8")
+        put_back = _dm_page(js, "paintDepositResult",
+                            "el('div', 'verdict ' + signalClass(d.signal))",
+                            "el('div', 'verdict sig-clears')")
+        if put_back is None:
+            missed.append("the deposit match's verdict moved; the planting must follow it")
+        else:
+            first = _dm_planted({"the page's green outline put on by name":
+                                 lambda: (lambda: None)}, "outline", missed,
+                                js=put_back) or first
+    return _dm_result(violation, missed, first)
+
+
 LAW_HELD = "A HELD MARKET IS NOT FORECAST, AND THE FIRST SCREEN SAYS SO"
 
 
@@ -28410,6 +28954,15 @@ def main() -> int:
     results.append(plant_m4_read_in_the_prediction_closure())
     results.append(plant_an_unproven_number_drawn_as_proven())
     results.append(plant_a_discount_priced_where_m4_cannot())
+    # THE ENTRY CHECK, STEP 4, A DEPOSIT MATCH (the brief of 2026-09-30;
+    # built 2026-10-08): reading (e)'s four -- a playthrough cost left out, a
+    # bonus counted twice, a deposit or bonus stored anywhere, a figure in
+    # dollars -- and the colour reading (d) gives.
+    results.append(plant_a_playthrough_cost_left_out())
+    results.append(plant_a_bonus_counted_twice())
+    results.append(plant_a_deposit_or_bonus_stored())
+    results.append(plant_a_deposit_figure_in_dollars())
+    results.append(plant_a_deposit_match_outlined_where_reading_d_gives_none())
     results.append(plant_a_dead_job_the_strip_calls_fresh())
     results.append(plant_a_forecast_market_with_no_ticker())
     results.append(plant_an_absence_with_no_evidence())

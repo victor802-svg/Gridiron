@@ -47,6 +47,9 @@ absence", 2026-10-07):
   * LEGS IN ONE GAME are grouped by the game each was placed in, and that is
     all: no number is put on how they move together (LAW 2: a correlation
     nobody declared is not estimated).
+  * A DEPOSIT MATCH (step 4, 2026-10-08): `deposit_match`, per unit of bonus,
+    from the same return per unit staked -- one calculator, never a second
+    that could disagree with the first.
 """
 
 from __future__ import annotations
@@ -213,6 +216,39 @@ def return_at_chances(payout: dict, chances: list[float]) -> float:
         right = nxt
     table = payout["table"]
     return sum(w * float(table.get(k, 0.0) or 0.0) for k, w in enumerate(right)) - 1.0
+
+
+def deposit_match(payout: dict, legs: int, *, playthrough: float,
+                  p: float = COIN_FLIP) -> dict:
+    """A DEPOSIT MATCH AFTER ITS PLAYTHROUGH, PER UNIT OF BONUS (the entry
+    check's step 4; the brief of 2026-09-30: "deposit match calculator: typed
+    bonus, playthrough multiple, entry type and payout used for playthrough;
+    output the bonus's expected value after playthrough at coin-flip legs,
+    with the playthrough cost shown"; built 2026-10-08, reading (c) recorded
+    in docs/REPAIR_STATE.md).
+
+    THE ARITHMETIC, ON ONE UNIT OF BONUS (reading (b): every figure is per
+    unit of bonus, so a bonus of B units is B times each): to release it the
+    operator stakes `playthrough` units in entries of the typed type and
+    payout; each unit staked returns, less the unit, what `expected_return`
+    gives that payout with every leg at `p` -- step 1's own arithmetic of that
+    entry, so the two cannot disagree. The playthrough's expected cost is the
+    stake times minus that return (below zero it is a gain), and the bonus
+    after its playthrough is the bonus, ONCE, less that cost, ONCE:
+    1 + playthrough x return. Nothing else: no variance, no bankroll, no
+    chance of running out before the playthrough is staked (the step asks for
+    the expected figure alone, and LAW 5 permits that arithmetic).
+
+    Worked by hand (2026-10-08): 2 legs at 3x, a 5x playthrough -- each unit
+    staked -0.25, staked 5, cost 1.25, after -0.25; at 4.5x -- +0.125, a gain
+    of 0.625, after +1.625."""
+    per_unit_staked = expected_return(payout, legs, p)
+    staked = float(playthrough)
+    # 0.0 LESS, NOT A NEGATION: an entry returning exactly its cost costs
+    # nothing, never "-0.0".
+    cost = 0.0 - staked * per_unit_staked
+    return {"per_unit_staked": per_unit_staked, "staked": staked, "cost": cost,
+            "after": 1.0 - cost}
 
 
 def edge_at_a_coin_flip(breakeven_per_leg: float) -> float:

@@ -976,7 +976,10 @@ def step_2_guards() -> bool:
         # modules, its route and its functions in app.js import, call and
         # name nothing that reaches another machine, and write nothing but
         # the payout the operator confirmed. The credential and order scans
-        # below read its modules as they read every other.
+        # below read its modules as they read every other. FROM STEP 4
+        # (2026-10-08) it reads the deposit match too -- every function it
+        # reaches, its route and its page -- for any write, handle on the
+        # record or browser storage: it keeps nothing (reading (a)).
         ("the entry check reaches no app and writes no entry (LAW 5)",
          audit.check_the_entry_check_reaches_no_app),
         # THE ENTRY CHECK, STEP 2 (the brief's step 2 with ruling D of
@@ -995,6 +998,19 @@ def step_2_guards() -> bool:
         # the prediction closure is the LAW 1 scan's, above, which names it.)
         ("the model only flags, and never raises a verdict (entry check, step 2)",
          audit.check_the_model_only_flags),
+        # THE ENTRY CHECK, STEP 4, A DEPOSIT MATCH (the brief of 2026-09-30;
+        # built 2026-10-08): "typed bonus, playthrough multiple, entry type
+        # and payout used for playthrough; output the bonus's expected value
+        # after playthrough at coin-flip legs, with the playthrough cost
+        # shown, and 'read the offer's terms; this assumes the numbers you
+        # typed'". BY WORKED EXAMPLES, NOT ON THE RECORD (it reads none and
+        # keeps nothing): every figure worked out again from the numbers
+        # typed and read off the words the page draws -- a playthrough cost
+        # left out, a bonus counted twice, an outline reading (d) does not
+        # give and a figure in dollars, each named. What it could keep is the
+        # reach scan's above and the no-ledger scan's below.
+        ("the deposit match is its own arithmetic, per unit of bonus (entry check, step 4)",
+         audit.check_the_deposit_match_is_its_own_arithmetic),
         ("a market source stays in the market module",
          audit.check_market_sources_stay_in_the_market_module),
         ("every docstring naming a guard names a real one",
@@ -1022,6 +1038,10 @@ def step_2_guards() -> bool:
          lambda: audit.check_taken_is_not_a_ledger(_record_conn())),
         ("nothing that trains the model reads the taken picks",
          audit.check_taken_not_in_training),
+        # FROM THE ENTRY CHECK'S STEP 4 (2026-10-08) it names a table, a
+        # column, a setting or a settings row that could hold a deposit, a
+        # bonus or a playthrough -- in the schema, the settings and the
+        # record's copy: the deposit match keeps nothing (reading (a)).
         ("no wagering ledger in the repo (LAW 5)",
          lambda: audit.check_no_wagering_ledger(conn=_record_conn())),
         ("no offline data caching", audit.check_no_offline_data_caching),

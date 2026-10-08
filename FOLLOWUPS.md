@@ -15971,3 +15971,328 @@ LAW 3, makes a gate count false, or could show a wrong number on a pick):
   start; no tile still to come on the record is one.
 - **The checks read the page's one function.** A model number drawn by
   another function of the page is not read (none is).
+
+## Check an entry, step 4: a deposit match -- the bonus after its playthrough at coin flips, per unit of bonus, the playthrough's cost shown, kept nowhere -- built 2026-10-08 *(GRIDIRON_ENTRY_CHECK, the brief of 2026-09-30, docs/briefs/2026-09-30-entry-check.md, step 4, with ruling D of 2026-10-05, which names nothing of it; built on feb1b44 -- step 2 released as baf6797; step 3 held for question 45; uncommitted for its prover)*
+
+The brief, step 4, whole: "Step 4, deposit match calculator: typed bonus,
+playthrough multiple, entry type and payout used for playthrough; output the
+bonus's expected value after playthrough at coin-flip legs, with the
+playthrough cost shown, and 'read the offer's terms; this assumes the
+numbers you typed'." STEP 3 IS NOT BUILT (docs/REPAIR_STATE.md question 45,
+LAW 5's NO LEDGER IN THE REPO, not amendable): nothing here keeps what the
+operator deposits, stakes, plays through or wins.
+
+### MEASURED FIRST *(nothing on the record: the step reads none and changes no schema, so NO COPY OF THE RECORD was made)*
+
+- **What the record could hold of a deposit match**: nothing. No table or
+  column of `schema.sql` and no name of `settings.EDITABLE` holds "deposit",
+  "bonus", "playthrough", "rollover" or "wagering requirement", now or ever
+  (`git log -S` over `schema.sql`, `settings.py` and `db.py`), and
+  `settings.set_value` is the one writer of a settings row, refusing every
+  name outside `EDITABLE` -- so the gate's no-ledger row, which now reads the
+  record's copy for such a name, finds none there by construction.
+- **Step 1's payouts typed**, the one thing the deposit match reads (from
+  the panel step 1 already serves, never the record itself): offered filled
+  in and unticked for the app, entry type and size chosen.
+
+### BUILT
+
+- **`entry_math.deposit_match`** -- per unit of bonus: the stake P, each unit
+  staked returning `expected_return` of the payout at coin flips (step 1's
+  own arithmetic: one calculator), the playthrough's expected cost -P r and
+  the bonus after it 1 + P r; an entry returning exactly its cost costs
+  "0.0", never "-0.0".
+- **`entry_check.read_deposit_form`, `_deposit_lines`, `deposit_match`,
+  `deposit_panel`, `PLAYTHROUGH_CEILING`** -- the form read by step 1's own
+  payout reader (`_payout`) and bounded (2 to 8 legs, a bonus above 0 to
+  100,000 units, a playthrough above 0 to 1000x), refused in words;
+  nothing worked out from a payout not confirmed; the colour reading (d)
+  gives; the lines -- the entry's break-even per leg, what each unit staked
+  returns, the stake, the cost (or gain, the label saying which), the bonus
+  after it -- the offer said back, the brief's sentence; the panel's words,
+  terms and sizes, a section of the step-1 panel (`panel["deposit"]`, NFL
+  only).
+- **`POST /api/deposit-match`** (`api.work_out_a_deposit_match`) -- the
+  seventh POST: the session and CSRF locks, the form handed to
+  `entry_check.deposit_match` alone, no handle opened.
+- **The words** (`language.deposit_match_words`, `_legs_words`,
+  `_entry_words`, `_staked_words`, `_cost_words`, `_after_words`,
+  `_summary_words`, `_verdict_words`, `_verdict_tip`,
+  `DEPOSIT_MATCH_ASSUMES`; four refusals in `entry_check_refused_words`):
+  units only, no currency; "playthrough" one word (the advice list reads
+  "play" alone); what the bonus "comes to", never its "value".
+- **The page** -- `#deposit-match` in the entry rail (index.html), drawn by
+  `renderDepositMatch`, `drawDepositForm`, `depositPayoutBlock`,
+  `fillDepositPayout`, `depositPayoutEmpty`, `depositChanged`,
+  `depositBody`, `checkDeposit` and `paintDepositResult` (app.js), the
+  check's own field, button, line and verdict classes; `.deposit`,
+  `#deposit-form`, `#deposit-lines` and a figure kept whole on its own line
+  (style.css). What is typed lives in the page's memory while it is open.
+- **The gate** -- `audit.check_the_deposit_match_is_its_own_arithmetic`
+  (step 2; `deposit_match_faults`, its 21 worked examples
+  `DEPOSIT_MATCH_WORKED_EXAMPLES` held at import by
+  `_check_the_deposit_match_fixtures`, the audit's own figures
+  `_own_deposit_numbers` and outline `_own_deposit_signal`, every figure
+  read off the words drawn `_dm_drawn_faults`, currency `_DEPOSIT_CURRENCY`,
+  the panel `_deposit_match_panel_faults`, the page
+  `_deposit_match_page_faults`); `entry_check_reach_faults` with
+  `_deposit_match_reach_faults` (every function the deposit match reaches,
+  `_deposit_match_reached`, across `_DEPOSIT_MATCH_MODULES`; the route;
+  `_entry_check_js_reach_faults` for both routes' page functions, browser
+  storage `_ENTRY_CHECK_STORAGE_JS` among them) and `entry_math` held to
+  `math` and no write (`_ENTRY_CHECK_IMPORTS_BY_MODULE`,
+  `_ENTRY_CHECK_WRITES_BY_MODULE`); `wagering_ledger_faults` with
+  `DEPOSIT_LEDGER_WORDS` over the schema (built in memory), the settings
+  (read off `settings.py`'s syntax tree) and the record.
+
+### READINGS TAKEN *(the conservative default the task gave; each recorded in docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-08, the entry check's step 4)")*
+
+(a) stores nothing -- no handle, table, settings row, file or browser
+storage; step 1's table read only, its payout offered for the app, type and
+size chosen; (b) units, every AMOUNT per unit of bonus, the entry's own two
+rates as step 1 says them, no currency anywhere; (c) the arithmetic, one
+calculator, no variance or advice, the terms left open said as he must type
+them, no promo on the playthrough's entries; (d) the colour, step 1's
+reading (h) applied to the bonus, read as no stretch of the colour law; (e)
+the plantings, five; one panel; the seventh POST.
+
+### THE RENDER *(the browser suite's own world, built fresh in a scratch folder with one payout kept as step 1 keeps one -- PrizePicks 2-pick power at 3.5x -- served by the test server on a free loopback port with this tree's app and a dummy, non-secret token, never the live app; Chromium at 1300 and 390; no fixed wait; `entry4/render.py` -> `entry4/render/*.png`, `render.json`; the scratch world deleted after)*
+
+Eight states at each width -- as it opens; a 1-unit bonus at 5x on 2-leg
+power at 3x (red); at 4.5x (a gain, no outline); at 5x (green); a 5-leg
+flex table at 3x (no outline); PrizePicks chosen, 3.5x offered unticked and
+worked out unticked ("Confirm what the app pays ..."); a playthrough of 0
+refused; and the whole rail, the check above the deposit match. READ, and
+two defects fixed from the pictures: at both widths a figure broke from its
+unit beside its label ("5 units per unit of" over "bonus", "-0.25 per
+unit" over "staked") -- each figure now keeps one line and takes its own,
+right-aligned, where it does not fit beside its label; and the summary's
+"every figure below is per unit of bonus" stood over the entry's break-even
+and its return per unit staked, which are not -- it says "The stake, its
+cost and the bonus after it are per unit of bonus." now, and the note "the
+bonus's per unit of bonus, the entry's per unit staked". At 390, at one and
+three device pixels to one, every tap target on the page 44px or more in
+whole pixels (57 to 61 a state) and the page 390 wide; no page error; the
+browser's storage empty in every state.
+
+### THE CHECKS
+
+- **Gate step 2**: `audit.check_the_deposit_match_is_its_own_arithmetic` --
+  its 21 examples (12 worked out: 3x, 4.5x, 4.52x and 5x on two legs at 5x;
+  two flex tables; a 1x playthrough; a 50-unit bonus; a 4x playthrough that
+  costs the bonus exactly; an entry returning exactly its cost; 3 legs at
+  5x with a 10x playthrough; a flex table at 7.5x -- one payout not
+  confirmed, eight refusals), every figure worked out again and read off
+  the drawn words, the property over step 1's 70 payouts at four
+  playthroughs, the panel and the page, in 0.15 s; and the reach and
+  no-ledger scans as above (0.4 s and 0.9 s).
+- **Every zero-argument check step 2 calls by name**, run on this tree
+  (`entry4/scans.py`): 73 of 73 pass.
+- **The plantings** (`entry4/run_plantings.py`, the worktree and the `git
+  archive` of feb1b44 with this plant.py): `plant_a_playthrough_cost_left_out`,
+  `plant_a_bonus_counted_twice`, `plant_a_deposit_or_bonus_stored`,
+  `plant_a_deposit_figure_in_dollars`,
+  `plant_a_deposit_match_outlined_where_reading_d_gives_none` -- each CAUGHT
+  here (0.3 to 4.4 s; 5.7 s together) and ESCAPING on feb1b44 ("there is no
+  deposit match on this release ... the gate's step 2 does not call
+  `audit.check_the_deposit_match_is_its_own_arithmetic`"; and of the stored
+  planting's forms, the arithmetic importing the record's driver, a table
+  for deposit matches, a column for the bonus, a setting and a settings row
+  each PLANTED there and passed by its scans).
+- **plant.py whole**, detached (`entry4/run_detached.ps1`, a dummy token):
+  440/440 caught in 360 s (435 in 337 to 345 s before the step: its five
+  plantings about 6 s, and step 1's reach planting a little more, the reach
+  scan now reading the deposit match too) -- well inside the harness's 600 s.
+- **The full suite**, detached, on this tree (`entry4/suite1.u8`): 2,622
+  passed, 4 skipped, 0 failed, in 1,360 s, the planting harness inside its
+  600 s -- on its first run (2,578 before the step; the 44 new tests).
+- **Each new test fails on feb1b44**: the 44 of `test_deposit_match.py`
+  (no `entry_check.deposit_match`, route, panel section or gate check; the
+  browser tests on the form they drive), `test_api.py`'s two (the seventh
+  POST) and `test_guards.py::test_every_new_guard_is_in_the_planted_harness`.
+
+**FOUND, NOT BUILT** (none joins the queue: none breaks LAW 1 or LAW 3,
+makes a gate count false, or could show the operator a wrong number on a
+pick -- the deposit match is arithmetic of numbers he types, no pick):
+
+- **A bonus that can only be staked** (credit the app keeps when an entry
+  loses, its stake never paid back) is not read: the words say so. Its
+  arithmetic is a free entry's, which the brief puts out of v1 ("free/no-
+  sweat entries").
+- **What counts toward a playthrough** -- only some entry types or sizes,
+  a payout floor, a time limit: not read; the operator types the payout of
+  an entry that counts, and the words say every unit staked is read as
+  counting once.
+- **No promo on the playthrough's entries**: the brief names the entry type
+  and its payout only. Step 1's promo reading could be offered here on a
+  ruling.
+- **No deposit field**: a playthrough counted on the deposit and the bonus
+  together is converted by the operator, as the words say, to a multiple of
+  the bonus. A field for it would be a typed deposit -- kept nowhere, but a
+  deposit amount on the page; not built without a ruling.
+- **Expected figures only**: how far a run of entries strays from them, or
+  the chance of running out before the playthrough is staked, is not worked
+  out (the task's reading (c): "No variance, no bankroll, no ruin
+  probability").
+- **Five places, ties to even**: -0.328125 a unit staked is drawn -0.32812
+  and its cost at 5x 1.64062 (half the last place, as step 1 draws a
+  return); the gate reads each figure to that half.
+- **A number field takes no words**: the page's fields are numbers, so "five"
+  cannot be typed there; the server refuses it in words all the same.
+- **Step 1's note says "never dollars"** -- its released words, not the
+  deposit match's, whose section names no currency at all.
+
+**NOT SEEN, AND FOR THE RECORD**:
+
+- **A write the reach scan cannot follow**: it reads every function the
+  deposit match reaches by a call by name, or by `module.function` into the
+  check, the arithmetic, the words and the bar. A function reached by
+  another road -- `getattr`, a function handed on as a value, a module the
+  four import and the deposit match reaches through it, an import's side
+  effect -- is not read (none is). The route and the page are read whole.
+  *(Its prover, 2026-10-08: not so as handed -- the page's scan read the nine
+  deposit functions and nothing they name, and a write under another name or
+  through a module the four do not include got past the Python side. Both
+  are closed below, THE PROVER; what is still not seen is listed there.)*
+- **A ledger named in other words**: the no-ledger scan reads the six words
+  of `DEPOSIT_LEDGER_WORDS` in table, column and setting names; a table
+  named for the offer in other words (`promo_offers`) is not named by it
+  (the reach scan names any write the deposit match could make to one).
+
+### THE PROVER *(2026-10-08 ~02:20-03:15Z, alone in the worktree; the change as handed kept as `entry4/prover/handed` -- feb1b44's `git archive` with the change copied in -- so every form below was run against it; no copy of the record: the step reads none)*
+
+**THE ARITHMETIC HELD.** Worked again apart from the code, in exact
+fractions (`entry4/prover/arith.py`), on 23 offers: power on 2, 3, 6 and 8
+legs (3x, 4.5x, 4.52x, 4.5278x -- 3.00 points, green --, 5x, 37.5x, 1000x,
+1.0001x), flex tables on 2 to 8 legs (a 1x row, a table at 0.4x for 3 of 5,
+an 8-leg table at 100x / 10x / 2x), playthroughs of 0.5x, 1x, 4x, 5x, 7.5x,
+10x, 12x, 20x, 25x and 1000x, positive entries (4.5x, 5x, 1000x on eight
+legs: +2.90625 a unit staked, the bonus after a 1000x playthrough +2907.25,
+green), a 7-unit bonus: every figure within 6e-7 of the hand's and every
+outline reading (d)'s. Twenty-nine mistyped forms -- a bonus of 0, -1,
+"nan", "inf", "$50", "50 units", over 100,000 or true; a playthrough of 0,
+-5, over 1000, "x" or true; 1 or 9 legs, none; "parlay" as the entry; a
+payout of 1x, 1001x or none; the box sent as "true" or 1 -- each refused or
+asked in words; a form that is not one, refused in words. No figure in
+dollars, no outline or verdict reading (d) does not give, no banned word
+(boost, parlay, slip, builder, add leg, same game) anywhere the step added.
+
+**FOUND AND FIXED**, each failing first on the change as handed:
+
+- **A FIGURE THAT IS NOT NOTHING WAS DRAWN AS NOTHING.** Five places and step
+  1's signed rule ("-0.00" written "+0.00") drew the bonus after its
+  playthrough of 2.999999x on two legs at a 4x playthrough -- by hand
+  2.999999/4 - 1 = -0.25000025 a unit staked, 4 staked cost 1.000001, the
+  bonus after it -0.000001, below zero, red -- as "+0.00 per unit of bonus",
+  in its line and in the verdict, "Costs at coin flips: the playthrough is
+  expected to cost more than the bonus adds, so the bonus after it comes to
+  +0.00 per unit of bonus." And 3.99999x on two legs returns -0.0000025 a
+  unit staked, drawn "+0.00 per unit staked". The gate's check read each
+  figure to half its last place (5e-6), so both passed. Now a figure beyond
+  float noise that five places round to nothing is drawn to its first
+  significant place, at most the ninth, with the sign it has
+  (`language._deposit_to_its_first_place`, `_deposit_signed`; "-0.000001",
+  "+0.000001", "-0.000003", a cost of "0.00001"); a figure that is nothing
+  stays "+0.00" (3x at a 4x playthrough, 4x on two legs). The check names a
+  figure drawn as nothing or with a sign it does not have, in its line and
+  in the verdict, and holds two worked examples more (23: 14 worked out by
+  hand). `test_deposit_match.py::test_a_figure_that_is_not_nothing_is_drawn_with_the_sign_it_has`;
+  planted in `plant_a_deposit_match_outlined_where_reading_d_gives_none`.
+- **THE REACH SCAN DID NOT NAME A WRITE BY ANOTHER NAME OR ANOTHER ROAD**
+  (reading (a): "The no-ledger scan and the entry check's reach scan must
+  name any write it could make"). It read the forbidden names as written,
+  followed no call out of its four modules, and read the page's nine
+  deposit functions and nothing they name, so each of these ten, planted on
+  a copy, got past it (`entry4/prover/escapes.py`): `from .db import
+  open_db as h, set_meta as k` in the check and `k(h(), ...)` in the
+  deposit match; step 1's write bound to another name at the module's top
+  (`note_it = remember`); `from .settings import set_value as sv` in the
+  words, called from the deposit match's own words; `config.note_the_offer(...)`
+  and a function imported by name from `tasks`; and on the page a helper of
+  its own (`keepOffer(depositBody())`) setting `localStorage`, a cookie
+  written by a helper, an arrow helper far away setting `sessionStorage`
+  with the bonus in a template, a helper handed on as a value
+  (`.then(keepAnswer)`), and `renderProps` keeping `deposit.bonus` by
+  `prefSet`. Now: every name a file the deposit match reaches binds -- by an
+  import at any depth, under any name -- to the record's door, the settings,
+  M4, the driver, a file or folder, a log, anything imported or run by name
+  or another machine (`audit._DEPOSIT_MATCH_DOOR_MODULES`), or to a
+  forbidden name, and every module-level name assigned from one, is a door
+  (`audit._deposit_match_bound`), and a reached function naming one is named;
+  a call from a reached function into any other module of the project, or
+  into the standard library beyond its arithmetic and text
+  (`_DEPOSIT_MATCH_CALLABLE_MODULES`), is named, the stricter default (a
+  constant read, `config.PICK_MIN_EDGE`, is not a call); and the page's scan
+  follows every top-level definition (a function, or a `const`, `let` or
+  `var`) the deposit functions name -- called or handed on -- to the end,
+  each read for the browser's storage and for a request, and names the
+  typed offer's state (`deposit`) in any other definition
+  (`audit._deposit_match_js_helper_faults`). On this tree it reaches 22 of
+  the page's 187 definitions and finds nothing.
+  `test_deposit_match.py::test_the_reach_scan_names_a_write_by_another_name_or_another_road`;
+  ten forms more in `plant_a_deposit_or_bonus_stored`. The scan reads its
+  modules' syntax trees once a run (0.48 s, from 0.4 s as handed).
+
+**THE RENDER** *(`entry4/prover/render.py`, the implementer's script with
+two states added; the browser suite's world built fresh in a scratch folder
+with step 1's PrizePicks 2-pick power 3.5x kept; a free loopback port, a
+dummy token, never the live app; `entry4/prover/render/*.png`,
+`render.json`; the scratch world deleted 02:33:08Z)*: ten states at 1300
+and 390 -- as it opens; 3x red; 4.5x a gain, no outline; 5x green; a 5-leg
+flex table; PrizePicks chosen, 3.5x offered unticked and asked; a
+playthrough of 0 refused; the whole rail; 2.999999x at a 4x playthrough,
+red, "-0.000001 per unit of bonus" in the line and the verdict; and a change
+after an answer ("Changed since it was last worked out."). READ: every
+figure on one line with its unit, right-aligned; the outline only on the
+verdict and only the server's; the brief's sentence beside every answer;
+plain words, no currency. At 390, at one and three device pixels to one,
+every tap target 44px or more in whole pixels (57 to 61 a state), the page
+390 wide; no page error; the browser's storage empty in every state.
+
+**THE CHECKS**: gate step 2's three rows the step touches, dry, with
+`GRIDIRON_VERIFYING` set (`entry4/prover/dryrun.py`): the deposit match's
+check (0.07 s), the reach scan (0.49 s), the no-ledger scan on the tree
+(0.86 s) and on a record `db.init` built fresh in scratch -- each passes,
+and step 2 calls each; `prose_reaching_the_raw_side()` is []. Every
+zero-argument check step 2 calls by name (`entry4/scans.py`): 73 of 73.
+The plantings (`entry4/run_plantings.py`): the five CAUGHT here (11.7 s
+together; the stored planting 10.3 s with its nineteen forms), each
+ESCAPING on feb1b44 (its `git archive` with this plant.py), and the new
+forms ESCAPING on the change as handed (with this plant.py). plant.py
+whole, detached (`entry4/prover/run_detached.ps1`, a dummy token): 440/440
+caught in 366 s (360 s as handed: the stored planting's ten forms more,
+about 6 s). The full suite, detached: 2,624 passed, 4 skipped, 0 failed,
+in 1,377 s, the planting harness inside its 600 s, on its first run; the
+"tests that reached the network" line names the marked test of
+`test_the_network_is_shut.py`, by design. The prover's two tests fail on
+the change as handed (run there) and on feb1b44.
+
+**FOUND, NOT BUILT** (none joins the queue: none breaks LAW 1 or LAW 3,
+makes a gate count false, or could show a wrong number on a pick):
+
+- **A tiny number said in exponent form.** A bonus typed "1e-7" or a
+  playthrough of 0.0000001 is read and said back "A 1e-07-unit bonus",
+  "1e-07 units per unit of bonus" -- not plain words; step 1's promo cap and
+  entry in units say a tiny number the same way ("1e-07 units"). A bound on
+  the form, or the number said in full, would end it.
+- **An answer for numbers no longer on the page.** The page puts an answer
+  aside on any change -- but a change made while the server is answering,
+  before the first answer or after one, is followed by the answer to the
+  numbers sent, drawn as current (`checkDeposit` sets `changed` back to
+  false); step 1's `checkEntry` has the same shape. On the loopback the
+  window is the round trip; the page could compare the form it sent with
+  the form it holds.
+- **Step 1's return drawn "+0.00" a hair under nothing.** Step 1's own
+  "Each ... returns" line (`entry_check_return_words`) still draws a return
+  between -0.000005 and nothing (3.999998x on two legs: -0.0000005) as
+  "+0.00 per unit" beside its red outline; the deposit match's lines no
+  longer do. Step 1's, not this step's.
+- **"5xx" is read as 5x**: the payout and playthrough readers strip every
+  trailing x (step 1's `_number`).
+
+**NOT SEEN** (the reach scan, as the prover left it): a write reached by
+`getattr` or a computed name, `eval`/`exec` of a string, a write in code a
+door module runs on import, `print` (the Serve task's `pythonw` has no
+console, but a console run would print to it), and on the page storage
+reached by a computed property (`window['local' + 'Storage']`) or code at
+the top of the page's closure before its first definition.

@@ -6578,6 +6578,16 @@ def entry_check_refused_words(code: str, **d) -> str:
         "cap": ("Type the most the promo adds as a number of units above 0, or "
                 "leave it empty where there is no cap."),
         "entry_units": "Type the entry as a number of units above 0.",
+        # A DEPOSIT MATCH (step 4, 2026-10-08): the entry it is staked in is a
+        # size, not legs typed one by one; the bonus and its playthrough are
+        # numbers he types, kept nowhere.
+        "not_a_deposit": ("The page sent something that is not a deposit match. "
+                          "Reload it and try again."),
+        "deposit_legs": ("Choose how many legs the entry has: 2 to 8."),
+        "bonus": ("Type the bonus as a number of units above 0, or 1 to read "
+                  "every figure per unit of bonus."),
+        "playthrough": ("Type the playthrough as a multiple of the bonus above 0 "
+                        "and at most 1000, like 5."),
     }
     return words.get(code) or "The entry cannot be read as typed."
 
@@ -7038,6 +7048,212 @@ def prop_m4_tip(state: str, *, stat_words: str, projection: float | None = None,
             f"forecast (it answers a yardage stat as a yes-or-no question at its own "
             f"line), so it states no chance at the app's line. None is implied from "
             f"its own answer.")
+
+
+# ---------------------------------------------------------------------------
+# A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, the brief of 2026-09-30:
+# "deposit match calculator: typed bonus, playthrough multiple, entry type and
+# payout used for playthrough; output the bonus's expected value after
+# playthrough at coin-flip legs, with the playthrough cost shown, and 'read
+# the offer's terms; this assumes the numbers you typed'"; built 2026-10-08,
+# readings (a)-(d) recorded in docs/REPAIR_STATE.md)
+# ---------------------------------------------------------------------------
+#
+# Every word the deposit match draws is composed here; the page places them.
+# THE WORDS KEEP (reading (b)): UNITS, NEVER A CURRENCY -- every figure per
+# unit of bonus, and no currency sign or currency's name anywhere, so nothing
+# here reads as an amount of money (`audit.deposit_match_faults` names one);
+# "playthrough" always one word, because the advice list reads "play" alone as
+# advice; what the bonus "comes to", never its "value" (the advice list); and
+# the plain-words rule and its banned list, as the step-1 words do. THE TERMS
+# THE BRIEF LEAVES OPEN are said as the operator must type them, never assumed
+# (reading (c)): a playthrough counted on the deposit and the bonus together,
+# and a bonus that can only be staked.
+
+#: THE BRIEF'S OWN SENTENCE (2026-09-30), beside every answer.
+DEPOSIT_MATCH_ASSUMES = "Read the offer's terms; this assumes the numbers you typed."
+
+#: A BONUS AFTER ITS PLAYTHROUGH OF EXACTLY NOTHING, per unit of bonus: float
+#: noise only (`entry_math.FLOAT_NOISE`'s billionth), never a margin.
+_DEPOSIT_EXACT = 1e-9
+
+
+def deposit_match_words() -> dict:
+    """The deposit match's fixed words: its labels, the terms it reads the
+    numbers under, its note and its asks."""
+    return {
+        "heading": "A deposit match",
+        "intro": ("Type the offer as the app states it: the bonus, its "
+                  "playthrough, and the entry you would stake the playthrough "
+                  "in, with what the app pays for it. Nothing you type here is "
+                  "kept."),
+        "app": "App, only to offer a payout you typed",
+        "app_none": "No app",
+        "entry": "Entry",
+        "legs": "Legs",
+        "payout_heading": "The entry the playthrough is staked in",
+        "payout_power": "Pays, as a multiple of the entry",
+        "payout_flex_note": "Leave a row empty where the app pays nothing for it.",
+        "confirm": "This is what the app pays for this entry",
+        "offer_heading": "The offer",
+        "bonus": "The bonus, in your units",
+        "bonus_tip": ("What the app adds, in your own units, or 1: the bonus's "
+                      "figures are per unit of bonus either way, and nothing "
+                      "typed here is kept."),
+        "playthrough": "Playthrough, as a multiple of the bonus",
+        "playthrough_tip": ("How many times the bonus must be staked in entries "
+                            "before it is yours, like 5."),
+        "check": "Work out this deposit match",
+        "changed": "Changed since it was last worked out. Work it out again.",
+        "confirm_first": ("Confirm what the app pays for this entry: nothing is "
+                          "worked out from a payout until you do."),
+        "line_breakeven": "Break-even per leg of the entry",
+        "line_entry": "Each unit staked returns, at coin flips",
+        "line_staked": "Staked to release the bonus",
+        "line_cost": "The playthrough's expected cost",
+        "line_gain": "The playthrough's expected gain",
+        "line_after": "The bonus after its playthrough, expected",
+        "entry_tip": ("What each unit staked in this entry returns, less the "
+                      "unit, with every leg an even chance: the same arithmetic "
+                      "as checking the entry above."),
+        "staked_tip": ("The playthrough times the bonus: what must be staked in "
+                       "these entries before the bonus is yours, per unit of "
+                       "bonus."),
+        "cost_tip": ("The stake times what each unit staked is expected to lose "
+                     "at coin flips (or, above zero, to gain), per unit of "
+                     "bonus."),
+        "after_tip": ("The bonus less the playthrough's expected cost, or plus "
+                      "its gain, per unit of bonus: below zero, staking the "
+                      "playthrough is expected to cost more than the bonus "
+                      "adds."),
+        "assumes": DEPOSIT_MATCH_ASSUMES,
+        # THE TERMS THE BRIEF LEAVES OPEN, AS HE MUST TYPE THEM (reading (c)).
+        "terms": [
+            ("The playthrough is read as a multiple of the bonus alone. Where "
+             "the offer counts it on the deposit and the bonus together, type "
+             "it as a multiple of the bonus: the offer's multiple times the "
+             "deposit and the bonus together, divided by the bonus."),
+            ("The bonus is read as yours, whole, once the playthrough is "
+             "staked. A bonus that can only be staked, kept by the app when an "
+             "entry loses, is not what this reads."),
+            ("Every unit staked in these entries is read as counting once "
+             "toward the playthrough, at the payout you typed."),
+        ],
+        "note": ("Arithmetic only, at coin flips: every leg is put at an even "
+                 "chance, and no model and no record is behind it. Expected "
+                 "figures alone, in units: the bonus's per unit of bonus, the "
+                 "entry's per unit staked. Nothing here is kept, and nothing is "
+                 "read from any app."),
+    }
+
+
+def deposit_match_legs_words(n: int) -> str:
+    """"5 legs": a size of the entry the playthrough is staked in."""
+    return f"{int(n)} legs"
+
+
+def _deposit_to_its_first_place(x: float, text: str, *, signed: bool) -> str:
+    """A FIGURE THAT IS NOT NOTHING IS NEVER DRAWN AS NOTHING (the prover,
+    2026-10-08): five places round a figure under half of 0.00001 to "0.00",
+    and step 1's signed rule then writes "+0.00" -- so a bonus a millionth of
+    a unit under nothing after its playthrough (2.999999x on two legs at a 4x
+    playthrough: -0.000001) was drawn "+0.00 per unit of bonus" beside the
+    red outline and in the sentence "Costs at coin flips: ... comes to +0.00".
+    Such a figure, beyond float noise (`_DEPOSIT_EXACT`), is drawn to its
+    first significant place, at most the ninth, with the sign it has; a figure
+    that is nothing within the noise stays "+0.00" / "0.00"."""
+    if text not in ("+0.00", "0.00") or abs(x) <= _DEPOSIT_EXACT:
+        return text
+    for places in range(6, 10):
+        text = f"{x:+.{places}f}" if signed else f"{abs(x):.{places}f}"
+        if text.strip("+-0."):
+            break
+    return text
+
+
+def _deposit_unsigned(x: float) -> str:
+    """A figure with no sign, to five places, trailing zeros dropped past
+    two: "1.25", "0.625", "0.00" -- and one under half of 0.00001 that is not
+    nothing to its first significant place ("0.000001")."""
+    text = f"{abs(x):.5f}"
+    while text.endswith("0") and len(text.split(".")[1]) > 2:
+        text = text[:-1]
+    return _deposit_to_its_first_place(x, text, signed=False)
+
+
+def _deposit_signed(x: float) -> str:
+    """A signed figure as step 1 draws one ("-0.25", "+0.125", "+0.00"), and
+    one under half of 0.00001 that is not nothing to its first significant
+    place, with its own sign ("-0.000001")."""
+    return _deposit_to_its_first_place(x, _entry_number(x), signed=True)
+
+
+def deposit_match_entry_words(per_unit_staked: float) -> str:
+    """"-0.25 per unit staked": what each unit staked in the entry returns at
+    coin flips, less the unit."""
+    return f"{_deposit_signed(per_unit_staked)} per unit staked"
+
+
+def deposit_match_staked_words(staked: float) -> str:
+    """"5 units per unit of bonus": the playthrough, as typed."""
+    units = "unit" if staked == 1 else "units"
+    return f"{staked:.15g} {units} per unit of bonus"
+
+
+def deposit_match_cost_words(cost: float) -> str:
+    """"1.25 per unit of bonus": the playthrough's expected cost, or its gain,
+    without a sign (the label says which)."""
+    return f"{_deposit_unsigned(cost)} per unit of bonus"
+
+
+def deposit_match_after_words(after: float) -> str:
+    """"-0.25 per unit of bonus": the bonus after its playthrough, expected --
+    with the sign it has, however near nothing (the prover, 2026-10-08)."""
+    return f"{_deposit_signed(after)} per unit of bonus"
+
+
+def deposit_match_summary_words(bonus: float, playthrough: float, legs: int,
+                                entry_type: str, payout_words: str) -> str:
+    """The offer as typed, said back, and that the bonus's figures are per unit
+    of bonus (reading (b)). NOT "EVERY FIGURE" (the render of 2026-10-08): it
+    stood above the entry's own break-even per leg and its return per unit
+    staked, which are rates of the entry, not amounts of the bonus."""
+    return (f"A {bonus:.15g}-unit bonus with a {playthrough:.15g}x playthrough, staked in "
+            f"{int(legs)}-pick {entry_type} entries ({payout_words}). The stake, its "
+            f"cost and the bonus after it are per unit of bonus.")
+
+
+def deposit_match_verdict_words(signal: str, after: float, points: float, *,
+                                raw: float) -> str:
+    """Reading (d)'s verdict in words, beside its outline (or none): step 1's
+    reading (h) applied to the bonus after its playthrough."""
+    bar = f"{_config.PICK_MIN_EDGE * 100:g}"
+    left = deposit_match_after_words(after)
+    if signal == "clears":
+        return (f"Clears the bar at coin flips: the bonus after its playthrough is "
+                f"expected to come to {left}, and an even chance is {points:.2f} "
+                f"points over each leg's break-even, {bar} or more.")
+    if signal == "costs":
+        return (f"Costs at coin flips: the playthrough is expected to cost more than "
+                f"the bonus adds, so the bonus after it comes to {left}.")
+    if abs(after) < _DEPOSIT_EXACT:
+        # "EXACTLY" ONLY WHERE IT IS (step 1's prover's rule, 2026-10-07): a
+        # 2-leg entry at 3x with a 4x playthrough costs the bonus to the last
+        # digit; a figure that only rounds to nothing is drawn as itself.
+        return ("No outline: at coin flips the playthrough is expected to cost the "
+                "bonus exactly, so the bonus after it comes to nothing.")
+    return (f"No outline: at coin flips the bonus after its playthrough is expected "
+            f"to come to {left}, but on each leg of the entry an even chance is "
+            f"{entry_check_gap_words(points, raw=raw)}, and the bar needs it {bar} "
+            f"points or more over.")
+
+
+def deposit_match_verdict_tip(bar: float) -> str:
+    return (f"The colour law read at coin flips, with no model: a green outline only "
+            f"where the bonus after its playthrough is above zero and every leg's "
+            f"break-even is {bar * 100:g} points or more under an even chance, a red "
+            f"one where the bonus after its playthrough is below zero, and none "
+            f"between.")
 
 
 # ---------------------------------------------------------------------------

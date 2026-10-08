@@ -12,6 +12,93 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **THE ENTRY CHECK, STEP 4 PROVED (2026-10-08 ~02:20-03:15Z; ONE LOCAL
+  COMMIT on `repair` holding exactly the step's files, not pushed, for its
+  gate; FOLLOWUPS "Check an entry, step 4", THE PROVER):** the arithmetic
+  held -- worked again in exact fractions on 23 offers (power and flex, 2 to
+  8 legs, playthroughs from 0.5x to 1000x, positive entries up to 1000x on
+  eight legs, a 7-unit bonus), every figure within 6e-7 and every outline
+  reading (d)'s; 29 mistyped forms each refused or asked in words; no
+  dollars, no banned word. FOUND AND FIXED, each failing first on the
+  change as handed: A FIGURE THAT IS NOT NOTHING WAS DRAWN AS NOTHING
+  (2.999999x on two legs at a 4x playthrough leaves -0.000001, red, drawn
+  "+0.00" in its line and in "Costs at coin flips: ... comes to +0.00"; a
+  return of -0.0000025 a unit staked drawn "+0.00") -- drawn now to its
+  first significant place with its sign, the gate naming a figure drawn as
+  nothing or with another sign (23 worked examples); and THE REACH SCAN
+  LET TEN WRITES BY ANOTHER NAME OR ROAD PAST IT (the record's door
+  imported under other names, step 1's write renamed, a settings write from
+  the words, a call into a module it does not read, and on the page helpers
+  keeping the offer in the browser's storage and another function keeping
+  the typed bonus) -- now any name bound to a door, any call out of its
+  four modules and every page definition the deposit functions name are
+  read (a ruling taken in your absence, below). RENDERED at 1300 and 390
+  (ten states, the -0.000001 and a change after an answer among them) and
+  read; every tap target 44px or more in whole pixels at 390 (57 to 61 a
+  state, one and three device pixels to one), the page 390 wide, no page
+  error, storage empty. Plantings: the five CAUGHT here (11.7 s together)
+  and ESCAPING on feb1b44, the prover's twelve forms ESCAPING on the change
+  as handed too; plant.py whole 440/440 caught in 366 s (detached,
+  `entry4\prover\run_detached.ps1`, a dummy token; 360 s as handed).
+  The full suite (detached) 2,624 passed, 4 skipped, 0 failed, in 1,377 s,
+  the planting harness inside its 600 s, on its first run (2,622 as handed
+  and the prover's two). Gate step 2's three rows the step touches, dry with
+  `GRIDIRON_VERIFYING` set, pass, and step 2 calls each; every
+  zero-argument step-2 check, 73 of 73; `prose_reaching_the_raw_side()` is
+  []. No copy of the record (the step reads none). No question put;
+  nothing joins the queue. **Next: the step's gate (`tools/verify.py`,
+  detached), then its release; then Q33 + Q34.**
+  **THE ENTRY CHECK, STEP 4 BUILT (2026-10-08 ~01:15-02:20Z, on feb1b44 --
+  step 2 released as baf6797; UNCOMMITTED for its prover; FOLLOWUPS "Check
+  an entry, step 4"; CLAUDE.md row "CHECK AN ENTRY, STEP 4" and the colour
+  law's "AND IN THE DEPOSIT MATCH"):** the brief's step 4, "deposit match
+  calculator", as "A deposit match", a section of "Check an entry" on the
+  Props page (NFL, as the check): the entry the playthrough is staked in
+  (power or flex, its size, the payout the app shows, confirmed), the bonus
+  in the operator's units and the playthrough as a multiple of it, answered
+  at coin flips per unit of bonus by `entry_math.deposit_match` -- step 1's
+  own return per unit staked, one calculator -- the stake, the
+  playthrough's expected cost (or gain, labelled so) and the bonus after it
+  (1 + P r), the brief's sentence beside every answer ("Read the offer's
+  terms; this assumes the numbers you typed."), and the terms it leaves open
+  said as he must type them (a playthrough on the deposit and the bonus
+  together; a bonus that can only be staked). Green only where the bonus
+  after its playthrough is above zero AND every leg clears B.2 at coin
+  flips; red where it is below zero; numbers between. WORKED BY HAND: a
+  1-unit bonus at 5x on 2-leg power at 3x, -0.25 a unit staked, cost 1.25,
+  after -0.25, red; at 4.5x, +0.125, a gain of 0.625, after +1.625, no
+  outline (2.86 points, under the bar); at 5x, +2.25, green; a 5-leg flex
+  table 10x / 2x / 0.4x at 3x, -0.25, cost 0.75, after +0.25, none; a 1x
+  playthrough at 3x, cost 0.25, after +0.75, none. STORES NOTHING (reading
+  (a)): `POST /api/deposit-match` (the seventh POST, argued) hands the form
+  on alone and opens no handle; no table, settings row, file or browser
+  storage; step 1's last payout typed is offered unticked only for the app,
+  type and size he chooses. NO COPY OF THE RECORD was made: the step reads
+  none and changes no schema, and the record cannot hold a deposit, bonus or
+  playthrough name (none in the schema or `settings.EDITABLE`, ever, and
+  `settings.set_value` is the one writer of a settings row). THE GATE:
+  `audit.check_the_deposit_match_is_its_own_arithmetic` (new, step 2: 21
+  worked examples, every figure worked out again from the numbers typed and
+  read off the words drawn); the entry check's reach scan now reads every
+  function the deposit match reaches, its route and its page, and holds
+  `entry_math` to the standard library and no write; the no-ledger scan
+  names a table, column, setting or settings row for a deposit, a bonus or
+  a playthrough. RENDERED at 1300 and 390 (eight states) and read; two
+  defects fixed from the pictures -- a figure broke from its unit at both
+  widths ("5 units per unit of" over "bonus"), and "every figure below is
+  per unit of bonus" stood over the entry's own two rates -- every tap
+  target 44px or more in whole pixels at 390 (57 to 61 a state, one and
+  three device pixels to one), the page 390 wide, no page error, the
+  browser's storage empty. Plantings: five, each ESCAPING on feb1b44 and
+  CAUGHT here (5.7 s together); plant.py whole 440/440 caught in 360 s
+  (detached, `entry4\run_detached.ps1`, a dummy token; 435 in 337-345 s
+  before the step); the full suite (detached) 2,622 passed, 4 skipped, 0
+  failed, in 1,360 s, the planting harness inside its 600 s -- on its first
+  run; each new test fails on feb1b44. Every zero-argument step-2 check: 73
+  of 73. Readings below ("Rulings taken in your absence
+  (2026-10-08, the entry check's step 4)"); no question put; nothing joins
+  the queue. **Next: its prover; then the step's gate and release; then
+  Q33 + Q34.**
   **THE ENTRY CHECK, STEP 1 PROVED (2026-10-07 ~20:00-21:45Z; ONE LOCAL
   COMMIT on `repair` holding exactly the step's files, not pushed, for its
   gate; FOLLOWUPS "Check an entry, step 1", THE PROVER):** the arithmetic
@@ -2853,6 +2940,122 @@ depend on the answer.
     Default until ruled: nothing built (BLOCKED); step 4 goes ahead of it.
     M4 stays "not yet proven, 0 of 100 graded legs" until a record of
     graded legs exists, so step 2's numbers never make a pick meanwhile.
+
+## Rulings taken in your absence (2026-10-08, the entry check's step 4)
+
+The brief's step 4 (docs/briefs/2026-09-30-entry-check.md: "deposit match
+calculator: typed bonus, playthrough multiple, entry type and payout used for
+playthrough; output the bonus's expected value after playthrough at coin-flip
+legs, with the playthrough cost shown, and 'read the offer's terms; this
+assumes the numbers you typed'"), with ruling D (which names nothing of step
+4). Each the conservative reading the task gave, recorded here and in
+FOLLOWUPS ("Check an entry, step 4"); each reversible in a line or two. None
+needed a word of a law or a ruling stretched, so no question is put.
+QUESTION 45 STAYS OPEN: step 3 is not built, and nothing of it -- nothing
+that keeps what the operator deposits, stakes, plays through or wins.
+
+- **(a) STORES NOTHING.** The deposit match is arithmetic of numbers typed
+  into the page and kept nowhere. `POST /api/deposit-match` hands the form to
+  `entry_check.deposit_match` alone and opens no handle on the record,
+  writable or not; no function it reaches names a handle, step 1's one write
+  (`remember`), a file or a statement that writes; the page keeps what is
+  typed in its own memory while it is open -- never in the browser's storage
+  (`localStorage`, `sessionStorage`, a cookie, or the page's own `prefSet`
+  for a sort). A remembered entry payout is STEP 1'S TABLE ONLY, read from
+  the panel step 1 already serves: offered filled in and unticked only once
+  the operator chooses an app, and only for the same app, entry type and
+  size (no app chosen, nothing filled); nothing in step 4 writes to that
+  table, even a payout he confirms there. The reach scan
+  (`audit.check_the_entry_check_reaches_no_app`) and the no-ledger scan
+  (`audit.check_no_wagering_ledger`: a table, a column, a setting or a
+  settings row named for a deposit, a bonus or a playthrough, in the schema
+  the tree declares, the settings the page can write and the record) each
+  name a write it could make. The live record cannot hold such a name today:
+  the schema and `settings.EDITABLE` never held one (git history), and
+  `settings.set_value`, the one writer of a settings row, writes only
+  `EDITABLE`'s names -- so the step needed no copy of the record, and none
+  was made.
+- **(b) UNITS, NEVER DOLLARS, read as every AMOUNT per unit of bonus.** The
+  bonus is typed in the operator's own units (or 1); the stake the
+  playthrough asks, its expected cost (or gain) and the bonus after it are
+  per unit of bonus, so a 50-unit bonus draws exactly what a 1-unit bonus
+  draws, its size said back once. The entry's own two figures -- its
+  break-even per leg and what each unit staked returns -- are rates of the
+  entry, said as step 1 says them (a per cent; "per unit staked"); the
+  render found the first wording's "every figure below is per unit of
+  bonus" false of those two lines, and it says now "The stake, its cost and
+  the bonus after it are per unit of bonus." No currency sign or name
+  anywhere in the section or its answers (the gate names one: "a figure in
+  dollars"). Reversal: the summary's sentence and the note.
+- **(c) THE ARITHMETIC, one calculator.** Per unit of bonus: the playthrough
+  P is staked; each unit staked returns r, step 1's own
+  `entry_math.expected_return` of the payout at coin flips (power M/2^N - 1,
+  flex the typed table's sum); the playthrough's expected cost is -P r (a
+  gain where r > 0, and labelled a gain) and the bonus after it is 1 + P r --
+  the bonus counted once, the stake once (`entry_math.deposit_match`). The
+  payout is read by step 1's own reader (`entry_check._payout`). No variance,
+  bankroll, chance of running out or stake advice. THE TERMS THE BRIEF LEAVES
+  OPEN, said as he must type them, never assumed: the playthrough is a
+  multiple of the bonus ALONE -- an offer counting it on the deposit and the
+  bonus together is typed as the offer's multiple times the deposit and the
+  bonus together, divided by the bonus (no deposit field: none is typed or
+  kept); the bonus is read as his, whole, once the playthrough is staked -- a
+  bonus that can only be staked, kept by the app when an entry loses, is
+  "not what this reads" (the brief's out-of-v1 free entries are its nearest
+  kin; FOLLOWUPS); every unit staked counts once toward the playthrough. No
+  promo on the playthrough's entries (the brief names the entry type and its
+  payout only). Bounds on the form, each a mistyped key's: 2 to 8 legs, the
+  payout as step 1 bounds it, a bonus above 0 and at most 100,000 units, a
+  playthrough above 0 and at most 1000 times the bonus (a playthrough of 0
+  is refused: such a bonus needs no calculator). Nothing is worked out from
+  a payout not confirmed (step 1's reading (e)).
+- **(d) THE COLOUR, step 1's reading (h) applied to the bonus.** Green only
+  where the bonus after its playthrough is above zero (beyond float noise)
+  AND every leg's break-even is three points or more under an even chance
+  (B.2, through `picks.clears_the_pick_bar`); red where the bonus after its
+  playthrough is below zero (less float noise); between, the numbers and
+  words saying which side of the bar the entry stands, with no outline;
+  "exactly" only where the bonus after it is nothing to the last digit (3x
+  on two legs at a 4x playthrough). Read as no stretch of the colour law: its
+  green is step 1's reading (h) of the entry the playthrough is staked in
+  (whose bonus after it is then necessarily above zero), and its red "costs
+  the operator" -- the offer, taken with its playthrough, costs more than it
+  adds, at coin flips. An entry that costs at coin flips but leaves the bonus
+  above zero is outlined red in the check above and not in the deposit
+  match. No record badge: no record stands behind it, and its note says so.
+  Said in CLAUDE.md beside the colour law, dated.
+- **(e) The plantings** (each ESCAPING on feb1b44 -- no deposit match, no
+  check, and a no-ledger scan that knew no deposit, bonus or playthrough --
+  and CAUGHT here, the gate's step 2 making the call):
+  `plant_a_playthrough_cost_left_out`, `plant_a_bonus_counted_twice`,
+  `plant_a_deposit_or_bonus_stored`, `plant_a_deposit_figure_in_dollars`, and
+  the colour's, `plant_a_deposit_match_outlined_where_reading_d_gives_none`.
+- **ONE PANEL.** "A deposit match" is a section of the "Check an entry"
+  panel, under it on the Props page, NFL only as the check is (scope v1);
+  its fields, buttons and lines are the check's own classes, and its
+  verdict the check's verdict box.
+- **THE ROUTE**, `POST /api/deposit-match`, the seventh POST, argued in
+  `tests/test_api.py::test_no_route_can_write_to_the_record`: a POST only
+  because it carries a form (a bonus in an address would sit in a log),
+  with the session and CSRF locks, and writing nothing.
+- **FROM ITS PROVER (2026-10-08), three defaults more, each the stricter
+  and each reversible in a line** (FOLLOWUPS, "Check an entry, step 4", THE
+  PROVER): (i) A FIGURE THAT IS NOT NOTHING IS NEVER DRAWN AS NOTHING -- the
+  deposit match's signed and unsigned figures that five places round to
+  nothing, beyond float noise, are drawn to their first significant place
+  with the sign they have ("-0.000001"), where step 1's rule wrote "+0.00"
+  beside a red outline; step 1's own return line is left as released
+  (FOLLOWUPS) -- the precedent is step 1's prover's "exactly only where it
+  is". (ii) "ANY WRITE IT COULD MAKE" (reading (a)) is read as any write by
+  any name or road a scan of the code can follow: a name bound to the
+  record's door, the settings, M4, the driver, a file, a log or another
+  machine under any name is a door; a call from what the deposit match
+  reaches into any other module of the project is named, because nothing
+  reads what it writes (a constant read is not a call); and on the page,
+  every definition the deposit functions name, to the end, is read for
+  storage and requests, and the typed offer's state may be named by the
+  deposit functions alone. (iii) No word of a law or a ruling was
+  stretched; no question is put; nothing joins the queue.
 
 ## Rulings taken in your absence (2026-10-07, the entry check's step 2)
 

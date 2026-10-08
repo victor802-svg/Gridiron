@@ -457,6 +457,18 @@
         <div id="entry-form"></div>
         <div id="entry-lines" aria-live="polite"></div>
         <p class="footnote" id="entry-note"></p>
+        <!-- A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, 2026-10-08): a
+             section of the panel, drawn from the server's words into
+             `deposit-form` and the answer of `/api/deposit-match` into
+             `deposit-lines`. NOT DRAWN UNTIL IT CAN ACT, as the rail above;
+             nothing typed in it is kept anywhere. -->
+        <section class="deposit" id="deposit-match" hidden>
+          <h4 id="deposit-heading"></h4>
+          <p class="footnote entry-intro" id="deposit-intro"></p>
+          <div id="deposit-form"></div>
+          <div id="deposit-lines" aria-live="polite"></div>
+          <p class="footnote" id="deposit-note"></p>
+        </section>
       </aside>
     </div>
   </section>

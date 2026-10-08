@@ -3104,6 +3104,21 @@ span.chk.on .take-mark, span.chk.on { font-weight: 800; }
 .entry-read-model { color: var(--chrome); overflow-wrap: anywhere; }
 .entry-read-record { color: var(--muted); overflow-wrap: anywhere; }
 .entry-read-lean { justify-self: start; padding: 2px 8px; border-left: 3px solid var(--warn-rule); background: var(--warn-bg); color: var(--warn-ink); font: 700 13px/18px var(--cond); letter-spacing: 0.04em; text-transform: uppercase; }
+/* A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, 2026-10-08): a section of the
+   check's panel under a rule of its own, its fields, buttons and lines the
+   check's own classes -- every control 44px tall in whole pixels at 390, ink
+   only, nothing arriving by a movement. The one colour is the verdict's
+   outline, which the server's verdict chooses (reading (d)). */
+.deposit { display: grid; gap: 8px; min-width: 0; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+#deposit-form { display: grid; gap: 10px; min-width: 0; }
+#deposit-lines { display: grid; gap: 6px; min-width: 0; }
+#deposit-lines:empty { display: none; }
+/* A FIGURE AND ITS UNIT STAY ON ONE LINE (the render of 2026-10-08): at 1300
+   and at 390 "5 units per unit of bonus" broke as "5 units per unit of" over
+   "bonus" beside its label. The figure takes its own line, right-aligned,
+   where the two do not fit side by side. */
+#deposit-lines .entry-line { flex-wrap: wrap; row-gap: 2px; }
+#deposit-lines .entry-value { margin-left: auto; white-space: nowrap; }
 
 /* THE FAMILY HUE on a chip's dot and its pressed state, and on the tile's tag. */
 .chip-btn[style*="--family"]::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--family); display: inline-block; }

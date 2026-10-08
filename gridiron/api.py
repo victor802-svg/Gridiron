@@ -780,6 +780,33 @@ async def check_an_entry(request: Request) -> dict:
     return entry_check.check(get_entry_conn(), body)
 
 
+@app.post("/api/deposit-match")
+async def work_out_a_deposit_match(request: Request) -> dict:
+    """A DEPOSIT MATCH (GRIDIRON_ENTRY_CHECK step 4, 2026-10-08): the offer the
+    operator typed on the Props page -- the bonus, its playthrough, and the
+    entry and payout he would stake it in -- answered with arithmetic at coin
+    flips, per unit of bonus (`entry_check.deposit_match`).
+
+    IT WRITES NOTHING, AND IS GIVEN NO HANDLE TO WRITE WITH (reading (a)): the
+    form alone is handed on, and no connection to the record is opened here,
+    writable or not -- the bonus, the deposit and the playthrough are kept
+    nowhere. A POST because it carries a form (a bonus in an address would
+    sit in a log), with the same two locks as the other POST routes: the
+    session closes the route, and the CSRF token closes a cross-site POST.
+    `audit.entry_check_reach_faults` reads this route for a handle or a
+    write."""
+    session_id = request.cookies.get(auth.COOKIE_NAME)
+    if not auth.csrf_is_valid(session_id, request.headers.get(auth.CSRF_HEADER)):
+        raise HTTPException(
+            status_code=403,
+            detail=("This page is out of date. Reload it and try again."))
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    return entry_check.deposit_match(body)
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
