@@ -740,6 +740,12 @@ def step_2_guards() -> bool:
          audit.check_picks_has_two_control_rows),
         ("hidden means not painted", audit.check_hidden_is_not_painted),
         ("one answer per question asked", audit.check_a_superseded_answer_is_dropped),
+        # OPERATOR QUESTION 5 (ruled (A) 2026-09-27; built 2026-10-08): every
+        # render the page starts says when it has landed -- once its arrival
+        # has ended, never before, never on a live tick -- and the browser
+        # tests wait on that in place of a duration.
+        ("every render says when it has landed (question 5)",
+         audit.check_every_render_says_it_landed),
         ("the health panel speaks in words",
          lambda: audit.check_health_speaks_plain(_record_conn())),
         ("the reasoning pass runs on game markets only",

@@ -1053,7 +1053,9 @@ def _sign_in(world, browser, *, phone: bool):
     page = context.new_page()
     page.page_errors = []
     page.on("pageerror", lambda e: page.page_errors.append(str(e)))
-    page.goto(world["base"] + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(world["base"] + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(world["base"] + "/", timeout=15000)

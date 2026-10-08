@@ -97,24 +97,135 @@ def test_a_date_placed_from_now_is_not_a_wait(tmp_path, no_registers):
     assert audit.elapsed_time_faults(root) == []
 
 
-def test_the_held_register_holds_its_count_and_only_shrinks(tmp_path, monkeypatch):
+def test_the_held_register_is_pinned_empty(tmp_path, monkeypatch):
+    """THE REGISTER IS EMPTY AND PINNED (operator question 5, ruled (A) on
+    2026-09-27; built 2026-10-08). Until then a function might hold its count
+    of fixed waits and the register only shrank (this test held it to that).
+    Every wait was rebuilt, so an entry is refused by name -- whatever its
+    count -- and holds nothing back: the waits under it are named too."""
     root = _tests(tmp_path, """
         def test_held(page):
             page.wait_for_timeout(300)
             page.wait_for_timeout(300)
         """)
-    monkeypatch.setattr(audit, "ELAPSED_TIME_HELD",
-                        {"tests/test_x.py:test_held": 2})
     monkeypatch.setattr(audit, "ELAPSED_TIME_EXEMPT", {})
-    assert audit.elapsed_time_faults(root) == []
+    for count in (1, 2, 3):
+        monkeypatch.setattr(audit, "ELAPSED_TIME_HELD",
+                            {"tests/test_x.py:test_held": count})
+        faults = audit.elapsed_time_faults(root)
+        pinned = [f for f in faults if "pinned empty" in f]
+        waits = [f for f in faults if "(test_held) waits a fixed time" in f]
+        assert len(pinned) == 1 and f"holds {count}" in pinned[0], faults
+        assert len(waits) == 2 and len(faults) == 3, faults
 
-    audit.ELAPSED_TIME_HELD["tests/test_x.py:test_held"] = 1
-    added = audit.elapsed_time_faults(root)
-    assert len(added) == 2 and all("1 held" in f for f in added), added
 
-    audit.ELAPSED_TIME_HELD["tests/test_x.py:test_held"] = 3
-    stale = audit.elapsed_time_faults(root)
-    assert len(stale) == 1 and "lower it to 2" in stale[0], stale
+def test_the_register_is_empty_and_what_it_held_is_kept_as_history():
+    """EMPTIED BY QUESTION 5 (2026-10-08): the 27 fixed waits in 19 functions
+    it held on 56d65a4 were each rebuilt, and their list is kept beside it as
+    history that nothing reads as a register."""
+    assert audit.ELAPSED_TIME_HELD == {}
+    history = audit.ELAPSED_TIME_HELD_UNTIL_QUESTION_5
+    assert len(history) == 19 and sum(history.values()) == 27, history
+    assert audit.elapsed_time_faults() == []
+
+
+#: A TIMER'S NAME, built so that this file's own strings hold none: the scan
+#: reads every string a test hands anything (operator question 5, 2026-10-08).
+_TIMER = "set" + "Timeout"
+
+
+def test_a_timer_in_the_page_and_a_quiet_network_are_fixed_waits(tmp_path, no_registers):
+    """WHAT THE SCAN DID NOT READ UNTIL QUESTION 5 (2026-10-08): a timer in
+    the script a test hands the page -- `test_cards.py` read an opened row
+    250ms after the tap that way, `test_rapid.py` pressed its second chip
+    60ms after the first -- and Playwright's `networkidle`, half a second
+    with no request, on eleven page loads. Each is named; a docstring that names a
+    timer is words, and is not."""
+    interval = "set" + "Interval"
+    root = _tests(tmp_path, f'''
+        def test_in_page(page):
+            page.evaluate("async () => {{ await new Promise(r => {_TIMER}(r, 250)); }}")
+
+        def test_in_an_f_string(page, second):
+            page.evaluate(f"() => {_TIMER}(() => document.querySelector('{{second}}').click(), 60)")
+
+        def test_polls_in_the_page(page):
+            page.evaluate("() => {interval}(() => 0, 100)")
+
+        def test_quiet(page, served):
+            page.goto(served + "/login", wait_until="networkidle")
+
+        def test_quiet_again(page):
+            page.wait_for_load_state("networkidle")
+
+        def test_words_only(page):
+            """A docstring may say the page once used {_TIMER}(r, 250)."""
+            page.goto("/login")
+            page.wait_for_load_state("load")
+        ''')
+    faults = audit.elapsed_time_faults(root)
+    for name in ("(test_in_page) waits a fixed time inside the page",
+                 "(test_in_an_f_string) waits a fixed time inside the page",
+                 "(test_polls_in_the_page) waits a fixed time inside the page",
+                 "(test_quiet) waits for the network to fall quiet",
+                 "(test_quiet_again) waits for the network to fall quiet"):
+        assert sum(name in f for f in faults) == 1, (name, faults)
+    assert len(faults) == 5, faults
+    assert not [f for f in faults if "(test_words_only)" in f], faults
+
+
+#: A FRAME'S CALL, built so that this file's own strings hold none (question
+#: 5's prover, 2026-10-08).
+_FRAME = "requestAnimation" + "Frame"
+REPO = Path(__file__).resolve().parents[1]
+
+
+def test_a_page_read_frame_by_frame_is_named_and_held_only_by_its_name(tmp_path, monkeypatch):
+    """A READING OF THE PAGE FRAME BY FRAME (question 5's prover, 2026-10-08;
+    schema ruling 5): `test_motion.py` read the Props grid's opacity on every
+    frame and asked that one sit strictly between zero and one, which rode on
+    frames coming faster than a 200ms fade -- with the document's timeline run
+    fast it read [0, 1] and went red on a page that fades. A
+    `requestAnimationFrame` in any string a test hands anything is named,
+    a docstring that names one is words and is not, and a script kept at the
+    module's top level is keyed by its own name -- so a hold
+    (`ELAPSED_TIME_EXEMPT`, as question 20's per-frame check is held) names
+    that script and nothing else of the module."""
+    root = _tests(tmp_path, f'''
+        SAMPLER = "() => {{ const tick = () => {_FRAME}(tick); {_FRAME}(tick); }}"
+        ANOTHER = "() => {{ {_FRAME}(() => 0); }}"
+
+        def test_fade(page):
+            page.evaluate("() => {{ {_FRAME}(() => {{ window.__seen = 1; }}); }}")
+
+        def test_words_only(page):
+            """A docstring may say the sampler once read by {_FRAME}(tick)."""
+            page.evaluate(SAMPLER)
+        ''')
+    monkeypatch.setattr(audit, "ELAPSED_TIME_HELD", {})
+    monkeypatch.setattr(audit, "ELAPSED_TIME_EXEMPT", {})
+    faults = audit.elapsed_time_faults(root)
+    for name in ("(SAMPLER) reads the page frame by frame",
+                 "(ANOTHER) reads the page frame by frame",
+                 "(test_fade) reads the page frame by frame"):
+        assert sum(name in f for f in faults) == 1, (name, faults)
+    assert len(faults) == 3 and not [f for f in faults if "test_words_only" in f], faults
+    monkeypatch.setattr(audit, "ELAPSED_TIME_EXEMPT",
+                        {"tests/test_x.py:SAMPLER": "2026-10-08: a reason"})
+    held = audit.elapsed_time_faults(root)
+    assert len(held) == 2 and not [f for f in held if "(SAMPLER)" in f], held
+
+
+def test_the_per_frame_check_is_held_by_name_and_reads_no_fade_by_its_frames():
+    """THE ONE SAMPLER HELD (question 5's prover, 2026-10-08): question 20's
+    per-frame whole-pixel check, by its script's name, with a dated reason;
+    the scan finds it there (an exemption holding nothing is named stale), and
+    no test reads a fade by the frames that land any more."""
+    reason = audit.ELAPSED_TIME_EXEMPT["tests/test_smoke.py:WATCH_ONE_ARRIVAL"]
+    assert reason.startswith("2026-10-08") and "question 20" in reason, reason
+    assert audit.elapsed_time_faults() == []
+    motion = (REPO / "tests" / "test_motion.py").read_text(encoding="utf-8")
+    assert _FRAME not in motion and "__opacity" not in motion
 
 
 def test_an_exemption_that_no_longer_waits_must_go(tmp_path, monkeypatch):

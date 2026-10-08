@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from gridiron import audit, config
+from tests.conftest import wait_for_the_render
 
 WIDE = {"width": 1440, "height": 900}
 
@@ -49,7 +50,10 @@ def _open_props(page, size=WIDE):
     whole contents now, and the tiles are what arrive."""
     page.set_viewport_size(size)
     page.evaluate("location.hash = '#/record'")
-    with page.expect_response(lambda r: "/api/week" in r.url):
+    # THE TILES' OWN RENDER, SAID LANDED, ITS ARRIVAL ENDED (operator
+    # question 5, 2026-10-08): this waited for the answer and the first chip,
+    # which the render draws in the frame it begins to arrive.
+    with wait_for_the_render(page, "props"):
         page.evaluate("location.hash = '#/props'")
     page.wait_for_selector("#props-chips .chip-btn", timeout=10000)
 
@@ -81,52 +85,112 @@ def test_a_chip_switch_arrives_through_the_motion_block(page):
     # A FAMILY CHIP: not the Kalshi ladder view, which took the empty "Alt
     # lines" chip's place (operator ruling C, 2026-10-05).
     target = next((k for k in keys if k and k != 'ladder'), keys[0])
-    # AND THE FADE ACTUALLY RUNS: a sampler started by the same observer reads
-    # the grid's opacity every frame until the arrival has ended -- the class
-    # gone and no transition left running on the tiles, read inside the page
-    # (the board merge, 2026-09-29: it read for a quarter second by the clock
-    # and the test then waited 400ms, both under a name the clock register did
-    # not hold; the register only shrinks) -- and at least one frame must sit
-    # strictly between zero and one.
-    page.evaluate("""() => {
-        window.__opacity = [];
-        window.__sampled = false;
-        const el = document.getElementById('props-tiles');
-        const obs = new MutationObserver(() => {
-            if (!el.classList.contains('arriving')) return;
-            obs.disconnect();
-            const tick = () => {
-                window.__opacity.push(parseFloat(getComputedStyle(el).opacity));
-                if (el.classList.contains('arriving') || el.getAnimations().length) {
-                    requestAnimationFrame(tick);
-                } else {
-                    window.__sampled = true;
-                }
-            };
-            requestAnimationFrame(tick);
-        });
-        obs.observe(el, {attributes: true, attributeFilter: ['class']});
-    }""")
-    page.click(f"#props-chips .chip-btn[data-key='{target}']")
+    # AND THE FADE ACTUALLY RUNS, READ OFF THE FADE ITSELF (question 5's
+    # prover, 2026-10-08). Until then a sampler read the grid's opacity on
+    # every frame and asked that one frame sit strictly between zero and one
+    # -- which a frame does inside a 200ms fade only if frames come less than
+    # 200ms apart: with the document's timeline run fast (what a renderer
+    # stalled for 200ms looks like to a sampler) it read [0, 1] and this went
+    # red on a page that fades. The panel's own opacity transition is caught
+    # the moment the arrival class comes off, read at half its duration and
+    # played on (`_CATCH_THE_FADE`): the same reading however long a frame
+    # takes. The render's own signal says when the arrival has ended.
+    page.evaluate(_CATCH_THE_FADE)
+    with wait_for_the_render(page, "props"):
+        page.click(f"#props-chips .chip-btn[data-key='{target}']")
     page.wait_for_function("window.__arrivals.length > 0", timeout=5000)
-    page.wait_for_function("window.__sampled === true", timeout=15000)
     assert "props-tiles" in page.evaluate("window.__arrivals")
     assert page.evaluate(
         "document.getElementById('props-tiles').classList.contains('arriving')") is False
-    samples = page.evaluate("window.__opacity")
-    assert any(0 < s < 1 for s in samples), f"the panel never faded: {samples}"
-    assert samples[-1] == 1
+    fade = page.evaluate("window.__fade")
+    assert fade and fade["found"], f"no opacity transition ran as the grid arrived: {fade}"
+    assert fade["start"] == "0" and fade["keyframes"] == ["0", "1"], fade
+    assert 0 < float(fade["half"]) < 1, f"the panel never faded: {fade}"
+    assert page.evaluate(
+        "getComputedStyle(document.getElementById('props-tiles')).opacity") == "1"
+
+
+#: THE GRID'S OWN FADE, CAUGHT AS IT BEGINS (question 5's prover, 2026-10-08):
+#: installed before the switch, it sees the arrival class go on and, the
+#: moment it comes off, takes the opacity transition that starts on the grid,
+#: reads where it starts and its keyframes, pauses it, reads the grid at half
+#: its duration, puts it back where it was and plays it on. Nothing here
+#: depends on how many frames land inside the fade, or when.
+_CATCH_THE_FADE = """() => {
+    window.__fade = null;
+    const el = document.getElementById('props-tiles');
+    let on = false;
+    const obs = new MutationObserver(() => {
+        if (el.classList.contains('arriving')) { on = true; return; }
+        if (!on) return;
+        obs.disconnect();
+        const fade = el.getAnimations().find(a => a.transitionProperty === 'opacity');
+        if (!fade) { window.__fade = { found: false }; return; }
+        const timing = fade.effect.getComputedTiming();
+        const start = getComputedStyle(el).opacity;
+        fade.pause();
+        const back = fade.currentTime;
+        fade.currentTime = timing.duration / 2;
+        const half = getComputedStyle(el).opacity;
+        fade.currentTime = back === null ? 0 : back;
+        fade.play();
+        window.__fade = { found: true, duration: timing.duration, start: start,
+                          keyframes: fade.effect.getKeyframes().map(k => String(k.opacity)),
+                          half: half };
+    });
+    obs.observe(el, {attributes: true, attributeFilter: ['class']});
+}"""
+
+
+def test_the_fade_is_read_the_same_however_long_a_frame_takes(page):
+    """THE READING DOES NOT RIDE ON THE CLOCK (question 5's prover,
+    2026-10-08; schema ruling 5: "No test in the gate may depend on elapsed
+    real time"). The grid's fade is read on two chip switches: one on the
+    document's own timeline, and one with the timeline run a thousand times
+    fast through the DevTools protocol (`Animation.setPlaybackRate`), so the
+    200ms fade ends inside a single frame -- what a renderer stalled for
+    200ms looks like to anything that reads by frames. The sampler this
+    replaced read [0, 1] there and went red (measured: scratchpad
+    q5/prover/probe_fade_tree.txt); the fade caught as it begins reads the
+    same at both speeds, strictly between zero and one."""
+    _open_props(page)
+    keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
+    families = [k for k in keys if k and k != "ladder"]
+    assert families, keys
+    read = {}
+    cdp = page.context.new_cdp_session(page)
+    try:
+        cdp.send("Animation.enable")
+        for rate, key in ((1, families[0]), (1000, "")):
+            cdp.send("Animation.setPlaybackRate", {"playbackRate": rate})
+            page.evaluate(_CATCH_THE_FADE)
+            with wait_for_the_render(page, "props"):
+                page.click(f"#props-chips .chip-btn[data-key='{key}']")
+            read[rate] = page.evaluate("window.__fade")
+    finally:
+        cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
+        cdp.detach()
+    assert read[1] and read[1]["found"] and read[1000] and read[1000]["found"], read
+    assert 0 < float(read[1]["half"]) < 1, read
+    assert read[1000]["half"] == read[1]["half"], (
+        f"the fade read differently when frames came slower than it: {read}")
 
 
 def test_reduced_motion_is_the_same_layout_with_no_transition(page):
+    # After the arrival has finished: measured a frame into it, the grid sat
+    # one per cent below its place and the comparison read a 3px lie. THE
+    # TILES' OWN RENDER, SAID LANDED, its arrival ended (`_open_props`,
+    # operator question 5, 2026-10-08): this waited 350ms after the chips
+    # appeared.
     _open_props(page)
-    # After the arrival has finished: measured a frame into it, the grid sits
-    # one per cent below its place and the comparison reads a 3px lie.
-    page.wait_for_timeout(350)
     boxes = "[...document.querySelectorAll('#props-tiles, #props-chips .chip-btn, #entry-rail')].map(e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; })"
     before = page.evaluate(boxes)
     page.emulate_media(reduced_motion="reduce")
-    page.wait_for_timeout(100)
+    # THE PAGE READS REDUCED MOTION BEFORE IT IS MEASURED (operator question
+    # 5, 2026-10-08): this waited 100ms. The media query answering is the
+    # event; the measurement below lays the page out under it.
+    page.wait_for_function(
+        "() => matchMedia('(prefers-reduced-motion: reduce)').matches", timeout=5000)
     after = page.evaluate(boxes)
     assert after == before, "reduced motion changed the layout"
     duration = page.evaluate(

@@ -6295,6 +6295,374 @@ def check_a_superseded_answer_is_dropped(root: Path | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# EVERY RENDER SAYS WHEN IT HAS LANDED (operator question 5, ruled (A) on
+# 2026-09-27, second set: "After the merge: the app emits a render-finished
+# signal, every fixed wait is rebuilt on it, on a held-and-released response
+# or on page.clock; upper-limit timeouts stay. Its own step, with renders.";
+# built 2026-10-08)
+# ---------------------------------------------------------------------------
+#
+# The page dispatches `gridiron:rendered` once a render it started has
+# landed -- its DOM written and its arrival ended -- naming the view, the
+# panel and the render's count, and the browser tests wait on it in place of
+# a duration. So a render that never says so leaves a test waiting to its
+# upper limit, and one that says so before it lands lets a test tap a panel
+# its redraw is about to replace: the Results race that failed Q38's first
+# gate and Q25's. `tests/test_the_render_signal.py` drives every view in a
+# browser; this reads the page's script, so the gate and the plantings hold
+# it without one.
+#
+# WHAT IT READS: every top-level function of app.js that asks for an answer
+# (`fetch`, `fetchJSON`) or draws with an arrival (`arrive`) is a render that
+# says when it has landed, a part a render waits for before it says so, or
+# exempt with a dated reason; a render takes its count before it asks for
+# anything and says it has landed after the last answer it waits for, with
+# the count it took and the view the register names, about the panel it
+# arrives; `rendered` dispatches the event once, from inside its wait, after
+# reading the arrival class and the transitions still running, carrying the
+# view, the panel and the count and nothing else; every view of `ROUTES`
+# says so; and the live tick never does. What it cannot read: a render that
+# says so about the wrong panel without arriving one, and the order of two
+# answers -- the browser test drives those.
+
+#: The event the page dispatches on its document.
+RENDER_SIGNAL_EVENT = "gridiron:rendered"
+
+#: What the event's detail carries, and nothing else: no number the page
+#: draws (reading (a) of question 5).
+RENDER_SIGNAL_DETAIL = ("view", "panel", "count")
+
+#: EVERY RENDER THE PAGE STARTS, by its function in app.js, and the view its
+#: signal names (None: the view the page is on -- a prompt opened sits on
+#: Games, Results and the Record page alike).
+RENDERS_THAT_SAY_THEY_LANDED: dict[str, str | None] = {
+    "renderGames": "games",
+    "renderProps": "props",
+    "renderRecord": "record",
+    "refreshTierTable": "record",
+    "renderPromptRecord": "record",
+    "paintFactorCards": "record",
+    "renderResults": "results",
+    "renderSettings": "settings",
+    "saveSetting": "settings",
+    "renderGreeting": "games",
+    "checkEntry": "props",
+    "checkDeposit": "props",
+    "gameRow": "games",
+    "promptDisclosure": None,
+    "takePackage": "games",
+    # QUESTION 5'S PROVER (2026-10-08): held exempt as first built ("a payout
+    # saved redraws the Props page through `renderProps`"), but a payout
+    # REFUSED is drawn in its row's own line and through nothing else.
+    "renderPayouts": "props",
+}
+
+#: DRAWN INSIDE A RENDER, which waits for each before it says it has landed:
+#: the part, and the function that waits for it.
+RENDER_PARTS: dict[str, str] = {
+    "renderOverTime": "renderRecord",
+    "renderLearning": "renderRecord",
+    "renderFactors": "renderRecord",
+    "renderVersions": "renderRecord",
+    "renderWorkedExample": "renderFactors",
+    "renderSettledCards": "renderResults",
+    "renderCalendar": "renderResults",
+}
+
+#: ASK FOR AN ANSWER AND DRAW NO VIEW OF THEIR OWN, each with its dated reason.
+RENDER_SIGNAL_EXEMPT: dict[str, str] = {
+    "fetchJSON": "2026-10-08: the door every answer comes through; the render that "
+                 "asked draws what it fetches, and says so",
+    "startLivePolling": "2026-10-08: the live tick patches a score in place and redraws "
+                        "nothing (`applyLive`); question 5's reading (a): never a "
+                        "signal on a live tick",
+    "takeButton": "2026-10-08: its tap redraws the view through `after`, the view's "
+                  "own render, which says so",
+    "loadSports": "2026-10-08: the sport tabs, drawn at boot before the first view's "
+                  "render, which says so after them",
+    "loadWeekPicker": "2026-10-08: a step of a sport switch and of boot, landing before "
+                      "the view's own render, which says so after it",
+    "loadMarkets": "2026-10-08: a step of a sport switch and of boot, landing before "
+                   "the view's own render, which says so after it",
+    "selectSport": "2026-10-08: a sport switch draws through the greeting and the "
+                   "view's render, each of which says so",
+    "boot": "2026-10-08: the first load draws through the greeting and the first "
+            "view's render, each of which says so",
+    "renderAccess": "2026-10-08: signing out everywhere leaves the page -- its line is "
+                    "drawn for the moment before the page goes to the sign-in screen "
+                    "(question 5's prover: as first registered this said nothing is "
+                    "drawn), and the page leaving is the event to wait for",
+    "refreshPulse": "2026-10-08: nothing on the page calls it (FOLLOWUPS); the header's "
+                    "ages are drawn by each render's `paintPulse`",
+}
+
+_JS_FETCHES = re.compile(r"(?<![\w$.])fetch(?:JSON)?\s*\(")
+_JS_AWAIT = re.compile(r"(?<![\w$.])await\b")
+_JS_TAKES_ITS_COUNT = re.compile(r"(?<![\w$.])renderAsked\s*\(\s*\)")
+_JS_SAYS_IT_LANDED = re.compile(r"(?<![\w$.])rendered\s*\(")
+_JS_ARRIVES = re.compile(r"(?<![\w$.])arrive\s*\(")
+_JS_COUNT_NAMED = re.compile(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*renderAsked\s*\(\s*\)")
+
+#: A START STATE (question 5's prover, 2026-10-08): a class the page puts on
+#: what it draws and takes off a frame or more later -- written as a
+#: `classList.remove` inside a `requestAnimationFrame`: `arrive`'s arrival
+#: class, and the probability bar's `filling` (`probBar`). What a render drew
+#: has not landed while anything inside it is still at its start, so
+#: `rendered` reads each inside the panel before it dispatches. As first built
+#: it read the panel's own arrival class alone, and under reduced motion, on a
+#: slate of one game, the rows said they had landed with the open row's bars
+#: still at opacity 0 (measured: four bars, cleared two frames later).
+_JS_TAKEN_OFF_A_FRAME_LATER = re.compile(
+    r"requestAnimationFrame\s*\([^;]*?\.classList\.remove\(\s*'([\w-]+)'\s*\)")
+
+
+def _js_start_states(script: str) -> dict[str, str]:
+    """Every start state of the page's script, to the top-level function that
+    takes it off a frame later."""
+    states: dict[str, str] = {}
+    for name, (_line, body) in _js_top_level_definitions(script).items():
+        for m in _JS_TAKEN_OFF_A_FRAME_LATER.finditer(body):
+            states.setdefault(m.group(1), name)
+    return states
+
+
+def _js_blank_quoted(text: str) -> str:
+    """`text` with every quoted string's inside blanked, its length kept, so
+    a position in it is a position in `text`."""
+    return _JS_QUOTED.sub(
+        lambda m: m.group(0)[0] + " " * (len(m.group(0)) - 2) + m.group(0)[-1], text)
+
+
+def _js_call_arguments(text: str, open_at: int) -> list[str]:
+    """The arguments of the call whose `(` is at `open_at`, as written."""
+    depth, start, out = 0, open_at + 1, []
+    for i in range(open_at, len(text)):
+        c = text[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                out.append(text[start:i].strip())
+                return [a for a in out if a]
+        elif c == "," and depth == 1:
+            out.append(text[start:i].strip())
+            start = i + 1
+    return out
+
+
+def render_signal_faults(script: str | None = None) -> list[str]:
+    """Every render of the page's script that does not say when it has
+    landed, or says so before it has (operator question 5, 2026-10-08)."""
+    if script is None:
+        script = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    defs = _js_top_level_definitions(script)
+    ruled = ("(operator question 5, ruled (A) on 2026-09-27: the app emits a "
+             "render-finished signal, and every fixed wait is rebuilt on it)")
+    faults: list[str] = []
+
+    # THE EVENT, AND THE COUNT.
+    event = defs.get("RENDERED")
+    if event is None or f"'{RENDER_SIGNAL_EVENT}'" not in event[1].split(";")[0]:
+        faults.append(f"app.js declares no `RENDERED` event named {RENDER_SIGNAL_EVENT!r}: "
+                      f"nothing a test can wait on says a render has landed {ruled}")
+    asked = defs.get("renderAsked")
+    if asked is None or "rendersAsked += 1" not in asked[1] \
+            or "return rendersAsked" not in asked[1]:
+        faults.append(f"app.js has no `renderAsked` moving the page's count of renders "
+                      f"asked and handing it on, so no signal says WHICH render landed "
+                      f"{ruled}")
+    for name, (line, body) in defs.items():
+        if name in ("renderAsked", "rendersAsked"):
+            continue
+        if re.search(r"(?<![\w$.])rendersAsked\s*(?:\+\+|--|[-+*/]?=(?!=))|"
+                     r"(?:\+\+|--)\s*rendersAsked\b", _js_blank_quoted(body)):
+            faults.append(f"app.js:{line} `{name}` moves the page's count of renders "
+                          f"asked, which `renderAsked` alone moves: a count moved "
+                          f"elsewhere names another render {ruled}")
+
+    # THE SIGNAL: dispatched once, from inside its wait, after the arrival.
+    said = defs.get("rendered")
+    if said is None:
+        faults.append(f"app.js has no `rendered`, the one function that says a render "
+                      f"has landed {ruled}")
+    else:
+        line, body = said
+        code = _js_blank_quoted(body)
+        dispatches = [m.start() for m in re.finditer(r"dispatchEvent\s*\(", code)]
+        own = [ln for ln in code.split(chr(10)) if re.match(r"    \S", ln)]
+        if len(dispatches) != 1:
+            faults.append(f"app.js:{line} `rendered` dispatches {len(dispatches)} times: "
+                          f"once, from inside its wait for the arrival {ruled}")
+        if any("dispatchEvent" in ln for ln in own):
+            faults.append(f"app.js:{line} `rendered` dispatches the signal at once, before "
+                          f"what it drew has finished arriving -- the signal before its "
+                          f"render lands {ruled}")
+        if not any("requestAnimationFrame(" in ln for ln in own):
+            faults.append(f"app.js:{line} `rendered` never waits a frame for the arrival "
+                          f"it is to see end {ruled}")
+        if dispatches:
+            before = body[:dispatches[0]]
+            if "classList.contains('arriving')" not in before:
+                faults.append(f"app.js:{line} `rendered` dispatches without reading the "
+                              f"arrival class: the signal can come while the panel is "
+                              f"still arriving {ruled}")
+            if "getAnimations(" not in before:
+                faults.append(f"app.js:{line} `rendered` dispatches without reading the "
+                              f"transitions still running on what it drew {ruled}")
+            # EVERY START STATE, READ INSIDE WHAT IT DREW (question 5's
+            # prover, 2026-10-08): in a selector `rendered` asks of it.
+            inside = " ".join(m.group(1) for m in re.finditer(
+                r"querySelector(?:All)?\s*\(\s*'([^']*)'", before))
+            for start, owner in sorted(_js_start_states(script).items()):
+                if not re.search(r"(?<![\w-])\.%s(?![\w-])" % re.escape(start), inside):
+                    faults.append(f"app.js:{line} `rendered` dispatches without reading "
+                                  f"the `{start}` start state inside what it drew -- a "
+                                  f"class `{owner}` takes off a frame after it draws: the "
+                                  f"signal can come while what it drew is still at its "
+                                  f"start {ruled}")
+            tail = body[dispatches[0]:]
+            if not re.match(r"dispatchEvent\s*\(\s*new\s+CustomEvent\s*\(\s*RENDERED\b", tail):
+                faults.append(f"app.js:{line} `rendered` dispatches another event than "
+                              f"`RENDERED` {ruled}")
+            detail = re.search(r"detail\s*:\s*\{([^{}]*)\}", tail)
+            keys = tuple(re.findall(r"([A-Za-z_$][\w$]*)\s*:", detail.group(1))) if detail else ()
+            if keys != RENDER_SIGNAL_DETAIL:
+                faults.append(f"app.js:{line} the signal carries {list(keys)}: it names the "
+                              f"view, the panel and the count -- {list(RENDER_SIGNAL_DETAIL)} "
+                              f"-- and nothing else, no number the page draws {ruled}")
+    for name, (line, body) in defs.items():
+        if name == "rendered":
+            continue
+        code = _js_blank_quoted(body)
+        if re.search(r"CustomEvent\s*\(\s*RENDERED\b", code) or (
+                RENDER_SIGNAL_EVENT in body and "dispatchEvent" in code):
+            faults.append(f"app.js:{line} `{name}` dispatches the signal itself, round "
+                          f"`rendered` and its wait for the arrival {ruled}")
+
+    # EACH RENDER: its count taken first, its landing said last.
+    for name, view in RENDERS_THAT_SAY_THEY_LANDED.items():
+        got = defs.get(name)
+        if got is None:
+            faults.append(f"`{name}` is in audit.RENDERS_THAT_SAY_THEY_LANDED and gone from "
+                          f"app.js: the register names what the page renders {ruled}")
+            continue
+        line, body = got
+        code = _js_blank_quoted(body)
+        takes = [m.start() for m in _JS_TAKES_ITS_COUNT.finditer(code)]
+        says = [m.start() for m in _JS_SAYS_IT_LANDED.finditer(code)]
+        waits = ([m.start() for m in _JS_AWAIT.finditer(code)]
+                 + [m.start() for m in _JS_FETCHES.finditer(code)])
+        if not takes:
+            faults.append(f"app.js:{line} `{name}` never takes its count (`renderAsked`), "
+                          f"so its signal cannot say which render landed {ruled}")
+        elif waits and takes[0] > min(waits):
+            faults.append(f"app.js:{line} `{name}` takes its count after it asks for its "
+                          f"answer: a render asked before a test armed could pass for its "
+                          f"own {ruled}")
+        if not says:
+            faults.append(f"app.js:{line} `{name}` renders and never says it has landed "
+                          f"(`rendered`): a test waiting on it waits to its limit {ruled}")
+        counts = set(_JS_COUNT_NAMED.findall(code))
+        node_args = []
+        for at in says:
+            if waits and at < max(waits):
+                faults.append(f"app.js:{line} `{name}` says it has landed before the last "
+                              f"answer it waits for -- the signal before its render lands "
+                              f"{ruled}")
+            args = _js_call_arguments(body, body.index("(", at))
+            if not args or args[0] not in counts:
+                faults.append(f"app.js:{line} `{name}` says it has landed with "
+                              f"{args[:1] or 'no count'}, not the count it took {ruled}")
+            if view is not None and (len(args) < 2 or args[1] != f"'{view}'"):
+                faults.append(f"app.js:{line} `{name}` says the {args[1:2] or 'no'} view "
+                              f"landed; it is the {view!r} view's render {ruled}")
+            node_args.append(args[2] if len(args) > 2 else None)
+        for m in _JS_ARRIVES.finditer(code):
+            arrived = _js_call_arguments(body, body.index("(", m.start()))[:1]
+            if arrived and node_args and arrived[0] not in node_args:
+                faults.append(f"app.js:{line} `{name}` arrives `{arrived[0]}` and says "
+                              f"{node_args} landed: the signal would not wait for the "
+                              f"arrival it should -- before its render lands {ruled}")
+
+    # EACH PART: waited for by the render that draws it.
+    for part, parent in RENDER_PARTS.items():
+        if part not in defs or parent not in defs:
+            faults.append(f"`{part}` or `{parent}` is in audit.RENDER_PARTS and gone from "
+                          f"app.js {ruled}")
+            continue
+        line, body = defs[parent]
+        code = _js_blank_quoted(body)
+        calls = [m.start() for m in re.finditer(r"(?<![\w$.])%s\s*\(" % re.escape(part), code)]
+        waits = [m.start() for m in _JS_AWAIT.finditer(code)]
+        if not calls:
+            faults.append(f"app.js:{line} `{parent}` no longer draws `{part}`, which "
+                          f"audit.RENDER_PARTS says it waits for {ruled}")
+        elif not (re.search(r"await\s+%s\s*\(" % re.escape(part), code)
+                  or (waits and min(calls) < max(waits))):
+            faults.append(f"app.js:{line} `{parent}` draws `{part}` and does not wait for "
+                          f"it: it says it has landed with `{part}` still in flight {ruled}")
+
+    # EVERY RENDER IS IN A REGISTER.
+    known = set(RENDERS_THAT_SAY_THEY_LANDED) | set(RENDER_PARTS) | set(RENDER_SIGNAL_EXEMPT)
+    for name, (line, body) in defs.items():
+        if name in known or name in ("arrive", "rendered"):
+            continue
+        code = _js_blank_quoted(body)
+        head = code.find("{")
+        inner = code[head:] if head >= 0 else code
+        if _JS_FETCHES.search(inner) or _JS_ARRIVES.search(inner):
+            faults.append(f"app.js:{line} `{name}` draws from an answer it asks for, or "
+                          f"with an arrival, and is in no register: it says when it has "
+                          f"landed (audit.RENDERS_THAT_SAY_THEY_LANDED), is a part a render "
+                          f"waits for (audit.RENDER_PARTS), or carries a dated reason it "
+                          f"draws no view (audit.RENDER_SIGNAL_EXEMPT) {ruled}")
+    for name, why in RENDER_SIGNAL_EXEMPT.items():
+        if name not in defs:
+            faults.append(f"`{name}` is exempt in audit.RENDER_SIGNAL_EXEMPT and gone from "
+                          f"app.js: remove the entry {ruled}")
+            continue
+        if not re.match(r"20\d\d-\d\d-\d\d: \S", why):
+            faults.append(f"`{name}`'s exemption carries no dated reason {ruled}")
+        if _JS_SAYS_IT_LANDED.search(_js_blank_quoted(defs[name][1])):
+            faults.append(f"app.js:{defs[name][0]} `{name}` is exempt and says a render "
+                          f"landed: register it as the render it is {ruled}")
+
+    # EVERY VIEW SAYS SO, AND THE LIVE TICK NEVER DOES.
+    routes = defs.get("ROUTES")
+    if routes is None:
+        faults.append(f"app.js has no `ROUTES`: nothing says which renders are views {ruled}")
+    else:
+        line, body = routes
+        for view, function in re.findall(r"([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)",
+                                         body.split("}")[0]):
+            if RENDERS_THAT_SAY_THEY_LANDED.get(function, "") != view:
+                faults.append(f"app.js:{line} the {view!r} view renders by `{function}`, "
+                              f"which is not registered as saying the {view!r} view landed "
+                              f"{ruled}")
+    for name in ("applyLive", "startLivePolling"):
+        got = defs.get(name)
+        if got is not None and (_JS_SAYS_IT_LANDED.search(_js_blank_quoted(got[1]))
+                                or _JS_TAKES_ITS_COUNT.search(_js_blank_quoted(got[1]))):
+            faults.append(f"app.js:{got[0]} `{name}` says a render landed on a live tick, "
+                          f"which patches a score in place and redraws nothing (question "
+                          f"5's reading (a): never on a live tick) {ruled}")
+    return faults
+
+
+def check_every_render_says_it_landed(root: Path | None = None) -> None:
+    """Raise unless every render of the page says when it has landed, and
+    never before (operator question 5, 2026-10-08). `root` is a package."""
+    web = (config.PACKAGE_ROOT if root is None else Path(root)) / "web"
+    faults = render_signal_faults((web / "app.js").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A RENDER DOES NOT SAY WHEN IT HAS LANDED, OR SAYS SO BEFORE IT HAS "
+            "(operator question 5, ruled (A) on 2026-09-27):" + _NL2
+            + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE HEALTH PANEL SPEAKS IN WORDS (UI audit finding 11, 2026-09-05)
 # ---------------------------------------------------------------------------
 #
@@ -11663,7 +12031,10 @@ _ELAPSED_CLOCKS = frozenset(
 
 #: The waits and clock reads a gated test may still hold, each with its
 #: dated reason: a real timeout, where the waiting IS the thing, and nothing
-#: is asserted about how long it took. Keyed `path:function`.
+#: is asserted about how long it took. Keyed `path:function` -- or, for a
+#: script kept at a module's top level, `path:NAME`, the name it is kept
+#: under (question 5's prover, 2026-10-08). And, from that day, a reading of
+#: the page frame by frame that nothing it asserts rides on.
 ELAPSED_TIME_EXEMPT: dict[str, str] = {
     "tests/conftest.py:_serve":
         "2026-09-25: waits for the shared server's thread to report it has "
@@ -11673,6 +12044,16 @@ ELAPSED_TIME_EXEMPT: dict[str, str] = {
     "tests/conftest.py:served_fresh":
         "2026-09-25: the same 20 s start-up limit as `_serve`, for the "
         "fixture that starts a server on a world of its own",
+    "tests/test_smoke.py:WATCH_ONE_ARRIVAL":
+        "2026-10-08 (question 5's prover): operator question 20's per-frame "
+        "whole-pixel check (ruled (A) 2026-09-27) reads every frame of an "
+        "arrival for a tap target off whole pixels or under 44. On a page that "
+        "draws whole pixels every frame reads whole however many frames land, "
+        "and that an arrival was watched is read off its first frame, the one "
+        "the class comes off in, which always sees the fade begin: how long a "
+        "frame takes decides nothing it asserts. (It asked that some frame read "
+        "a panel mid-fade until this date, which rode on frames coming faster "
+        "than the fade.)",
 }
 
 #: HELD, NOT ALLOWED: the browser tier's fixed waits, by function and how
@@ -11691,9 +12072,23 @@ ELAPSED_TIME_EXEMPT: dict[str, str] = {
 #: under a new name is an added one, so none was registered again: each was
 #: rebuilt on an in-page signal (`tests/conftest.py::wait_for_the_redraw_it_
 #: starts`, which takes the panel and a count from this merge), and so were
-#: the board's own new ones in `test_board.py`. The entries below are the
-#: ones that still stand, each at its count.
-ELAPSED_TIME_HELD: dict[str, int] = {
+#: the board's own new ones in `test_board.py`.
+#: EMPTIED BY QUESTION 5 (ruled (A) on 2026-09-27, second set: "After the
+#: merge: the app emits a render-finished signal, every fixed wait is rebuilt
+#: on it, on a held-and-released response or on page.clock; upper-limit
+#: timeouts stay."; built 2026-10-08), AND PINNED EMPTY: the 27 waits in 19
+#: functions that stood here on 56d65a4 were each rebuilt -- on the page's
+#: `gridiron:rendered` signal, on an answer the test holds and releases, or
+#: on the page's own reading of an answer -- and `elapsed_time_faults` names
+#: any entry put back, so a fixed wait cannot be held again without the
+#: operator. Their list, by function and count and what each waited for, is
+#: `ELAPSED_TIME_HELD_UNTIL_QUESTION_5`, history that nothing reads.
+ELAPSED_TIME_HELD: dict[str, int] = {}
+
+#: THE REGISTER AS IT STOOD ON 56d65a4 (2026-10-08), kept as history: nothing
+#: reads it as a register. Each was rebuilt by question 5 (FOLLOWUPS, "Q5
+#: BUILT").
+ELAPSED_TIME_HELD_UNTIL_QUESTION_5: dict[str, int] = {
     "tests/test_cards.py:test_the_grid_does_not_re_sort_while_a_slate_is_in_progress": 1,
     "tests/test_empty.py:_nothing_but_the_message": 1,
     "tests/test_empty.py:_open_week": 1,
@@ -11714,6 +12109,60 @@ ELAPSED_TIME_HELD: dict[str, int] = {
     "tests/test_settled_line.py:test_the_counts_line_names_the_settled_picks": 2,
     "tests/test_smoke.py:test_the_sport_tabs_are_reachable_and_tappable": 1,
 }
+
+#: A WAIT BY THE CLOCK THE SCAN DID NOT READ UNTIL QUESTION 5 (2026-10-08),
+#: and it found one of each in the tests: a timer inside the script a test
+#: hands the page (`test_cards.py`'s `setTimeout(r, 250)` before reading an
+#: opened row, `test_rapid.py`'s 60ms between two chips), and Playwright's
+#: `networkidle` -- "no network for at least 500ms", a duration by the clock --
+#: on eleven page loads (ten sign-ins). Each is a fixed wait as
+#: `wait_for_timeout` is.
+_PAGE_TIMERS = re.compile(r"\bset(?:Timeout|Interval)\s*\(")
+_NETWORK_QUIET = "networkidle"
+
+#: A READING OF THE PAGE FRAME BY FRAME (question 5's prover, 2026-10-08): a
+#: `requestAnimationFrame` in the script a test hands the page. What a frame
+#: reads depends on when it lands, and a frame is as long as the machine makes
+#: it: `test_motion.py` read the Props grid's opacity on every frame and asked
+#: that one sit strictly between zero and one, which a frame does inside a
+#: 200ms fade only if frames come less than 200ms apart -- with the document's
+#: timeline run fast it read [0, 1] and went red on a page that fades, as the
+#: per-frame check's sanity did ("no frame was read while a panel faded in").
+#: Each now reads the fade off the fade itself or off its first frame; the one
+#: sampler held is `ELAPSED_TIME_EXEMPT`'s, by name.
+_PAGE_FRAMES = re.compile(r"\brequestAnimationFrame\s*\(")
+
+
+def _module_constant_names(tree: ast.AST) -> dict[int, str]:
+    """id() of every node inside a value kept at a module's top level, to the
+    name it is kept under (`WATCH_ONE_ARRIVAL`, a script a test hands the
+    page): a script held there is keyed by its name, never by "module
+    level"."""
+    names: dict[int, str] = {}
+    for statement in getattr(tree, "body", []):
+        targets = (statement.targets if isinstance(statement, ast.Assign)
+                   else [statement.target] if isinstance(statement, ast.AnnAssign)
+                   else [])
+        value = getattr(statement, "value", None)
+        if value is None or len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            continue
+        for node in ast.walk(value):
+            names[id(node)] = targets[0].id
+    return names
+
+
+def _docstring_ids(tree: ast.AST) -> set[int]:
+    """id() of every docstring in a module: words about the code, not code
+    handed to anything."""
+    ids: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                ids.add(id(first.value))
+    return ids
 
 
 def _call_name(node: ast.AST) -> tuple[str | None, str | None]:
@@ -11799,14 +12248,36 @@ def _clock_names(tree: ast.AST) -> _ClockNames:
 
 def _clock_faults_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
     """Every sleep, fixed browser wait, elapsed-clock reading and real-time
-    difference in one test file's syntax tree."""
+    difference in one test file's syntax tree -- and from question 5
+    (2026-10-08) a timer in the script a test hands the page, and a wait for
+    the network to fall quiet."""
     names = _clock_names(tree)
+    docstrings = _docstring_ids(tree)
 
     found: list[tuple[ast.AST, str]] = []
     for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docstrings and _PAGE_TIMERS.search(node.value)):
+            found.append((node, "waits a fixed time inside the page (`"
+                                + _PAGE_TIMERS.search(node.value).group(0).rstrip("(")
+                                + "` in the script it hands the page)"))
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in docstrings and _PAGE_FRAMES.search(node.value)):
+            found.append((node, "reads the page frame by frame (`requestAnimationFrame` "
+                                "in the script it hands the page): what a frame reads "
+                                "depends on when it lands, and a frame is as long as "
+                                "the machine makes it"))
         if isinstance(node, ast.Call):
             owner, name = _call_name(node.func)
             full = names.full(owner, name)
+            if any(k.arg == "wait_until" and isinstance(k.value, ast.Constant)
+                   and k.value.value == _NETWORK_QUIET for k in node.keywords) or (
+                    owner is not None and name == "wait_for_load_state"
+                    and any(isinstance(a, ast.Constant) and a.value == _NETWORK_QUIET
+                            for a in node.args)):
+                found.append((node, "waits for the network to fall quiet "
+                                    "(`networkidle`: no request for 500ms, a "
+                                    "duration by the clock)"))
             if full in ("time.sleep", "asyncio.sleep"):
                 found.append((node, f"sleeps (`{full}`)"))
             elif full and full.startswith("time.") \
@@ -11833,15 +12304,20 @@ def _clock_faults_in(tree: ast.AST) -> list[tuple[ast.AST, str]]:
 
 def elapsed_time_faults(root: Path | None = None) -> list[str]:
     """Every gated test that waits on or measures the real clock, named by
-    file, line and function, less the dated exemptions and the held register.
+    file, line and function, less the dated exemptions; and any entry in the
+    held register, pinned empty since operator question 5 (2026-10-08).
 
     Reads `tests/` beside the package. What it refuses: a sleep; a fixed
-    wait in the browser; a reading of `time.time`, `monotonic`,
-    `perf_counter` and their kin, which only ever measure elapsed time; a
-    comparison with a time reckoned from the real clock (`now - start < 5`,
-    `now + delta > kickoff`); and a difference between now and an earlier
-    reading. Placing a fixture at "now plus two days" is not refused: that
-    is a date, and nothing in it waits.
+    wait in the browser; from question 5, a timer in the script a test hands
+    the page (`setTimeout`, `setInterval`, in any string but a docstring) and
+    a wait for the network to fall quiet (`networkidle`); from its prover
+    (2026-10-08), a reading of the page frame by frame
+    (`requestAnimationFrame` in such a string); a reading of
+    `time.time`, `monotonic`, `perf_counter` and their kin, which only ever
+    measure elapsed time; a comparison with a time reckoned from the real
+    clock (`now - start < 5`, `now + delta > kickoff`); and a difference
+    between now and an earlier reading. Placing a fixture at "now plus two
+    days" is not refused: that is a date, and nothing in it waits.
     """
     root = config.PACKAGE_ROOT if root is None else Path(root)
     tests = root.parent / "tests"
@@ -11857,32 +12333,37 @@ def elapsed_time_faults(root: Path | None = None) -> list[str]:
         except SyntaxError:
             continue
         functions = _enclosing_functions(tree)
+        # A SCRIPT KEPT AT THE TOP LEVEL IS KEYED BY ITS NAME (question 5's
+        # prover, 2026-10-08), so a hold names that script and nothing else
+        # of the module.
+        kept = _module_constant_names(tree)
         for node, what in _clock_faults_in(tree):
-            function = functions.get(id(node))
+            function = functions.get(id(node)) or kept.get(id(node))
             by_function.setdefault(f"{where}:{function}", []).append(
                 f"{where}:{node.lineno} ({function or 'module level'}) {what}")
     faults: list[str] = []
+    # THE REGISTER IS PINNED EMPTY (operator question 5, ruled (A) on
+    # 2026-09-27; built 2026-10-08). Until then a function might hold its
+    # count of fixed waits and the register only shrank; every one was
+    # rebuilt, so an entry is refused by name and holds nothing back: the
+    # waits under it are named too.
+    for key, held in sorted(ELAPSED_TIME_HELD.items()):
+        faults.append(
+            f"{key}: audit.ELAPSED_TIME_HELD holds {held}, and the register is "
+            f"pinned empty since operator question 5 was built (2026-10-08): "
+            f"a fixed wait is rebuilt on the page's render-finished signal, on "
+            f"an answer held and released, or on page.clock, never held.")
     for key, found in sorted(by_function.items()):
         if key in ELAPSED_TIME_EXEMPT:
-            continue
-        held = ELAPSED_TIME_HELD.get(key, 0)
-        if len(found) <= held:
             continue
         for fault in found:
             faults.append(
                 f"{fault}. A test whose result can change with how long the "
                 f"machine took is a test that goes red under load and green "
                 f"when watched. Move the clock by hand, as test_auth does "
-                f"with `auth.clock`, or wait for the event itself"
-                + (f" ({held} held for operator question 5 in this "
-                   f"function; {len(found)} found)." if held else "."))
-    for key, held in sorted(ELAPSED_TIME_HELD.items()):
-        found = len(by_function.get(key, []))
-        if found < held:
-            faults.append(
-                f"{key}: audit.ELAPSED_TIME_HELD holds {held} and {found} "
-                f"remain. The register only shrinks: lower it to {found}"
-                + (" or remove the entry." if not found else "."))
+                f"with `auth.clock`, or wait for the event itself -- the "
+                f"page's `gridiron:rendered`, an answer held and released, or "
+                f"page.clock (operator question 5).")
     for key in sorted(ELAPSED_TIME_EXEMPT):
         if key not in by_function:
             faults.append(

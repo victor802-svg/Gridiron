@@ -9,14 +9,19 @@ message was present and stopped there; these assert that nothing else is.
 """
 from __future__ import annotations
 
+from tests.conftest import requests_asked, wait_for_the_render, watch_the_answers
+
 WIDE = {"width": 1440, "height": 900}
 
 
 def _open_week(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/games'")
+    # THE HASH'S OWN RENDER, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 300ms after the first row appeared, which the render before
+    # the hash change may already have drawn.
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game, #games-notes .empty", timeout=15000)
-    page.wait_for_timeout(300)
 
 
 def _nothing_but_the_message(page, where):
@@ -32,10 +37,16 @@ def _nothing_but_the_message(page, where):
     assert page.evaluate("document.querySelectorAll('#games-rows .game').length") == 0, f"{where}: cards survive"
     assert page.evaluate("document.querySelectorAll('#games-notes .empty').length") == 1, f"{where}: no single message"
     # the swipe and the arrows have nothing to step through
+    asked = page.evaluate("window.Gridiron.rendersAsked()")
     page.evaluate("""() => { const h = document.getElementById('games-rows'); const r = h.getBoundingClientRect();
         const t = (type, x) => h.dispatchEvent(new TouchEvent(type, {bubbles: true, changedTouches: [new Touch({identifier: 1, target: h, clientX: x, clientY: 10})]}));
         t('touchstart', 200); t('touchend', 40); }""")
-    page.wait_for_timeout(200)
+    # NOTHING ASKED, SO NOTHING TO WAIT FOR (operator question 5, 2026-10-08):
+    # this waited 200ms for whatever a swipe might start. A touch is handled
+    # as it is dispatched, and the page's count of renders asked moves the
+    # moment one is asked, so a swipe that asked none can bring nothing back.
+    assert page.evaluate("window.Gridiron.rendersAsked()") == asked, \
+        f"{where}: a swipe asked the page to draw the slate again"
     assert page.evaluate("document.querySelectorAll('#games-rows .game').length") == 0, \
         f"{where}: a swipe brought the last sport's cards back"
 
@@ -48,11 +59,18 @@ def test_a_sport_with_no_forecasts_starts_no_live_poll(page):
     sports = page.evaluate("[...document.querySelectorAll('#sport-tabs button')].map(b => b.dataset.sport)")
     counts = {sp: page.evaluate(f"fetch('/api/week?sport={sp}').then(r => r.json()).then(j => (j.cards || []).length)") for sp in sports}
     empty = next(sp for sp, n in counts.items() if n == 0)
-    seen = []
-    page.on("response", lambda r: seen.append((r.status, r.url)) if "/api/live" in r.url or r.status >= 400 else None)
-    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={empty}" in r.url, timeout=20000):
+    # WHAT THE PAGE ASKED, READ INSIDE IT (operator question 5, 2026-10-08):
+    # this listened 2.5s for a live request or a refusal. The slate's render
+    # starts its live poll before it says it has landed, and the poll's first
+    # tick asks at once, so once the empty sport's slate has landed the page's
+    # own list holds every request the switch made and every answer it read.
+    watch_the_answers(page)
+    with wait_for_the_render(page, "games"):
         page.click(f"#sport-tabs button[data-sport='{empty}']")
-    page.wait_for_timeout(2500)
+    assert page.evaluate("window.Gridiron.state.sport") == empty
+    refused = [(status, url) for url, status
+               in page.evaluate("window.__theAnswers.answered") if status >= 400]
+    seen = requests_asked(page, "/api/live") + refused
     assert not seen, f"an empty slate asked the live endpoint or was refused: {seen[:3]}"
 
 
@@ -64,11 +82,12 @@ def test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one(page):
     sports = page.evaluate("[...document.querySelectorAll('#sport-tabs button')].map(b => b.dataset.sport)")
     counts = {sp: page.evaluate(f"fetch('/api/week?sport={sp}').then(r => r.json()).then(j => (j.cards || []).length)") for sp in sports}
     empty = next(sp for sp, n in counts.items() if n == 0)
-    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={empty}" in r.url, timeout=20000):
+    # THE SWITCH'S OWN SLATE, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 400ms after the empty message appeared.
+    with wait_for_the_render(page, "games"):
         page.click(f"#sport-tabs button[data-sport='{empty}']")
     page.wait_for_selector("#games-notes .empty", timeout=15000)
-    page.wait_for_timeout(400)
     _nothing_but_the_message(page, f"{empty} after {full}")
-    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={full}" in r.url, timeout=20000):
+    with wait_for_the_render(page, "games"):
         page.click(f"#sport-tabs button[data-sport='{full}']")
     page.wait_for_selector("#games-rows .game", timeout=15000)

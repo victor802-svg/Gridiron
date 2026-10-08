@@ -1851,6 +1851,12 @@ reads `db.utcnow`), which would need a call graph; auth calls neither.
 
 ### HELD: the browser tier's fixed waits *(ruling 5, second sentence; operator question 5, asked 2026-09-25)*
 
+**BUILT 2026-10-08 (operator question 5, ruled (A) on 2026-09-27):** every
+wait below rebuilt on the page's render-finished signal, on an answer held and
+released, or on the page's own reading of an answer, and the register emptied
+and pinned -- "The page says when a render has landed, and every fixed wait is
+rebuilt on it", below. What follows is the entry as it stood.
+
 `audit.check_no_test_waits_on_the_clock` refuses, in `tests/`, a sleep, a fixed
 browser wait, a reading of the elapsed-time clocks, and a difference or
 comparison reckoned from the real clock. It found 44 in the browser tier -- 43
@@ -17071,7 +17077,442 @@ pick)*:
   reads the next start (Thursday night's game, 00:15Z), the line beneath it
   the slate's day. No count; pre-existing.
 
-## The rules stay on, and their marks stay put -- built 2026-09-29 *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
+## The page says when a render has landed, and every fixed wait is rebuilt on it -- built 2026-10-08 *(operator question 5, ruled (A) on 2026-09-27, second set, docs/briefs/2026-09-27-rulings-second-set.md: "Q5: (A), scheduled after the board merge. Until then ELAPSED_TIME_HELD stays as is and may only shrink; the merge adds no fixed wait. After the merge: the app emits a render-finished signal, every fixed wait is rebuilt on it, on a held-and-released response or on page.clock; upper-limit timeouts stay. Its own step, with renders."; schema ruling 5 of 2026-09-24: "No test in the gate may depend on elapsed real time"; question 28's helper, "Q5's signal replaces it later"; built on 56d65a4 -- Q25 with Q29 and Q26 released as d264f1f + cfcf273; UNCOMMITTED for its prover)*
+
+Q5 BUILT. The page dispatches one event when a render it started has landed;
+every fixed wait in `tests/` -- the 27 the register held and three kinds the
+scan could not see -- is rebuilt on it, on an answer held and released, or on
+the page's own reading of an answer; `audit.ELAPSED_TIME_HELD` is empty and
+pinned; the Results race and the weekly strip's are closed on it, each forced
+on 56d65a4 by a held answer; and the board draws exactly what it drew.
+
+### MEASURED FIRST: EVERY FIXED WAIT, BY FILE AND FUNCTION, AND WHAT EACH WAITED FOR *(56d65a4; `audit.elapsed_time_faults` with the register emptied, then by hand for what the scan did not read)*
+
+The register's 27 in 19 functions:
+- `test_cards.py::test_the_grid_does_not_re_sort_while_a_slate_is_in_progress`
+  (1): 1,400ms after the slate drew, for the live poll's first tick -- its
+  stubbed `/api/live` answer -- to be applied before the order was read
+  again. The tick redraws nothing, so no render can say it landed.
+- `test_empty.py::_open_week` (1): 300ms after a row or the empty message
+  appeared -- which the boot's render had already drawn -- for the hash's
+  render.
+- `test_empty.py::_nothing_but_the_message` (1): 200ms after a touch swipe on
+  the rows, for whatever a swipe handler might start.
+- `test_empty.py::test_a_sport_with_no_forecasts_shows_nothing_of_the_last_one`
+  (1): 400ms after the empty sport's message appeared, for the switch's render.
+- `test_empty.py::test_a_sport_with_no_forecasts_starts_no_live_poll` (1):
+  2,500ms after the empty sport's slate answered, for a live request or a
+  refused one to show.
+- `test_every_control.py::_open_record` (1): 300ms after the tier table's
+  first row, for the Record page's parts.
+- `::test_a_settings_switch_reads_what_it_saved` (3): 300ms after Settings'
+  switches appeared, after the save's answer, and after putting it back --
+  each for the row's face to be redrawn.
+- `::test_every_record_control_asks_or_changes_something` (2): 200ms after each
+  select's answer (the chart's two selects, the tier table's market), 300ms
+  after typing in the factor search.
+- `::test_the_forecaster_picker_fetches_the_tier_table_it_names` (2) and
+  `::test_the_market_select_fetches_the_tier_table_it_names` (1): 300ms after
+  each tier table's answer, for its caption.
+- `test_hidden.py::_open` (1): 300ms after each route's first element.
+- `test_motion.py::test_reduced_motion_is_the_same_layout_with_no_transition`
+  (2): 350ms for the tiles' arrival to end; 100ms after emulating reduced
+  motion, for the style to apply.
+- `test_rapid.py::_open_week` (1) and `::_select` (1): 300ms and 400ms, the
+  hash's render and a sport switch's.
+- `test_rapid.py::slow` (1): `time.sleep(1.2)` in a route handler, making the
+  first sport's answer late.
+- `::test_a_slower_earlier_slate_does_not_take_the_page` (2): 3,000ms after the
+  second sport's click (the week picker's phase and the slate's), for both
+  sports' answers.
+- `::test_offline_says_so_in_words_and_a_later_success_clears_it` (2): 1,500ms
+  for the failed chip's error box; 600ms after the next chip's answer.
+- `test_settled_line.py::test_the_counts_line_names_the_settled_picks` (2):
+  600ms after the picked slate's answer; 300ms after putting it back.
+- `test_smoke.py::test_the_sport_tabs_are_reachable_and_tappable` (1): 120ms
+  after the test rewrote the tabs' counts itself -- waiting for nothing the
+  page does.
+
+And what the scan did not read, found measuring (each a wait by the clock):
+- **Two timers in the script a test hands the page**:
+  `test_cards.py::test_a_card_expands_in_place_and_shows_the_why` read the
+  opened row 250ms after the tap (`await new Promise(r => setTimeout(r,
+  250))`), and `test_rapid.py::test_two_chips_in_quick_succession_leave_the_second_one`
+  pressed its second chip 60ms after the first.
+- **`networkidle`, eleven times**: Playwright's "no network for at least
+  500ms" -- a duration by the clock -- on ten sign-ins (`conftest.py::page`,
+  two in `test_board.py`, `test_entry_check.py`, `test_prompt_disclosure.py`,
+  five in `test_smoke.py`) and the sign-in page a stranger is sent to
+  (`test_smoke.py::test_a_fresh_browser_is_sent_to_login_and_can_sign_in`).
+
+Upper limits (Playwright's `timeout=`, the two server start-up loops in
+`ELAPSED_TIME_EXEMPT`, `thread.join(timeout=10)`) stay, as ruled.
+
+### BUILT
+
+- **`app.js`, THE SIGNAL**: `RENDERED` (`'gridiron:rendered'`), `renderAsked`
+  (the page's count of renders asked, moved by it alone; a render takes its
+  count before it asks for anything), `rendered(count, view, node, name)`
+  (waits a frame, then while the arrival class is on or a finite transition
+  runs on what it drew; then dispatches once, `{view, panel, count}`), and
+  `Gridiron.rendersAsked()` reading the count.
+- **Every render says so**: `renderGames` (the empty slate's path and the
+  full one now end the same way, the quiet markets written on both as
+  before), `renderProps` (the ladder view's path too), `renderRecord` (now
+  `async`, pushing the parts it fetches on its own -- the prompt list, the
+  factors, the versions, the learning panel, a tier table asked again, the
+  weekly strip -- and saying so once they have drawn, unless the sport
+  changed meanwhile; the chart selects catch its rejection as they caught its
+  throw), `refreshTierTable`, `renderPromptRecord`, `paintFactorCards`,
+  `renderResults`, `renderSettings`, `saveSetting` (its row, whichever answer
+  came back; its early `return` on a refusal became an `else`),
+  `renderGreeting` (drawn or, refused, hidden with its band line cleared),
+  `checkEntry`, `checkDeposit`, `gameRow`'s toggle (a row opened),
+  `promptDisclosure` (its text; its `asked` flag renamed `fetched`), and
+  `takePackage`.
+- **`tests/conftest.py`**: `RENDER_SIGNAL`, `VIEW_PANELS`,
+  `wait_for_the_render(page, view, panel=None, count=1)` (arms on the page's
+  count, one record per arming so a wait inside another's keeps its own, and
+  takes only renders asked after it), `wait_for_the_redraw_it_starts` KEPT AS
+  A THIN WRAPPER of it (its forty-odd callers read as they did);
+  `watch_the_answers`, `requests_asked`, `wait_until_read` (an answer read a
+  task after the page parsed it) and `HeldAnswers` (hold, release, close).
+- **`audit`**: `ELAPSED_TIME_HELD = {}`, pinned (an entry is named, and the
+  waits under it); `ELAPSED_TIME_HELD_UNTIL_QUESTION_5` (the 19 entries, 27
+  waits, as history); `_clock_faults_in` reads a timer in any string but a
+  docstring (`_docstring_ids`, `_PAGE_TIMERS`) and any `networkidle`;
+  `render_signal_faults`, `check_every_render_says_it_landed`,
+  `RENDER_SIGNAL_EVENT`, `RENDER_SIGNAL_DETAIL`, `RENDERS_THAT_SAY_THEY_LANDED`,
+  `RENDER_PARTS`, `RENDER_SIGNAL_EXEMPT` (eleven, each dated),
+  `_js_blank_quoted`, `_js_call_arguments`. `tools/verify.py` step 2 calls the
+  check.
+- **Each wait rebuilt**: on the signal -- every `_open...` helper, the
+  switches, the selects, the sorts, the chips, the forecaster, the factor
+  search, the settings save, the row opened (`test_cards.py`'s timer), the
+  props page under reduced motion (and its media query read inside the page,
+  an event); on an answer held and released -- `test_rapid.py`'s late answers
+  (both phases; the slate's matched exactly, since a glob's `?` is any one
+  character and `**/api/week?*sport=...` held the weeks list too); on the
+  page's own reading of an answer -- the live tick (`test_cards.py`) and the
+  empty sport's requests (`test_empty.py`); on the page's count of renders
+  asked, which moves the moment one is asked -- the swipe, which asks none;
+  on the error box shown -- the offline chip, whose render lands nothing; the
+  two chips pressed in one task (both slates asked before either answer can
+  be read: the quickest succession there is); the sign-ins on the page's load
+  event; and the tabs' rewrite -- the test's own, in one task -- measured as
+  it is laid out, after the fonts' readiness promise.
+
+### READINGS TAKEN *(the conservative readings the task gave; each recorded in docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-08, Q5)")*
+
+(a) ONE signal, `gridiron:rendered` on the document, once a render the page
+started has landed -- its DOM written and its arrival ended (the class off,
+no finite transition running on what it drew) -- naming the view, the panel
+and a count; dispatched for every view and every redraw (a hash, the week
+picker, a filter, a sort, a chip, the forecaster, Results' table, the entry
+check's answer, the deposit match's, the greeting, and a setting saved, a row
+opened, a prompt opened, a combo taken -- each a redraw the page makes), never
+on a live tick, a superseded render or a failed answer; carrying no number the
+page draws. THE COUNT is the render's place in the order the page asked for
+renders: what tells a waiter its own render from one asked before it. That the
+page's count of renders asked is READABLE (`Gridiron.rendersAsked()`) is how
+a test arms on it; it is a reading of the page's state, not a second signal.
+NOT A RENDER: a form redrawing itself as the operator types (the entry
+check's and the deposit match's fields: drawn in the keystroke's own task,
+nothing awaited), and the steps of a sport switch before its view's render
+(the banner, the footer, the markets, the week picker): the view's own signal
+comes after them in the same switch. The Record page says so once its parts
+have drawn, so it now waits for them (the route, and so the boot's `ready`
+on that page, later than before; nothing drawn moves).
+(b) EVERY fixed wait in `tests/` rebuilt -- the 27, the two timers in the page
+and the eleven `networkidle`s, the last on the page's load event (the "event"
+of question 5's (A): the sign-in waits for nothing the page fetches after its
+load); the register emptied and pinned; `wait_for_the_redraw_it_starts` kept
+as a thin wrapper. One wait waited for nothing the page does (the tabs'
+rewrite, the test's own): nothing is waited for there but the fonts' promise.
+(c) The Results race fixed on the signal, and with it every test found to tap
+or read inside a panel a redraw it started may replace: the weekly strip (a
+read), the My day chip's mark, the settled-pick fill, the stale-rows probe,
+the Record headings' scan, `test_smoke.py`'s `_open_route` and
+`test_every_screen_renders`.
+
+### THE PROOFS *(scratchpad `q5\`)*
+
+- **The Results race, forced** (`q5_results_race.py`, a pytest plugin run on
+  each tree's own test; `race_results_head.txt`, `race_results_tree.txt`):
+  once the test chooses the reasoning pass, the filtered table's request is
+  held inside the page until the test waits on the page's signal (this
+  tree's) or a prompt box is opened (56d65a4's), and a prompt's text asked
+  before the filtered table lands waits for it. ON 56d65a4: 2 failed of 2
+  (1120 and 390), each "Locator.wait_for: Timeout 10000ms exceeded ... waiting
+  for `#history-table details.prompt-box[data-prompt-kind='reconstructed']`
+  ... `pre.prompt-text`" -- the box it opened on the old table replaced,
+  closed, under it: the failure of Q38's first gate and Q25's. HERE: 2 passed
+  of 2, the filtered answer released by "the test waited on the page signal
+  for its own render". (A Playwright route released from a page binding
+  deadlocks the sync API, so the hold is the page's own `fetch`, wrapped.)
+- **The weekly strip, forced** (`q5_strip_race.py`; `race_strip_*.txt`):
+  `/api/over-time` held until the test waits on the signal. ON 56d65a4: "the
+  weekly strip is blank" (`assert 0 > 500`); HERE: passed.
+- **The rebuilt tests are still tests** (`vacuous.py`, `vacuous.txt`): each run
+  on a copy of this tree whose app.js carries its defect, and each FAILS --
+  a late answer painting the page (`test_rapid.py`'s slower-slate test, at its
+  week picker), a live tick redrawing the slate (`test_cards.py`'s re-sort
+  test: the slate never settles, so its signal never comes), an empty slate
+  polling (`test_empty.py`), a swipe redrawing (`test_empty.py`, "a swipe asked
+  the page to draw the slate again"); all four pass on the shipped app.js.
+- **The plantings** (`run_plantings.py`; `escape_head.txt` on 56d65a4's `git
+  archive` with this plant.py): `plant_a_fixed_wait_coming_back` ESCAPES
+  there (every form "not named in []": `_open` held its wait, the scan read no
+  string and no `networkidle`, and the register had no pin) and is CAUGHT here
+  in 7.2s; `plant_a_render_that_never_says_it_landed` and
+  `plant_a_signal_before_its_render_lands` ESCAPE ("the page says nothing when
+  a render lands, and nothing reads it") and are CAUGHT here (0.7s, 0.8s).
+  `plant_a_test_that_waits_on_the_clock` still caught (3.0s).
+- **No flake** (`run_flake.ps1`, detached, a dummy token; `flake.txt`,
+  `flake.done`: exit 0 in 2,333 s): each changed browser module 5 runs of 5 --
+  `test_the_render_signal.py`, `test_empty.py`, `test_every_control.py`,
+  `test_hidden.py`, `test_motion.py`, `test_rapid.py`, `test_settled_line.py`,
+  `test_cards.py`, `test_board.py`, `test_entry_check.py`, `test_smoke.py`
+  (and `test_the_clock.py`) -- and `test_prompt_disclosure.py` 10 of 10, every
+  run passing. `test_the_render_signal.py` was edited during its third run (a
+  case now ends only with nothing in flight, and the greeting's case waits
+  for its switch's slate), so it ran 5 of 5 again on its final text
+  (`signal_rerun.txt`).
+
+### THE SUITE AND plant.py WHOLE *(detached, `q5\run_detached.ps1` -- the shape of `c\prover\run_detached.ps1` -- a dummy non-secret token, TMP/TEMP at their defaults)*
+
+The full suite, twice in a row: **3,269 passed, 4 skipped, 0 failed, in 1,612
+s; and again 3,269 passed, 4 skipped, 0 failed, in 1,607 s** (3,229 before:
+the 38 of `test_the_render_signal.py` and two of `test_the_clock.py`).
+`plant.py` whole: **463/463 caught in 435 s** (460 in 413 s on 56d65a4's
+release; the three new plantings take about 9 s), inside the harness's 600 s,
+the limit not widened. `audit.prose_reaching_the_raw_side()` []. No copy of
+the record was made: nothing here reads it, and no schema changes.
+
+### THE RENDERS *(the browser tests' own synthetic world, built once, `q5\make_world.py` -> `render_world.db`, copied for each tree; served the test server's way on a free loopback port with each tree's app and a dummy token, never 8848; Chromium at 1300 and 390, one device pixel to one, each view captured once the page had no request in flight and nothing arriving, dimmed or moving for 30 frames; `q5\render.py`, `compare.py` -> `compare.txt`, `render\head_*`, `render\tree_*`)*
+
+Games, a row open, Props, the Kalshi ladder, Record, Results and Settings,
+at 1300 and 390: 14 pairs, 0 pixels differ in any, and every page's words,
+width and height the same. Read: the Games rows and the open row, the Props
+tiles and the entry check, Results' table with its prompt row, as drawn
+before. The first capture left the Record page and Results mid-render on
+both trees (`wait_for_load_state("networkidle")` answers at once once a page
+has reached it -- found below); captured again when quiet.
+
+### FOUND, NOT BUILT *(none joins the queue: none breaks LAW 1 or LAW 3, makes a gate count false, or could show the operator a wrong number on a pick)*
+
+- **Results and the tier table drop no superseded answer within a sport.**
+  `renderResults` and `refreshTierTable` check only the sport's sequence, so
+  two filters or two markets asked in quick succession paint in the order the
+  answers come back: the earlier, slower one can stand under the later choice.
+  Each row's numbers are its own forecast's, and the tier table's caption
+  names the market and forecaster it counts; a display order, not a number.
+  (`renderGames` has had `weekSeq` since 2026-09-05.) **RE-MEASURED BY ITS
+  PROVER, AND READ AS JOINING THE QUEUE FOR RESULTS (2026-10-08; THE PROVER,
+  below):** Results draws its Forecaster column by the forecaster chosen when
+  the answer lands, not by the one the answer was asked for, so the earlier
+  table standing under a later choice of the reasoning pass draws the
+  statistical model's rows with no Forecaster column under that choice --
+  measured: 51 rows, 50 of them the model's, beside "reasoning pass" -- the
+  queue rule's third clause ("could show the operator a wrong number on a
+  pick"), as the prover reads it. Reported for the queue, not built here; the
+  tier table stays here, its caption naming the forecaster its numbers are.
+- **A stale greeting that fails hides the new sport's.** `renderGreeting`'s
+  failure path does not ask whether the sport changed since it asked, so the
+  previous sport's digest failing after a switch hides this sport's greeting
+  and clears its band line (it hides; it shows no other sport's figure).
+- **`refreshPulse` is never called**: the header's three ages are drawn by
+  each render's `paintPulse`; the function stands unused (exempt in the
+  signal's register with that reason).
+- **`wait_for_load_state("networkidle")` answers at once once a page has
+  reached the state** -- a render script's wait (`tools/board_shots.py` uses
+  it) can capture a page mid-render; this step's render script waits for the
+  page's own requests instead. Not a test.
+- **A page that renders forever never says it landed** (each render asking
+  another, as the planted live-tick defect did): correct -- it never lands --
+  and the wait fails at its upper limit.
+
+### NOT HERE, AND NAMED
+
+- `page.clock` is not used: no wait here was on a timer of the page's own --
+  the live poll's 90-second interval is never waited for; the first tick is
+  asked with the render.
+- The shared world's Results calendar offered no day with a result to pick
+  (`button.day.has-result`), so "a calendar day picked" is driven by no
+  browser test; it redraws through `renderResults`, which says so (the
+  script's reading holds it).
+
+### THE PROVER *(2026-10-08, ~20:40-23:15Z, alone in the worktree on the uncommitted change; scratchpad `q5\prover\`; every measurement on the browser tests' synthetic world, never the record)*
+
+Four defects found in the change as handed, each measured on it and fixed.
+The two in the page and its scan are held by tests failing on 56d65a4 and on
+the change as first built, and planted (each form escaping on both and caught
+here); the fade's is held by tests failing on 56d65a4 (on the change as first
+built they test the rebuilt tests' own reading, and pass) and planted in the
+clock scan; the two chips' is proved by the defect the rebuilt test now
+catches and the test as first rebuilt did not (no guard reads whether a test
+tests its race, so nothing is planted for it). The change as first built is
+put back together in a copy (`as_handed.py`: the worktree copied, the
+prover's own edits taken back out of `app.js` and `audit.py` by their exact
+text; its `app.js` and `audit.py` differ from 56d65a4 by the 211 and 437 lines
+the implementer's diff counted).
+
+- **THE SIGNAL CAME BEFORE THE BARS HAD ARRIVED** (reading (a): "its DOM
+  written and any arrival ended"). The probability bar is drawn at its start
+  -- `.pbar-fill.filling`, opacity 0 -- and `probBar` takes the class off two
+  frames later; `rendered` read the panel's own arrival class alone. Where no
+  transition is left running for it to wait on -- reduced motion, a slate of
+  one game -- the rows said they had landed with the open row's bars still at
+  their start: MEASURED (`probe_filling_games.py`, the slate's answer cut to
+  one game in flight, the row opened, the sort changed): at the signal, 4 of
+  4 bars at opacity 0, all 1 two frames later; with motion, 0 of 4. FIXED:
+  `rendered` waits while anything inside what it drew is at a start state
+  (`panel.querySelector('.arriving, .filling')`); `render_signal_faults`
+  reads every start state off the script -- a `classList.remove` inside a
+  `requestAnimationFrame`, `arrive`'s `arriving` and `probBar`'s `filling`
+  (`audit._js_start_states`) -- and names `rendered` unless it reads each in
+  a selector it asks of what it drew. HELD: `test_the_render_signal.py::
+  test_the_rows_say_they_landed_only_once_no_bar_is_at_its_start` (in
+  Chromium, the case above: on the change as first built "THE ROWS SAID THEY
+  HAD LANDED WITH 4 OF 4 BARS STILL AT THEIR START") and `::test_a_start_
+  state_the_signal_does_not_wait_for_is_named` (the start states read off the
+  script, `rendered` as first built named for both, and a start state added
+  later named). PLANTED: `plant_a_signal_before_its_render_lands`'s sixth
+  form, `rendered` blind to the bar's start state.
+- **A PAYOUT REFUSED SAID NOTHING** (reading (a): "every view and every
+  redraw"). `renderPayouts` was held exempt -- "a payout saved redraws the
+  Props page through `renderProps`, which says so" -- but a payout the
+  settings door refuses (one at or under 1, over 100, not a number) is drawn
+  in its row's own line and through nothing else, and that redraw said
+  nothing (the settings rows' own save, `saveSetting`, says so for a refusal
+  too). FIXED: its count taken before it asks, and a refusal says it landed
+  (`'payout-said'`); `renderPayouts` is registered as a render of the Props
+  view. HELD: the redraw "props, a payout refused" in `test_every_view_and_
+  every_redraw_says_it_has_landed` (on the change as first built: "the page
+  asked for 0 render(s) and never said the props view's payout-said had
+  landed"); nothing is written to the shared world (the door refuses).
+  PLANTED: `plant_a_render_that_never_says_it_landed`'s fifth form.
+- **A FADE READ BY THE FRAMES THAT LAND** (schema ruling 5, "No test in the
+  gate may depend on elapsed real time"; question 5 ruled (A), its literal
+  reading; the prover's list: "a poll whose interval decides the result").
+  `test_motion.py::test_a_chip_switch_arrives_through_the_motion_block` read
+  the Props grid's opacity on every frame and asked that one sit strictly
+  between 0 and 1; `test_smoke.py::test_no_tap_target_leaves_whole_pixels_
+  on_any_frame_of_the_slates_arrival` asked that some frame of its nineteen
+  arrivals read a panel mid-fade. A frame does so inside a 200ms fade only if
+  frames come less than 200ms apart. MEASURED (`probe_fade.py`,
+  `probe_sampler.py`), the document's timeline run a thousand times fast
+  through the DevTools protocol (`Animation.setPlaybackRate`) -- a 200ms fade
+  ending inside one frame, what a renderer stalled for 200ms looks like to a
+  sampler: the first read [0, 1] (red on a page that fades; at the normal
+  rate 13 frames, 11 mid-fade), the second 0 mid-fade frames over nine
+  arrivals (99 at the normal rate). REBUILT: the fade is read off the fade
+  itself -- the grid's opacity transition caught the moment the arrival
+  class comes off, read at half its duration (0.684643 at both rates), put
+  back and played on (`_CATCH_THE_FADE`), the arrival's end the render's own
+  signal -- and the per-frame check's sanity is that each arrival's fade was
+  seen running, read off its first frame, the one the class comes off in,
+  which always sees the fade begin (`moved`: 1 of each nine arrivals at the
+  fast rate). THE SCAN: `elapsed_time_faults` names a `requestAnimationFrame`
+  in any string a test hands anything but a docstring ("reads the page frame
+  by frame"), and keys a script kept at a module's top level by its own name
+  (`audit._module_constant_names`), so question 20's per-frame check is held
+  by name -- `ELAPSED_TIME_EXEMPT["tests/test_smoke.py:WATCH_ONE_ARRIVAL"]`,
+  dated, with the reason how many frames land decides nothing it asserts --
+  and nothing else of the module is. `test_the_render_signal.py`'s anchors on
+  app.js's own lines are built so its strings hold no frame call. HELD:
+  `test_motion.py::test_the_fade_is_read_the_same_however_long_a_frame_takes`
+  and `test_smoke.py::test_the_sampler_sees_each_fade_begin_however_long_a_
+  frame_takes` (each at the fast rate), `test_the_clock.py::test_a_page_read_
+  frame_by_frame_is_named_and_held_only_by_its_name` and `::test_the_per_
+  frame_check_is_held_by_name_and_reads_no_fade_by_its_frames`. PLANTED:
+  `plant_a_fixed_wait_coming_back`'s two new forms, the fade sampler as the
+  change first left it and a sampler under a name no hold names.
+- **THE TWO CHIPS WERE NOT TESTED** (reading (b): "rebuilt ... on a
+  held-and-released response"). `test_rapid.py::test_two_chips_in_quick_
+  succession_leave_the_second_one` pressed its second chip 60ms after the
+  first by a timer in the page; as first rebuilt it pressed both in one
+  task, and the answers then came back in whatever order the server gave
+  them -- in the order asked, the first chip's render draws before the
+  second's. MEASURED (`vacuous_pairs.py`, a copy whose `renderProps` draws
+  the chip it was asked for, not the one chosen when its answer lands): the
+  test as first rebuilt PASSED there 3 of 3. REBUILT: both answers held
+  inside the page (`_HOLD_THE_SLATE`, the page's own `fetch` wrapped: a
+  Playwright route let go from the test releases them together, in the order
+  asked), the second chip's let go first and read (`wait_until_read`), then
+  the first chip's: on that copy it FAILS 3 of 3 ("assert 'passing_yards' ==
+  'receiving_yards'"), and passes on the page as shipped.
+
+AND ONE WORD PUT RIGHT: `RENDER_SIGNAL_EXEMPT["renderAccess"]` said that
+signing out everywhere draws nothing to wait for; it draws its line for the
+moment before the page goes to the sign-in screen, and the page leaving is the
+event (the reason now says so).
+
+FOR THE QUEUE (the queue rule's third clause, as the prover reads it; not
+built here): **Results draws one forecaster's rows under the other's
+choice.** `renderResults` drops no superseded answer within a sport and draws
+its Forecaster column by the select's value when the answer lands. MEASURED
+(`probe_results_stale.py`, held and released inside the page): a search
+typed, its answer held; the reasoning pass chosen, its table landed (1 row,
+"1 prediction"); the search's answer released after it -- the table then
+showed its 51 rows, 50 of them the statistical model's, under "reasoning
+pass", with no Forecaster column and the caption "51 predictions". A reader
+of that table reads the model's chances as the reasoning pass's. The tier
+table's twin (`refreshTierTable`) is not: its caption names the forecaster
+its numbers are.
+
+FOUND, NOT BUILT (none breaks LAW 1 or LAW 3, makes a gate count false, or
+could show a wrong number on a pick):
+- **The per-frame check's power still rides on frames.** On a page that
+  draws whole pixels it cannot go red however few frames land; a fault that
+  shows only between two frames is seen only where a frame lands. Reading
+  each arrival at fixed points of its own transitions (paused and sought, as
+  the fade is now read) would make it exact; not built -- question 20 ruled a
+  per-frame check, and it is held by name.
+- **`wait_until_read` reads a step taken in the answer's own continuations**
+  (a task after the page parsed it). A step the page takes after waiting on
+  something else is not seen by it; every use here (the live tick, the late
+  weeks list and slate, the two chips) acts on the answer in its
+  continuations.
+
+THE PROOFS (`q5\prover\`): `escape_head.txt` (the three Q5 plantings, this
+plant.py on a `git archive` of 56d65a4: each ESCAPES, every form unnamed),
+`escape_as_handed.txt` (on the change as first built: the prover's forms
+escape -- the frame forms unnamed, the bar's and the payout's anchors the
+shipped code itself, which its scan passed), `caught_here.txt` (each CAUGHT
+here), `new_tests_on_head.txt` and `new_tests_on_head_2.txt` (the prover's
+tests on 56d65a4 with this tree's tests: the six, the payout's redraw and the
+rebuilt two-chip test, each failed), `new_tests_as_handed.txt` (the seven on the change
+as first built: the five that test the page or the scans fail, the payout's
+redraw among them; the two that test a test's own reading pass there, as they
+must), `vac_settle_browser.txt`, `vac_two_chips.txt` (the two-chip test on a
+page drawing the chip asked for: as rebuilt here FAILS 3 of 3, as first
+rebuilt PASSES 3 of 3).
+
+THE RUNS, on the tree as committed (each detached, the shape of
+`c\prover\run_detached.ps1`, a dummy non-secret token, TMP/TEMP at their
+defaults; scratchpad `q5\prover\`): THE BROWSER TIER REPEATED (`run_flake.ps1`,
+`flake.txt`, exit 0 in 2,383 s): `test_the_render_signal.py`,
+`test_empty.py`, `test_every_control.py`, `test_hidden.py`, `test_motion.py`,
+`test_rapid.py`, `test_settled_line.py`, `test_cards.py`, `test_board.py`,
+`test_entry_check.py`, `test_smoke.py` and `test_the_clock.py` 5 runs of 5
+each, `test_prompt_disclosure.py` 10 of 10 -- 70 runs, every one passing
+(`test_guards.py`, changed only in its harness list and not of the browser
+tier, ran in each suite below). RENDERED (`render.py`, `compare.py`,
+`compare.txt`, `render\`): 56d65a4 (`git archive`) against this tree on the
+browser tests' world, Games, a row open, Props, the Kalshi ladder, Record,
+Results and Settings at 1300 and 390 -- 14 pairs, 0 pixels differ in any, the
+same words, width and height; read (`crops\`): the Games rows and the open
+row's bars drawn whole at 390, the Props payout panel, Results with both
+forecasters and at 390, the Record page's tier table, Settings at 390 -- the
+signal and the payout's refusal draw nothing new. `plant.py` WHOLE
+(`plant.txt`): 463/463 caught in 434 s (inside the harness's 600 s, short of
+480; the prover's forms add under a second). THE FULL SUITE, twice in a row
+(`suite1.txt`, `suite2.txt`): 3,276 passed, 4 skipped, 0 failed, in 1,615 s
+and 1,620 s (3,269 as handed: the seven tests above).
+`audit.prose_reaching_the_raw_side()` []. No copy of the record was made:
+nothing here reads it, and no schema changes.
+ *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
 
 "Q25: yes. The scan also refuses any code that turns the rules off by
 connection setting or registers a function under a built-in's name." "Q29:

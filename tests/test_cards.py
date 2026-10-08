@@ -21,7 +21,8 @@ import re
 import pytest
 
 from gridiron import audit
-from tests.conftest import wait_for_the_redraw_it_starts
+from tests.conftest import (wait_for_the_redraw_it_starts, wait_for_the_render,
+                            wait_until_read, watch_the_answers)
 
 #: THE THREE WIDTHS THE BRIEF NAMES. They are no longer three LAYOUTS -- they
 #: are three widths of one layout, which is the whole point of the change, so
@@ -215,13 +216,20 @@ def test_a_card_expands_in_place_and_shows_the_why(page):
     # card head that toggled an `open` class. The promise is R2's and is
     # unchanged -- the reasons are one tap away, they arrive, and the card
     # does not move under the reader while they do.
-    result = page.evaluate("""async () => {
-        const card = document.querySelector('#games-rows .game');
-        const before = card.getBoundingClientRect().top;
+    # THE ROW'S OWN EXPANSION, SAID LANDED (operator question 5, 2026-10-08):
+    # the card was read 250ms after the tap, by a timer in the page. The row
+    # opened says when what it shows has finished arriving.
+    assert page.evaluate("!!document.querySelector('#games-rows .game .game-head')"), \
+        "the card has no head to tap"
+    with wait_for_the_render(page, "games", "game-more"):
+        page.evaluate("""() => {
+            const card = document.querySelector('#games-rows .game');
+            window.__opened = { card: card, before: card.getBoundingClientRect().top };
+            card.querySelector('.game-head').click();
+        }""")
+    result = page.evaluate("""() => {
+        const { card, before } = window.__opened;
         const control = card.querySelector('.game-head');
-        if (!control) return {skip: true};
-        control.click();
-        await new Promise(r => setTimeout(r, 250));
         const body = card.querySelector('.game-more');
         return {
             open: !!(body && !body.hidden),
@@ -330,14 +338,29 @@ def test_the_grid_does_not_re_sort_while_a_slate_is_in_progress(page):
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/api/week*", _in_progress)
     page.route("**/api/live*", _one_final_pick)
+    # THE TICK'S ANSWER, READ BY THE PAGE (operator question 5, 2026-10-08):
+    # this waited 1.4s for the live poll's first tick to land. The tick
+    # patches scores in place and says nothing (it redraws nothing), so the
+    # wait is for the page to have read the tick's answer, watched from
+    # before the slate was asked; and a re-render on the tick would be a
+    # render asked after the slate's own, which the page's count shows. THE
+    # SLATE IS DRAWN AGAIN WHERE IT IS, through the routes, with nothing else
+    # in flight: `_open_week` went by way of the Record page, whose parts go
+    # on asking for renders of their own after the slate's.
+    watch_the_answers(page)
     try:
-        _open_week(page, WIDE)
+        page.set_viewport_size(WIDE)
+        with wait_for_the_render(page, "games"):
+            page.evaluate("() => { window.Gridiron.route(); }")
         if not seen["ids"] or not _cards(page):
             pytest.skip("no cards on this slate to tick")
+        slate = page.evaluate("window.__theRender.landed[0]")
         order_before = page.evaluate(
             """[...document.querySelectorAll('#games-rows .game')]
                  .map(c => c.dataset.game)""")
-        page.wait_for_timeout(1400)
+        wait_until_read(page, "/api/live")
+        assert page.evaluate("window.Gridiron.rendersAsked()") == slate, (
+            "the live tick asked the page to draw the slate again")
         order_after = page.evaluate(
             """[...document.querySelectorAll('#games-rows .game')]
                  .map(c => c.dataset.game)""")

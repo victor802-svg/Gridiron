@@ -7,14 +7,19 @@ These do: act, then assert a request was made or the region changed.
 """
 from __future__ import annotations
 
+from tests.conftest import wait_for_the_render
+
 WIDE = {"width": 1440, "height": 900}
 
 
 def _open_record(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/record'")
+    # THE RECORD PAGE, EVERY PART OF IT LANDED (operator question 5,
+    # 2026-10-08): this waited 300ms after the tier table's first row, which
+    # the page draws before the parts it fetches on its own.
+    with wait_for_the_render(page, "record"):
+        page.evaluate("location.hash = '#/record'")
     page.wait_for_selector("#tier-table tr", timeout=15000)
-    page.wait_for_timeout(300)
 
 
 def _caption(page):
@@ -31,10 +36,12 @@ def test_the_market_select_fetches_the_tier_table_it_names(page):
     assert len(options) >= 2, options
     seen = []
     for market in options[:3]:
-        with page.expect_response(lambda r, m=market: "/api/tier-table" in r.url and f"market={m}" in r.url, timeout=15000) as got:
+        # THE TABLE IT ASKED FOR, SAID LANDED (operator question 5,
+        # 2026-10-08): this waited 300ms after the answer arrived.
+        with wait_for_the_render(page, "record", "tier-table"), \
+                page.expect_response(lambda r, m=market: "/api/tier-table" in r.url and f"market={m}" in r.url, timeout=15000) as got:
             page.select_option("#tier-market", market)
         assert got.value.status == 200, got.value.url
-        page.wait_for_timeout(300)
         caption = _caption(page)
         assert _label(page, market) in caption, f"the caption {caption!r} does not name {market!r}"
         assert page.evaluate("document.querySelectorAll('#tier-table tbody tr, #tier-table tr').length") >= 2
@@ -47,15 +54,17 @@ def test_the_forecaster_picker_fetches_the_tier_table_it_names(page):
     labels = page.evaluate("[...document.querySelectorAll('#forecaster-picker button')].map(b => [b.textContent.trim(), b.dataset.forecaster])")
     assert len(labels) == 2, labels
     other_label, other = next((l, f) for l, f in labels if f != "statistical")
-    with page.expect_response(lambda r: "/api/tier-table" in r.url and f"forecaster={other}" in r.url, timeout=15000) as got:
+    # THE FORECASTER'S TABLE, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 300ms after each answer arrived.
+    with wait_for_the_render(page, "record", "tier-table"), \
+            page.expect_response(lambda r: "/api/tier-table" in r.url and f"forecaster={other}" in r.url, timeout=15000) as got:
         page.click(f"#forecaster-picker button[data-forecaster='{other}']")
     assert got.value.status == 200
-    page.wait_for_timeout(300)
     assert page.get_attribute(f"#forecaster-picker button[data-forecaster='{other}']", "aria-pressed") == "true"
     assert other_label in _caption(page), _caption(page)
-    with page.expect_response(lambda r: "/api/tier-table" in r.url and "forecaster=statistical" in r.url, timeout=15000):
+    with wait_for_the_render(page, "record", "tier-table"), \
+            page.expect_response(lambda r: "/api/tier-table" in r.url and "forecaster=statistical" in r.url, timeout=15000):
         page.click("#forecaster-picker button[data-forecaster='statistical']")
-    page.wait_for_timeout(300)
     assert "statistical" in _caption(page)
 
 
@@ -70,40 +79,47 @@ def test_every_record_control_asks_or_changes_something(page):
     """The generic form of the class: act on each control, and something the
     control governs must follow -- a request, or a change in its region."""
     _open_record(page)
+    # EACH CONTROL'S REDRAW, SAID LANDED (operator question 5, 2026-10-08):
+    # the chart selects draw the whole page again, the market select its
+    # table, the search its cards; this waited 200ms and 300ms.
     checks = [
-        ("#chart-market", "select", "/api/over-time"),
-        ("#chart-predictor", "select", "/api/over-time"),
-        ("#tier-market", "select", "/api/tier-table"),
+        ("#chart-market", "select", "/api/over-time", "view-record"),
+        ("#chart-predictor", "select", "/api/over-time", "view-record"),
+        ("#tier-market", "select", "/api/tier-table", "tier-table"),
     ]
-    for selector, kind, expected_url in checks:
+    for selector, kind, expected_url, panel in checks:
         options = page.evaluate(f"[...document.querySelectorAll('{selector} option')].map(o => o.value)")
         current = page.evaluate(f"document.querySelector('{selector}').value")
         target = next(o for o in options if o != current)
-        with page.expect_response(lambda r, u=expected_url: u in r.url, timeout=15000):
+        with wait_for_the_render(page, "record", panel), \
+                page.expect_response(lambda r, u=expected_url: u in r.url, timeout=15000):
             page.select_option(selector, target)
-        page.wait_for_timeout(200)
     before = page.evaluate("[...document.querySelectorAll('#factors-cards > *')].filter(c => getComputedStyle(c).display !== 'none').length")
-    page.fill("#factors-search", "zzzz-no-such-factor")
-    page.wait_for_timeout(300)
+    with wait_for_the_render(page, "record", "factors-cards"):
+        page.fill("#factors-search", "zzzz-no-such-factor")
     after = page.evaluate("[...document.querySelectorAll('#factors-cards > *')].filter(c => getComputedStyle(c).display !== 'none').length")
     assert after < before, "the factor search changed nothing"
-    page.fill("#factors-search", "")
+    with wait_for_the_render(page, "record", "factors-cards"):
+        page.fill("#factors-search", "")
 
 
 def test_a_settings_switch_reads_what_it_saved(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/settings'")
+    # SETTINGS, AND THEN THE SAVE'S OWN ROW, EACH SAID LANDED (operator
+    # question 5, 2026-10-08): this waited 300ms after the switches appeared,
+    # after the save's answer arrived, and after putting it back.
+    with wait_for_the_render(page, "settings"):
+        page.evaluate("location.hash = '#/settings'")
     page.wait_for_selector("#settings-sections .set-switch", timeout=15000)
-    page.wait_for_timeout(300)
     before = page.get_attribute("#settings-sections .set-switch >> nth=0", "aria-pressed")
     word = page.text_content("#settings-sections .set-switch >> nth=0").strip()
     assert (before == "true") == (word == "on")
     want = "false" if before == "true" else "true"
     try:
-        with page.expect_response(lambda r: "/api/settings" in r.url and r.request.method == "POST", timeout=15000) as got:
+        with wait_for_the_render(page, "settings", "settings-row"), \
+                page.expect_response(lambda r: "/api/settings" in r.url and r.request.method == "POST", timeout=15000) as got:
             page.click("#settings-sections .set-switch >> nth=0")
         assert got.value.status == 200
-        page.wait_for_timeout(300)
         assert page.get_attribute("#settings-sections .set-switch >> nth=0", "aria-pressed") == want, "the switch face ignored its own save"
         assert page.text_content("#settings-sections .set-switch >> nth=0").strip() == ("on" if want == "true" else "off")
         line = page.evaluate("(() => { const b = document.querySelector('#settings-sections .set-switch'); const s = b.closest('.set').querySelector('.set-said'); return s ? s.textContent : ''; })()")
@@ -116,7 +132,7 @@ def test_a_settings_switch_reads_what_it_saved(page):
     finally:
         # put the shared world back the way it was
         if page.get_attribute("#settings-sections .set-switch >> nth=0", "aria-pressed") != before:
-            with page.expect_response(lambda r: "/api/settings" in r.url and r.request.method == "POST", timeout=15000):
+            with wait_for_the_render(page, "settings", "settings-row"), \
+                    page.expect_response(lambda r: "/api/settings" in r.url and r.request.method == "POST", timeout=15000):
                 page.click("#settings-sections .set-switch >> nth=0")
-            page.wait_for_timeout(300)
     assert page.get_attribute("#settings-sections .set-switch >> nth=0", "aria-pressed") == before

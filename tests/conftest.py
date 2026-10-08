@@ -850,7 +850,13 @@ def page(served, _browser):
     # /login and every assertion below fails for the wrong reason. It also
     # means the login flow is exercised by every browser test rather than
     # only by the one that names it.
-    page.goto(served + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT (operator question 5, 2026-10-08):
+    # `networkidle` waited for half a second with no request -- a duration by
+    # the clock -- and the sign-in needs nothing the page fetches after its
+    # load (its glance of the record draws beside the form, which Playwright
+    # waits for before it types: an upper limit). Every sign-in in the tests
+    # is the same.
+    page.goto(served + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
@@ -931,99 +937,243 @@ def page(served, _browser):
 # is still running, and can wait for more than one arrival. It is also what
 # every fixed wait the board brought into the browser tests was rebuilt on
 # (the clock register, `audit.ELAPSED_TIME_HELD`, only shrinks).
+#
+# REBUILT ON THE PAGE'S OWN SIGNAL (operator question 5, ruled (A) on
+# 2026-09-27, second set: "After the merge: the app emits a render-finished
+# signal, every fixed wait is rebuilt on it, on a held-and-released response
+# or on page.clock; upper-limit timeouts stay."; built 2026-10-08). The page
+# dispatches `gridiron:rendered` once a render it started has landed -- its
+# DOM written and its arrival ended, read the way this helper read it -- and
+# the event names the view, the panel and the render's COUNT, its place in
+# the order the page asked for renders. `wait_for_the_render` arms on the
+# page's count of renders asked so far and waits for a render asked after
+# it: a render asked before arming that lands after it is not taken, which
+# closes the one early pass question 28's prover could build (its window is
+# gone, not merely unreachable). `wait_for_the_redraw_it_starts` IS KEPT AS
+# A THIN WRAPPER of it, its panel naming the view (the Games rows, the Props
+# tiles), so its forty-odd callers read as they did. Every fixed wait the
+# tests held for question 5 is rebuilt on it, on an answer held and released
+# (`HeldAnswers`), or on the page's own reading of an answer
+# (`watch_the_answers`), and the register is empty and pinned.
 
-#: Installed before the action. `window.__theRedraw.done` once the arrival
-#: the action started has ended. THE GAMES ROWS BY DEFAULT (the board merge,
-#: 2026-09-29): the Today panel this watched left with the old Picks route,
-#: and `renderGames` arrives `#games-rows` on every render of the slate, as
-#: `renderProps` arrives `#props-tiles`; the panel is the first argument. AND
-#: ITS ROWS' OWN FADES: each row and tile fades in on a stagger of its own
-#: inside the panel, so an arrival has ended when nothing inside the panel is
-#: still running -- the live mark's pulse, the one loop, excepted. AND HOW
-#: MANY (2026-09-29): an action that asks for the slate twice -- a chip
-#: pressed twice, two chips in quick succession -- starts two arrivals, and
-#: the second argument says how many to see start before the last one's end
-#: counts.
-_ARM_THE_REDRAW = """([panelId, count]) => {
-    const panel = document.getElementById(panelId);
-    if (!panel) throw new Error('there is no #' + panelId + ' on this page to redraw');
-    const redraw = { started: false, starts: 0, done: false, frames: 0 };
-    window.__theRedraw = redraw;
-    const arriving = value => (' ' + (value || '') + ' ').includes(' arriving ');
-    const moving = () => panel.getAnimations({ subtree: true }).some(a => {
-        const timing = a.effect && a.effect.getComputedTiming();
-        return !timing || timing.iterations !== Infinity;
-    });
-    let ticking = false;
-    const tick = () => {
-        redraw.frames += 1;
-        if (panel.classList.contains('arriving') || moving()) {
-            requestAnimationFrame(tick);
-        } else if (redraw.starts >= count) {
-            redraw.done = true;
-            watch.disconnect();
-        } else {
-            ticking = false;
+#: THE EVENT the page dispatches on its document when a render it started
+#: has landed (operator question 5, 2026-10-08; `rendered` in app.js).
+RENDER_SIGNAL = "gridiron:rendered"
+
+#: EACH VIEW'S OWN PANEL: what a view's render draws and says it drew, and so
+#: what a wait on the view waits for unless it names another panel -- the
+#: greeting, the tier table, the prompt list, the factor search, a setting's
+#: row, the entry check's or the deposit match's answer, a row or a prompt
+#: opened.
+VIEW_PANELS = {
+    "games": "games-rows",
+    "props": "props-tiles",
+    "record": "view-record",
+    "results": "history-table",
+    "settings": "settings-sections",
+}
+
+#: Installed before the action (operator question 5, 2026-10-08). It reads
+#: the page's count of renders asked so far, then hears every signal and
+#: keeps those of a render asked AFTER it -- a render asked before arming
+#: that lands after it is not the action's, and is not taken -- and is done
+#: once `count` of them name the view and the panel asked for. What else
+#: landed meanwhile is kept, for the words if nothing it waits for does.
+_ARM_THE_RENDER = """([signal, view, panel, count]) => {
+    const page = window.Gridiron;
+    if (!page || typeof page.rendersAsked !== 'function') {
+        throw new Error('this page says nothing when a render lands');
+    }
+    const armed = page.rendersAsked();
+    const seen = { armed: armed, landed: [], others: [], done: false };
+    // ONE RECORD PER ARMING, so a wait armed inside another's block keeps
+    // its own; `__theRender` is the latest, for the test that armed it.
+    window.__theRenders = window.__theRenders || [];
+    window.__theRenders.push(seen);
+    window.__theRender = seen;
+    const hear = (event) => {
+        const d = event.detail || {};
+        if (!(d.count > armed)) return;
+        if (d.view !== view || d.panel !== panel) {
+            seen.others.push([d.view, d.panel, d.count]);
+            return;
+        }
+        seen.landed.push(d.count);
+        if (seen.landed.length >= count) {
+            seen.done = true;
+            document.removeEventListener(signal, hear);
         }
     };
-    const watch = new MutationObserver(records => {
-        // A record carries the class as it WAS; as it became is the next
-        // record's old value, or the attribute now for the last one. A start
-        // is the class going on, never the class coming off.
-        records.forEach((m, i) => {
-            const now = i + 1 < records.length ? records[i + 1].oldValue
-                                               : panel.getAttribute('class');
-            if (arriving(now) && !arriving(m.oldValue)) redraw.starts += 1;
-        });
-        if (!redraw.starts) return;
-        redraw.started = true;
-        if (!ticking) { ticking = true; requestAnimationFrame(tick); }
-    });
-    watch.observe(panel, { attributes: true, attributeFilter: ['class'],
-                           attributeOldValue: true });
+    document.addEventListener(signal, hear);
+    return window.__theRenders.length - 1;
 }"""
 
-#: The upper limit on a redraw arriving, in milliseconds: the one the slate's
-#: own waits use. A redraw that arrives in 50ms returns in 50ms.
+#: The upper limit on a render landing, in milliseconds: the one the slate's
+#: own waits use. A render that lands in 50ms returns in 50ms.
 REDRAW_LIMIT_MS = 15000
 
 
 @contextlib.contextmanager
-def wait_for_the_redraw_it_starts(page, panel: str = "games-rows", count: int = 1):
-    """Arm on entering, do the action that redraws the slate inside the
-    block, and on leaving it wait INSIDE THE PAGE until that redraw's arrival
-    has started and ended (operator question 28, 2026-09-28; Q5's
-    render-finished signal replaces this).
+def wait_for_the_render(page, view: str, panel: str | None = None, count: int = 1):
+    """Arm on entering, do the action that starts a render inside the block,
+    and on leaving it wait INSIDE THE PAGE until the page says that render
+    has landed -- its DOM written and its arrival ended (operator question 5,
+    ruled (A) on 2026-09-27; built 2026-10-08).
 
-        with wait_for_the_redraw_it_starts(page):
-            page.evaluate("location.hash = '#/games'")
+        with wait_for_the_render(page, "results"):
+            page.select_option("#history-predictor", "llm")
 
-    `panel` is the id of what arrives -- the Games rows by default, the Props
-    tiles as `"props-tiles"` (the board merge, 2026-09-29: the Today panel it
-    watched until then left with the old Picks route) -- and `count` how many
-    arrivals the action starts, for one that asks twice (a chip pressed
-    twice). An action that starts no redraw of the panel fails by name at the
-    upper limit, rather than passing on the render before it. Arm it with no
-    other redraw of the slate pending, as every caller does (after `ready`):
-    the first arrivals after arming are taken as the action's."""
-    page.evaluate(_ARM_THE_REDRAW, [panel, count])
+    `view` is the view the render's signal names, and `panel` what it drew --
+    the view's own panel by default (`VIEW_PANELS`); `count` how many renders
+    of it the action asks for (a chip pressed twice asks two). Only a render
+    asked after arming is taken. An action that starts no render of the
+    panel fails by name at the upper limit, rather than passing on the render
+    before it: setting the hash to what it already is fires no hashchange and
+    redraws nothing."""
+    panel = panel or VIEW_PANELS[view]
+    armed = page.evaluate(_ARM_THE_RENDER, [RENDER_SIGNAL, view, panel, count])
     yield
     try:
         page.wait_for_function(
-            "() => !!window.__theRedraw && window.__theRedraw.done",
-            timeout=REDRAW_LIMIT_MS)
+            "(i) => !!window.__theRenders && window.__theRenders[i].done",
+            arg=armed, timeout=REDRAW_LIMIT_MS)
     except playwright_api.TimeoutError:
-        seen = page.evaluate("window.__theRedraw || null") or {}
+        seen = page.evaluate("(i) => (window.__theRenders || [])[i] || null", armed) or {}
         raise AssertionError(
-            "THE REDRAW THIS TEST STARTED "
-            + ("NEVER ENDED" if seen.get("started") else "NEVER STARTED")
-            + f" within the {REDRAW_LIMIT_MS}ms upper limit: #{panel}'s "
-            f"arrival was {'seen to start' if seen.get('started') else 'not seen'}"
-            f" ({seen.get('starts', 0)} of {count} started, {seen.get('frames', 0)}"
-            f" frames read after it). The action inside "
-            f"`wait_for_the_redraw_it_starts` must redraw the slate -- setting "
-            f"the hash to what it already is fires no hashchange and redraws "
-            f"nothing.") from None
+            f"THE RENDER THIS TEST STARTED NEVER SAID IT HAD LANDED within the "
+            f"{REDRAW_LIMIT_MS}ms upper limit: {len(seen.get('landed', []))} of "
+            f"{count} renders of the {view} view's {panel} asked after render "
+            f"{seen.get('armed')} landed; meanwhile {seen.get('others', [])} "
+            f"(view, panel, count). The action inside the wait must start a "
+            f"render of what it names.") from None
+
+
+@contextlib.contextmanager
+def wait_for_the_redraw_it_starts(page, panel: str = "games-rows", count: int = 1):
+    """A THIN WRAPPER OF `wait_for_the_render` (operator question 5,
+    2026-10-08): the panel names the view -- the Games rows by default, the
+    Props tiles as `"props-tiles"` -- and the wait is the page's own signal
+    that the render it asked for after arming has landed, its arrival ended.
+    Until then it watched the panel's arrival class inside the page
+    (operator question 28, 2026-09-28: "Q5's signal replaces it later"), and
+    took the first arrivals after arming as the action's, whichever render
+    they were.
+
+        with wait_for_the_redraw_it_starts(page):
+            page.evaluate("location.hash = '#/games'")
+    """
+    view = next(v for v, p in VIEW_PANELS.items() if p == panel)
+    with wait_for_the_render(page, view, panel, count):
+        yield
+
+
+# ---------------------------------------------------------------------------
+# AN ANSWER THE PAGE HAS READ, AND AN ANSWER HELD
+# ---------------------------------------------------------------------------
+#
+# Operator question 5 (2026-10-08): "every fixed wait is rebuilt on it, on a
+# held-and-released response or on page.clock". A render that lands says so;
+# an answer that lands NOTHING -- a late answer the page must drop, the live
+# tick's patch, which redraws nothing -- is waited for inside the page: the
+# page's own `fetch` is watched from before the action, and an answer counts
+# as READ once the page has parsed it and a task has passed, so every step
+# the page takes on it before its next task (its continuations are
+# microtasks) has run. Nothing waits a fixed time; the one limit is an upper
+# one. What it cannot see: a step the page takes on an answer after waiting
+# on something else (another answer, a frame) -- for those, the render's own
+# signal, or the page's count of renders asked (`Gridiron.rendersAsked`),
+# which moves the moment a render is asked.
+
+_WATCH_THE_ANSWERS = """() => {
+    if (window.__theAnswers) return;
+    const seen = window.__theAnswers = { asked: [], answered: [], read: [] };
+    const ask = window.fetch;
+    window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : ((input && input.url) || String(input));
+        seen.asked.push(url);
+        return ask.apply(this, arguments).then(res => {
+            seen.answered.push([url, res.status]);
+            const json = res.json.bind(res);
+            res.json = () => json().then(body => {
+                // A TASK LATER: every continuation of this answer has run.
+                const after = new MessageChannel();
+                after.port1.onmessage = () => { seen.read.push(url); after.port1.close(); };
+                after.port2.postMessage(null);
+                return body;
+            });
+            return res;
+        });
+    };
+}"""
+
+
+def watch_the_answers(page) -> None:
+    """Watch the page's own requests from now on (operator question 5,
+    2026-10-08): `window.__theAnswers` lists every request it asks, each
+    answer's status, and each answer it has read. Call it before the action
+    whose answers matter."""
+    page.evaluate(_WATCH_THE_ANSWERS)
+
+
+def requests_asked(page, *parts: str) -> list[str]:
+    """Every request the page asked since `watch_the_answers` whose address
+    holds each of `parts`."""
+    asked = page.evaluate("(window.__theAnswers || {asked: []}).asked")
+    return [u for u in asked if all(p in u for p in parts)]
+
+
+def wait_until_read(page, *parts: str, count: int = 1) -> None:
+    """Wait inside the page until it has read `count` answers whose address
+    holds each of `parts` (watched since `watch_the_answers`)."""
+    try:
+        page.wait_for_function(
+            """([parts, count]) => ((window.__theAnswers || {read: []}).read
+                 .filter(u => parts.every(p => u.includes(p))).length >= count)""",
+            arg=[list(parts), count], timeout=REDRAW_LIMIT_MS)
+    except playwright_api.TimeoutError:
+        seen = page.evaluate("window.__theAnswers || null") or {}
+        raise AssertionError(
+            f"THE PAGE NEVER READ {count} answer(s) to a request holding "
+            f"{list(parts)} within the {REDRAW_LIMIT_MS}ms upper limit: it "
+            f"asked {seen.get('asked', [])} and read {seen.get('read', [])}"
+        ) from None
+
+
+class HeldAnswers:
+    """Every answer to a request the pattern matches, HELD until the test
+    releases it (operator question 5, 2026-10-08: "a held-and-released
+    response"). A late answer is made late by the test, at the moment the
+    test chooses, never by a sleep in a route handler (`test_rapid.py` held
+    one with `time.sleep(1.2)` until then).
+
+        held = HeldAnswers(page, f"**/api/week?*sport={full}*")
+        ... the action that asks, then whatever must happen first ...
+        held.release()             # the answers go on, in the order asked
+        wait_until_read(page, "/api/week?", f"sport={full}")
+        held.close()
+    """
+
+    def __init__(self, page, url):
+        self.page = page
+        self.url = url
+        self.held: list = []
+        watch_the_answers(page)
+        page.route(url, self._hold)
+
+    def _hold(self, route):
+        self.held.append(route)
+
+    def release(self) -> int:
+        """Let every held answer go on; how many there were."""
+        routes, self.held = self.held, []
+        for route in routes:
+            route.continue_()
+        return len(routes)
+
+    def close(self) -> None:
+        """Stop holding, letting anything still held go on first."""
+        self.release()
+        self.page.unroute(self.url, self._hold)
 
 # ---------------------------------------------------------------------------
 # THE NETWORK IS SHUT UNLESS A TEST SAYS OTHERWISE

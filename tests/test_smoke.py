@@ -27,7 +27,7 @@ import pytest
 from gridiron import config, api, auth, resolve, run
 from gridiron.factors import store
 from gridiron.model import baseline
-from tests.conftest import wait_for_the_redraw_it_starts
+from tests.conftest import wait_for_the_redraw_it_starts, wait_for_the_render
 
 playwright_api = pytest.importorskip(
     "playwright.sync_api", reason="playwright is not installed"
@@ -151,7 +151,11 @@ def test_every_screen_renders(page):
         # table and the calibration chart moved to "How the model works".
         ("#/record", "#tier-table tbody tr"),
     ):
-        page.evaluate(f"location.hash = '{route}'")
+        # EACH SCREEN'S OWN RENDER, SAID LANDED (operator question 5,
+        # 2026-10-08), so a console error from a part still in flight is in
+        # the list read below, and the second Record visit's rows are its own.
+        with wait_for_the_render(page, route.split("/")[-1]):
+            page.evaluate(f"location.hash = '{route}'")
         page.wait_for_selector(selector, timeout=10000)
         assert page.locator(selector).count() > 0, route
     assert page.console_errors == [], f"console errors while navigating: {page.console_errors}"
@@ -170,12 +174,21 @@ def _open_route(target, route):
     this route is actually on screen -- so waiting for it is both faster and
     more honest.
     """
-    target.evaluate(f"location.hash = '{route}'")
     # THE EMPTY ROUTE IS PICKS since GRIDIRON_13 P6, and this helper had its
     # own copy of the default -- so `_open_route(page, "")` waited for a view
     # the app no longer opens on. A default written down twice is a default
     # that goes stale in one of the two places.
     name = (route.rsplit("/", 1)[-1] or "games")
+    # AND FOR THE VIEW'S OWN RENDER, SAID LANDED, every part of it (operator
+    # question 5, 2026-10-08): the view on screen is not the view drawn. The
+    # Record page shows itself before the parts it fetches on its own, and
+    # `test_the_weekly_strip_renders_with_hit_targets` read the weekly strip
+    # blank 3 times in 4 run alone (2026-09-30) -- its canvas read while its
+    # answer was in flight. A hash that does not change asks no render, and
+    # there is then none of this test's to wait for.
+    if target.evaluate("location.hash") != route:
+        with wait_for_the_render(target, name):
+            target.evaluate(f"location.hash = '{route}'")
     target.wait_for_function(
         """(id) => {
             if (document.body.dataset.ready !== 'true') return false;
@@ -457,7 +470,9 @@ def test_nothing_moves_under_reduced_motion(served, _browser):
     # /login and every assertion below fails for the wrong reason. It also
     # means the login flow is exercised by every browser test rather than
     # only by the one that names it.
-    page.goto(served + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(served + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
@@ -514,7 +529,9 @@ def test_the_phone_layout_does_not_overflow(served, _browser):
     # /login and every assertion below fails for the wrong reason. It also
     # means the login flow is exercised by every browser test rather than
     # only by the one that names it.
-    page.goto(served + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(served + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
@@ -655,7 +672,10 @@ def test_a_fresh_browser_is_sent_to_login_and_can_sign_in(served, _browser):
     page = context.new_page()
 
     # 1. a fresh browser cannot see the app
-    page.goto(served + "/", wait_until="networkidle")
+    # THE PAGE IT IS SENT TO, LOADED: an event, not half a second of network
+    # quiet (operator question 5, 2026-10-08). The redirect is the server's,
+    # so the load is the sign-in page's.
+    page.goto(served + "/")
     assert page.url.endswith("/login"), f"landed on {page.url} without signing in"
     assert "access token" in page.inner_text("body").lower()
 
@@ -696,7 +716,9 @@ def phone(served, _browser):
         has_touch=True,
     )
     page = context.new_page()
-    page.goto(served + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(served + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(served + "/", timeout=15000)
@@ -734,12 +756,18 @@ def test_the_sport_tabs_are_reachable_and_tappable(phone):
     #
     # The counts are stretched to the longest realistic form and the layout is
     # asked to cope. This tests the LAYOUT, which is what was broken.
-    phone.evaluate("""() => {
+    # THE TEST'S OWN REWRITE, LAID OUT WHEN IT IS MEASURED (operator question
+    # 5, 2026-10-08): this waited 120ms. Nothing of the page's is waited for --
+    # the rewrite is the test's, made in one task -- the tabs carry no
+    # transition, and reading a box lays the page out; what can still change
+    # a width afterwards is a font arriving, so the fonts' own readiness is
+    # awaited, an event.
+    phone.evaluate("""async () => {
         document.querySelectorAll('#sport-tabs .tab-n').forEach(n => {
             n.textContent = '00-00';
         });
+        await document.fonts.ready;
     }""")
-    phone.wait_for_timeout(120)
 
     width = phone.evaluate("window.innerWidth")
     for tab in tabs:
@@ -816,10 +844,19 @@ ARRIVAL_ROUNDS = 2
 #: height on every animation frame after it, and ends on the arrival's own
 #: end: the class gone and nothing inside the panel still running but the
 #: live mark's pulse. No clock is read and nothing waits a fixed time; the
-#: caller's only limit is an upper one.
+#: caller's only limit is an upper one. HOW MANY FRAMES LAND DECIDES NOTHING
+#: IT ASSERTS (question 5's prover, 2026-10-08): on a page drawing whole
+#: pixels every frame reads whole however many land, and that an arrival was
+#: watched is read off its first frame -- the one in which the class comes
+#: off, which always sees the fade begin (`moved`). It asked that some frame
+#: read the panel mid-fade (`fading`, kept as a count), which a frame does
+#: only if frames come faster than the fade: with the document's timeline run
+#: fast it read none, and the test went red on a page that arrives as ruled.
+#: The scan of the clock reads this sampler and holds it by name
+#: (`audit.ELAPSED_TIME_EXEMPT`).
 WATCH_ONE_ARRIVAL = """([SEL, after, panelId]) => {
     const panel = document.getElementById(panelId);
-    const out = { after, frames: 0, fading: 0, measured: 0, controls: 0,
+    const out = { after, frames: 0, fading: 0, moved: 0, measured: 0, controls: 0,
                   readings: [], done: false };
     window.__arrival = out;
     const describe = el => {
@@ -856,7 +893,9 @@ WATCH_ONE_ARRIVAL = """([SEL, after, panelId]) => {
         const tick = () => {
             out.frames += 1;
             sample(out.frames);
-            if (panel.classList.contains('arriving') || moving()) {
+            const running = moving();
+            if (running) out.moved += 1;
+            if (panel.classList.contains('arriving') || running) {
                 requestAnimationFrame(tick);
             } else {
                 out.done = true;
@@ -924,14 +963,18 @@ def test_no_tap_target_leaves_whole_pixels_on_any_frame_of_the_slates_arrival(ph
             f"the props chip {key or 'all'!r} was pressed", panel="props-tiles"))
 
     # IT LOOKED AT SOMETHING MOVING: every arrival was sampled, the whole
-    # slate's row controls were among what it measured, and frames were read
-    # mid-fade.
+    # slate's row controls were among what it measured, and each arrival's
+    # fade was seen running -- on its first frame, which always sees it begin
+    # (question 5's prover, 2026-10-08: it asked that some frame read a panel
+    # mid-fade, which rode on frames coming faster than the fade).
     assert all(a["frames"] > 0 for a in arrivals), arrivals
     assert arrivals[0]["controls"] > 0, (
         "the whole slate arrived with no tap target inside the Games rows, "
         "so no row's controls were measured")
-    assert sum(a["fading"] for a in arrivals) > 0, (
-        "no frame was read while a panel faded in, so no arrival was watched")
+    unseen = [a["after"] for a in arrivals if not a["moved"]]
+    assert not unseen, (
+        f"no fade was seen running on the arrival after {unseen[:3]}, so it "
+        f"was not watched")
 
     off = [f"{r['what']}, {r['y']}px down the page, read {r['h']!r}px on "
            f"frame {r['frame']} of the arrival after {a['after']}"
@@ -943,6 +986,35 @@ def test_no_tap_target_leaves_whole_pixels_on_any_frame_of_the_slates_arrival(ph
         f"arrivals at 390px, three device pixels to one). A panel must "
         f"arrive by its fade alone (operator question 20, 2026-09-27):\n"
         + "\n".join(off[:12]))
+
+
+def test_the_sampler_sees_each_fade_begin_however_long_a_frame_takes(page):
+    """WHAT THE PER-FRAME CHECK ASSERTS RIDES ON NO CLOCK (question 5's prover,
+    2026-10-08; schema ruling 5). One arrival of the Games rows watched with
+    the document's timeline run a thousand times fast through the DevTools
+    protocol (`Animation.setPlaybackRate`), so each 200ms fade ends inside a
+    single frame -- what a renderer stalled for 200ms looks like to a
+    sampler. The fade is still seen running, on the frame the arrival class
+    comes off; the reading it replaced (a frame mid-fade) found none there
+    (scratchpad q5/prover/probe_fade_tree.txt, the same sampler's reading)."""
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
+    markets = page.evaluate(
+        "[...document.querySelectorAll('#week-market option')].map(o => o.value)")
+    assert len(markets) > 1, markets
+    cdp = page.context.new_cdp_session(page)
+    try:
+        cdp.send("Animation.enable")
+        cdp.send("Animation.setPlaybackRate", {"playbackRate": 1000})
+        arrival = _watch_one_arrival(
+            page, lambda: page.select_option("#week-market", markets[1]),
+            "a market chosen with the timeline run fast")
+    finally:
+        cdp.send("Animation.setPlaybackRate", {"playbackRate": 1})
+        cdp.detach()
+    assert arrival["frames"] > 0 and arrival["moved"] > 0, arrival
+    with wait_for_the_render(page, "games"):
+        page.select_option("#week-market", markets[0])
 
 
 # --- every tap target on every board view, links included (the merge) --------
@@ -1187,7 +1259,8 @@ def test_the_first_load_placeholder_draws_no_control_it_cannot_act_with(served, 
     held = []
     try:
         page.route(_THE_SLATE, lambda route: held.append(route))
-        page.goto(served + "/login", wait_until="networkidle")
+        # THE SIGN-IN PAGE'S LOAD, AN EVENT (operator question 5, 2026-10-08).
+        page.goto(served + "/login")
         page.fill("#token", SMOKE_TOKEN)
         # THE SLATE HAS BEEN ASKED FOR AND IS HELD: the page has drawn all it
         # will draw before its first answer once that request is out.
@@ -1280,7 +1353,8 @@ def phone_in_play(_world_in_play, _shared_world, _browser):
     os.environ[auth.TOKEN_VAR] = SMOKE_TOKEN
     context = _phone_context(_browser)
     page = context.new_page()
-    page.goto(_world_in_play["base"] + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT (operator question 5, 2026-10-08).
+    page.goto(_world_in_play["base"] + "/login")
     page.fill("#token", SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(_world_in_play["base"] + "/", timeout=15000)

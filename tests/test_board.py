@@ -307,7 +307,11 @@ def test_a_settled_pick_is_painted_solid_and_its_words_are_ink(page):
     _open_games(page)
     page.evaluate("document.querySelector('.week-more').open = true")
     options = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.value)")
-    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+    # THE PICKED SLATE, SAID LANDED, BEFORE ITS ROW IS TAPPED (operator
+    # question 5, 2026-10-08): a final row of the slate before it would have
+    # met the wait below, and the tap landed on a row its redraw replaced.
+    from tests.conftest import wait_for_the_render
+    with wait_for_the_render(page, "games"):
         page.select_option("#week-picker", options[-1])
     page.wait_for_selector("#games-rows .game.game-final", timeout=15000)
     page.click("#games-rows .game .game-head")
@@ -672,12 +676,20 @@ def test_sort_and_filter_persist_and_the_clears_filter_speaks_when_empty(page):
 
 
 def test_a_my_day_chip_scrolls_to_its_game(page):
+    from tests.conftest import wait_for_the_render
+
     page.set_viewport_size({"width": 1300, "height": 500})
-    page.evaluate("location.hash = '#/games'")
+    # THE HASH'S OWN SLATE, SAID LANDED, BEFORE A ROW'S MARK IS TAPPED, AND
+    # THE TAP'S OWN REDRAW BEFORE ITS CHIP IS (operator question 5,
+    # 2026-10-08): the rows the boot drew met the wait, and the tap could
+    # land on a row the hash's redraw was about to replace.
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game", timeout=15000)
     chip = page.query_selector("#my-day .my-chip:not(.sig-won):not(.sig-lost)")
     if chip is None:
-        with page.expect_response(lambda r: "/api/taken/" in r.url, timeout=20000):
+        with wait_for_the_render(page, "games"), \
+                page.expect_response(lambda r: "/api/taken/" in r.url, timeout=20000):
             page.click("#games-rows .game[data-state='upcoming'] .meta .chk")
         page.wait_for_selector("#my-day .my-chip", timeout=15000)
     page.evaluate("window.scrollTo(0, 0)")
@@ -699,30 +711,43 @@ def test_stale_rows_never_read_as_settled_while_a_new_slate_is_fetched(page):
     answer then replaced under them, and two tests measured exactly that.
     RULED the same day: the previous rows stay on screen, dimmed, untouchable
     and marked busy, with an "updating" label, until the new ones land."""
+    from tests.conftest import wait_for_the_render
+
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/games'")
+    # EACH SLATE SAID LANDED (operator question 5, 2026-10-08): the hash's
+    # own, before anything is held; and the held one, asked inside the wait,
+    # seen dimmed while it is held, and said landed once released. The rows
+    # the boot drew met the first wait until then, and the held render was
+    # waited for by its class and its opacity.
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game", timeout=15000)
     page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)
     held = []
-    page.route("**/api/week*", lambda route: held.append(route))
-    page.evaluate("location.hash = '#/record'")
+    # `/api/week` and `/api/week?…` only: the Record page's worked example
+    # asks for the slate too, and it is not the render this test holds.
+    week = re.compile(r"/api/week(\?|$)")
+    with wait_for_the_render(page, "record"):
+        page.evaluate("location.hash = '#/record'")
     # THE RECORD PAGE IS ON SCREEN, read off the page (the board merge,
     # 2026-09-29): this waited 200ms for the route to change.
     page.wait_for_selector("#view-record:not([hidden])", timeout=10000)
-    page.evaluate("location.hash = '#/games'")
-    page.wait_for_function("document.getElementById('games-rows').classList.contains('updating')", timeout=5000)
-    probe = page.evaluate("""() => { const rows = document.getElementById('games-rows');
-        const cs = getComputedStyle(rows);
-        return { rows: rows.querySelectorAll('.game').length, opacity: cs.opacity, pointer: cs.pointerEvents,
-                 busy: rows.getAttribute('aria-busy'), label: document.getElementById('games-updating').textContent,
-                 labelShown: !document.getElementById('games-updating').hidden }; }""")
-    assert probe["rows"] > 0, "the slate went empty during a fetch although a previous render existed"
-    assert probe["pointer"] == "none", "the old rows could still be tapped while the new slate was being fetched"
-    assert probe["busy"] == "true" and probe["labelShown"] and probe["label"], probe
-    assert 0 < float(probe["opacity"]) < 1, "the old rows read as the current slate while the new one was still being fetched"
-    for r in held:
-        r.continue_()
-    page.unroute("**/api/week*")
+    page.route(week, lambda route: held.append(route))
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
+        page.wait_for_function("document.getElementById('games-rows').classList.contains('updating')", timeout=5000)
+        probe = page.evaluate("""() => { const rows = document.getElementById('games-rows');
+            const cs = getComputedStyle(rows);
+            return { rows: rows.querySelectorAll('.game').length, opacity: cs.opacity, pointer: cs.pointerEvents,
+                     busy: rows.getAttribute('aria-busy'), label: document.getElementById('games-updating').textContent,
+                     labelShown: !document.getElementById('games-updating').hidden }; }""")
+        assert probe["rows"] > 0, "the slate went empty during a fetch although a previous render existed"
+        assert probe["pointer"] == "none", "the old rows could still be tapped while the new slate was being fetched"
+        assert probe["busy"] == "true" and probe["labelShown"] and probe["label"], probe
+        assert 0 < float(probe["opacity"]) < 1, "the old rows read as the current slate while the new one was still being fetched"
+        for r in held:
+            r.continue_()
+        page.unroute(week)
     page.wait_for_function("!document.getElementById('games-rows').classList.contains('updating') && document.querySelectorAll('#games-rows .game').length > 0", timeout=15000)
     page.wait_for_function("getComputedStyle(document.getElementById('games-rows')).opacity === '1'", timeout=5000)
     assert page.evaluate("document.getElementById('games-updating').hidden")
@@ -749,7 +774,9 @@ def test_the_first_load_says_it_is_loading_in_words_and_nothing_moves(served, _b
     # `/api/week` and `/api/week?…` only: `/api/weeks` is the picker the boot
     # awaits, and holding it would hold the boot.
     page.route(re.compile(r"/api/week(\?|$)"), lambda route: held.append(route))
-    page.goto(served + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(served + "/login")
     page.fill("#token", SMOKE_TOKEN)
     # THE SLATE HAS BEEN ASKED FOR AND IS HELD (the board merge, 2026-09-29):
     # this waited 300ms after the view appeared before probing. The page has
@@ -848,15 +875,19 @@ def test_an_open_card_stays_open_across_a_redraw_it_did_not_cause(page):
     week = re.compile(r"/api/week(\?|$)")
     page.route(week, lambda route: held.append(route))
     page.evaluate(_REMEMBER_THE_ROWS)
-    # NOT AWAITED: its answer is held, so the promise would never settle.
-    page.evaluate("() => { window.Gridiron.route(); }")
-    page.wait_for_function(
-        "document.getElementById('games-rows').classList.contains('updating')",
-        timeout=10000)
-    assert page.evaluate(_OPEN, game) is True, \
-        "the open row closed as soon as the slate began to update"
     from tests.conftest import wait_for_the_redraw_it_starts
+    # ARMED BEFORE THE RENDER IS ASKED (operator question 5, 2026-10-08):
+    # the wait takes only a render asked after it, so the unasked render is
+    # asked inside it, held, seen dimmed, and released. It was armed after
+    # the ask until then, and took the first arrival it saw.
     with wait_for_the_redraw_it_starts(page):
+        # NOT AWAITED: its answer is held, so the promise would never settle.
+        page.evaluate("() => { window.Gridiron.route(); }")
+        page.wait_for_function(
+            "document.getElementById('games-rows').classList.contains('updating')",
+            timeout=10000)
+        assert page.evaluate(_OPEN, game) is True, \
+            "the open row closed as soon as the slate began to update"
         for route in held:
             route.continue_()
         page.unroute(week)
@@ -1384,7 +1415,8 @@ def test_a_dead_job_is_on_the_first_screen_of_the_board(served, _browser):
     try:
         page = context.new_page()
         page.route(re.compile(r"/api/(pulse|week)(\?|$)"), stale)
-        page.goto(served + "/login", wait_until="networkidle")
+        # THE SIGN-IN PAGE'S LOAD, AN EVENT (operator question 5, 2026-10-08).
+        page.goto(served + "/login")
         page.fill("#token", SMOKE_TOKEN)
         page.click("#submit")
         page.wait_for_url(served + "/", timeout=15000)
@@ -1443,8 +1475,14 @@ def test_headings_are_plain_words_and_version_names_are_tooltips(world_copy):
 def test_the_record_page_shows_no_version_name_and_its_headings_carry_them(page):
     """Rendered (question 19): the Record page's priced and ordering headings
     say what they are in words and carry the name only as their title."""
+    from tests.conftest import wait_for_the_render
+
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/record'")
+    # THE WHOLE PAGE, SAID LANDED, BEFORE ITS WORDS ARE SCANNED (operator
+    # question 5, 2026-10-08): the page shows itself before the parts it
+    # fetches on its own, and a scan read then passes on what is not drawn.
+    with wait_for_the_render(page, "record"):
+        page.evaluate("location.hash = '#/record'")
     page.wait_for_selector("#priced-record:not([hidden])", timeout=20000)
     got = page.evaluate("""() => {
         const h = document.getElementById('priced-heading');

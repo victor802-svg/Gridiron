@@ -470,7 +470,18 @@ const Gridiron = (function () {
       c.market === market && c.filters.predictor === predictor);
   }
 
-  function renderRecord() {
+  // THE WHOLE PAGE SAYS WHEN IT HAS LANDED (operator question 5, 2026-10-08):
+  // the parts it fetches on their own -- the prompt list, the factors, the
+  // versions, the learning panel, a tier table it asks for again and the
+  // weekly strip -- are awaited together before the page says so, each still
+  // caught on its own as before. Until then the page drew them without
+  // waiting, so nothing could tell a reader of the weekly strip that its
+  // answer was still in flight (`test_the_weekly_strip_renders_with_hit_
+  // targets` read the canvas blank, 3 times in 4 run alone, 2026-09-30).
+  async function renderRecord() {
+    const asked = renderAsked();
+    const seq = sportSeq;
+    const parts = [];
     const sc = state.scorecard;
     // THE TIER TABLE LEADS. Rendered first and unconditionally: the charts
     // below it now live on the Factors page and may not be on screen at all.
@@ -480,11 +491,11 @@ const Gridiron = (function () {
     // operator's own informed calls, stood here until 2026-09-02.)
     renderForecasterPicker(sc);
     renderTierTable(sc.tier_table);
-    renderPromptRecord(sc).catch(showError);
+    parts.push(renderPromptRecord(sc).catch(showError));
     // THE MODEL SECTION IS PART OF THIS PAGE NOW (P5): the calibration
     // chart, the factor cards and the dated "what changed, when" timeline.
-    renderFactors().catch(showError);
-    renderVersions().catch(showError);
+    parts.push(renderFactors().catch(showError));
+    parts.push(renderVersions().catch(showError));
     // CALLED WITH THE WHOLE SCORECARD, not smuggled through the tier table:
     // the corrections, the drift pairs and the read windows are siblings of
     // that table, not part of it.
@@ -492,7 +503,7 @@ const Gridiron = (function () {
     renderAtTheLine(sc);
     renderRanker(sc);
     renderPriced(sc);
-    renderLearning().catch(showError);
+    parts.push(renderLearning().catch(showError));
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
     loadTierCards(sc);
@@ -503,7 +514,7 @@ const Gridiron = (function () {
                     forecasterChoice !== ((sc.tier_table || {}).predictor || 'statistical') ||
                     (sc.cards && sc.cards.length && cardSel &&
                      cardSel.value !== (sc.tier_table || {}).event_tier))) {
-      refreshTierTable().catch(showError);
+      parts.push(refreshTierTable().catch(showError));
     }
     const market = document.getElementById('chart-market').value || 'spread';
     const predictor = document.getElementById('chart-predictor').value || 'statistical';
@@ -560,7 +571,12 @@ const Gridiron = (function () {
     renderTakenRecord(sc);
     renderEdges(sc);
     document.getElementById('separation-note').textContent = sc.separation_note;
-    renderOverTime(market, predictor).catch(showError);
+    parts.push(renderOverTime(market, predictor).catch(showError));
+    await Promise.all(parts);
+    // LANDED (operator question 5, 2026-10-08): every part above has drawn --
+    // unless the sport changed meanwhile, when this page is not the one on
+    // screen and says nothing.
+    if (!stale(seq)) rendered(asked, 'record', 'view-record');
   }
 
   async function renderOverTime(market, predictor) {
@@ -725,6 +741,8 @@ const Gridiron = (function () {
     const block = sc.prompt_record;
     if (forecasterChoice !== 'llm' || !block) { panel.hidden = true; return; }
     requireN(block, 'prompt record');
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     panel.hidden = false;
     document.getElementById('prompt-record-line').textContent = block.line;
     const host = document.getElementById('prompt-record-list');
@@ -738,6 +756,7 @@ const Gridiron = (function () {
       if (i.prompt) row.appendChild(promptDisclosure(i.prediction_id, i.prompt));
       host.appendChild(row);
     });
+    rendered(asked, 'record', panel);
   }
 
   // HOW CLOSE A GATE IS (GRIDIRON_13 P1). ONE COMPONENT, used by the tier
@@ -1062,10 +1081,14 @@ const Gridiron = (function () {
     if (!block.available) return box;
     const body = el('div', 'prompt-body');
     box.appendChild(body);
-    let asked = false;
+    let fetched = false;
     box.addEventListener('toggle', () => {
-      if (!box.open || asked) return;
-      asked = true;
+      if (!box.open || fetched) return;
+      fetched = true;
+      // A PROMPT OPENED SAYS WHEN ITS TEXT HAS LANDED (operator question 5,
+      // 2026-10-08), on whichever page it sits. `fetched` was `asked` until
+      // then; the page's count of renders is `renderAsked`.
+      const asked = renderAsked();
       fetchJSON('/api/prompt/' + predictionId).then(p => {
         if (p.settings_line) body.appendChild(el('p', 'prompt-settings', p.settings_line));
         if (p.model) body.appendChild(el('code', 'code-literal prompt-model', p.model));
@@ -1080,7 +1103,8 @@ const Gridiron = (function () {
           body.appendChild(el('h4', 'prompt-part', part.label));
           body.appendChild(el('pre', 'code-literal prompt-text', part.text));
         });
-      }).catch(err => { asked = false; showError(err); });
+        rendered(asked, state.view, box, 'prompt-box');
+      }).catch(err => { fetched = false; showError(err); });
     });
     return box;
   }
@@ -1455,7 +1479,14 @@ const Gridiron = (function () {
     };
     const toggle = () => {
       more.hidden = !more.hidden;
-      if (!more.hidden) arrive(more);
+      // A ROW OPENED SAYS WHEN ITS EXPANSION HAS ARRIVED (operator question
+      // 5, 2026-10-08): nothing is rebuilt, but what it shows fades in, and
+      // a test that reads it waits for that, never for a duration.
+      if (!more.hidden) {
+        const asked = renderAsked();
+        arrive(more);
+        rendered(asked, 'games', more, 'game-more');
+      }
       // REMEMBERED BY THE GAME, NOT BY THE NODE: every redraw replaces the
       // rows, so the row the reader opened is a new node after one.
       if (more.hidden) openGames.delete(g.game_id); else openGames.add(g.game_id);
@@ -1665,6 +1696,8 @@ const Gridiron = (function () {
     }
     if (view.early) qs += (qs ? '&' : '?') + 'early_view=true';
     const seq = ++weekSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     // THE OLD ROWS ARE STALE THE MOMENT A NEW SLATE IS ASKED FOR (found
     // 2026-09-25): the rows were cleared only after the answer arrived, so
     // for the length of a fetch the previous render stood on the page as if
@@ -1805,10 +1838,12 @@ const Gridiron = (function () {
         notes.appendChild(el('div', 'empty',
           data.forecaster_message || data.message || board.games_empty_words || ''));
       }
-      (data.quiet_markets || []).forEach(q => notes.appendChild(el('div', 'quiet-market', q)));
-      return;
     }
     (data.quiet_markets || []).forEach(q => notes.appendChild(el('div', 'quiet-market', q)));
+    // LANDED (operator question 5, 2026-10-08): said once the rows' arrival
+    // has ended. An empty slate and a full one end the same way now; the
+    // quiet markets were written on both paths before.
+    rendered(asked, 'games', rows);
   }
 
   // --- PROPS -----------------------------------------------------------------
@@ -2110,6 +2145,14 @@ const Gridiron = (function () {
       save.type = 'button';
       const said = el('small', 'payout-said', e.typed_words || '');
       save.onclick = async () => {
+        // A PAYOUT REFUSED SAYS WHEN ITS WORDS HAVE LANDED (question 5's
+        // prover, 2026-10-08): saved, the Props page is drawn again by
+        // `renderProps`, which says so; refused, the refusal is drawn in the
+        // row's own line and nothing else is, and until then that redraw said
+        // nothing -- the payout's door was held exempt as though every answer
+        // drew through `renderProps`. Its count is taken before it asks.
+        const asked = renderAsked();
+        let refused = false;
         save.disabled = true;
         try {
           const res = await fetch('/api/settings', {
@@ -2119,13 +2162,18 @@ const Gridiron = (function () {
             body: JSON.stringify({ name: e.setting, value: field.value }),
           });
           const body = await res.json();
-          if (!res.ok) { said.textContent = body.detail || ''; return; }
-          await renderProps();
+          if (!res.ok) {
+            said.textContent = body.detail || '';
+            refused = true;
+          } else {
+            await renderProps();
+          }
         } catch (err) {
           showError(err);
         } finally {
           save.disabled = false;
         }
+        if (refused) rendered(asked, 'props', said, 'payout-said');
       };
       row.appendChild(save);
       row.appendChild(said);
@@ -2440,6 +2488,8 @@ const Gridiron = (function () {
   async function checkEntry(ec) {
     const button = document.getElementById('entry-check');
     const seq = sportSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     if (button) button.disabled = true;
     try {
       const res = await fetch('/api/entry-check', {
@@ -2456,6 +2506,8 @@ const Gridiron = (function () {
       // these.
       if (res.ok && answer.remembered) ec.remembered = answer.remembered;
       paintEntryResult();
+      // THE ANSWER LANDED (operator question 5, 2026-10-08).
+      rendered(asked, 'props', 'entry-lines');
     } finally {
       if (button) button.disabled = false;
     }
@@ -2682,6 +2734,8 @@ const Gridiron = (function () {
   async function checkDeposit(ec) {
     const button = document.getElementById('deposit-check');
     const seq = sportSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     if (button) button.disabled = true;
     try {
       const res = await fetch('/api/deposit-match', {
@@ -2695,6 +2749,8 @@ const Gridiron = (function () {
       deposit.result = res.ok ? answer : { refused_words: answer.detail || '' };
       deposit.changed = false;
       paintDepositResult();
+      // THE ANSWER LANDED (operator question 5, 2026-10-08).
+      rendered(asked, 'props', 'deposit-lines');
     } finally {
       if (button) button.disabled = false;
     }
@@ -2760,6 +2816,8 @@ const Gridiron = (function () {
     const chosen = picker && picker.value ? JSON.parse(picker.value) : {};
     const qs = chosen.season ? ('?season=' + chosen.season + '&week=' + chosen.week) : '';
     const seq = sportSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     updating(host, 'props-updating', true);   // the same rule as the rows
     let data;
     try {
@@ -2838,6 +2896,8 @@ const Gridiron = (function () {
       if (ladder.note) notes.appendChild(el('p', 'footnote ladder-note', ladder.note));
       if (!(ladder.rows || []).length) notes.appendChild(el('div', 'empty', ladder.empty_words || ''));
       renderEntryRail(props, labels, again);
+      // LANDED (operator question 5, 2026-10-08), the ladder view's way.
+      rendered(asked, 'props', host);
       return;
     }
     let tiles = props.tiles || [];
@@ -2861,6 +2921,9 @@ const Gridiron = (function () {
       notes.appendChild(el('div', 'empty', props.empty_words || data.forecaster_message || data.message || ''));
     }
     renderEntryRail(props, labels, again);
+    // LANDED (operator question 5, 2026-10-08): said once the tiles' arrival
+    // has ended.
+    rendered(asked, 'props', host);
   }
 
   // THE MENU: three pages behind one button. Opens on the button, closes on
@@ -2963,6 +3026,9 @@ const Gridiron = (function () {
   }
 
   function takePackage(packageId, button, labels) {
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08): the
+    // mark redrawn from the answer says when it has landed.
+    const asked = renderAsked();
     button.disabled = true;
     // `X-Gridiron-Form` IS THIS APP'S CSRF HEADER. The first version sent
     // `X-Gridiron-CSRF`, which the route refuses -- a 403 nobody could have
@@ -2978,6 +3044,7 @@ const Gridiron = (function () {
         button.disabled = false;
         if (result && result.why) button.title = result.why;
       }
+      rendered(asked, 'games', button, 'combo-taken');
     }).catch(() => { button.disabled = false; });
   }
 
@@ -3167,9 +3234,12 @@ const Gridiron = (function () {
     const ask = { market: market, forecaster: forecasterChoice };
     if (cardLabel && !cardLabel.hidden && cardSel && cardSel.value) ask.card = cardSel.value;
     const seq = sportSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     const t = await fetchJSON(withSport('/api/tier-table', ask));
     if (stale(seq)) return;
     renderTierTable(t);
+    rendered(asked, 'record', 'tier-table');
   }
 
   function renderTierTable(t) {
@@ -3658,6 +3728,80 @@ const Gridiron = (function () {
     void node.offsetHeight;
     requestAnimationFrame(() => node.classList.remove('arriving'));
   }
+
+  // THE RENDER-FINISHED SIGNAL (operator question 5, ruled (A) on 2026-09-27,
+  // second set: "After the merge: the app emits a render-finished signal,
+  // every fixed wait is rebuilt on it, on a held-and-released response or on
+  // page.clock; upper-limit timeouts stay. Its own step, with renders."; built
+  // 2026-10-08). The browser tests waited fixed times for a render to land --
+  // 300ms, 600ms, three seconds -- each too long on a quiet machine and too
+  // short on a loaded one, and the Results table's redraw landed under a
+  // prompt a test had just opened (Q38's first gate and Q25's).
+  //
+  // ONE EVENT, `gridiron:rendered`, on the document, once a render the page
+  // started has LANDED: its DOM written and any arrival ended -- the arrival
+  // class off and no transition left running on what it drew (the live
+  // mark's pulse, the one loop, aside), the reading question 28's helper made
+  // inside the page. Its detail names what rendered: the view, the panel (an
+  // element's id; a row or a prompt opened, its kind) and a count -- the
+  // render's place in the order the page asked for its renders, taken before
+  // it asks for anything, so a waiter tells its own render from one asked
+  // before it whatever order the answers come back in (question 28's prover:
+  // the helper it replaces could not).
+  //
+  // EVERY VIEW AND EVERY REDRAW says so: a hash, the week picker, a filter, a
+  // sort, a chip, the forecaster, Results' table, a setting saved, the entry
+  // check's answer, the deposit match's, the greeting, a row or a prompt
+  // opened. NEVER a live tick (`applyLive` patches a score in place and
+  // redraws nothing), a render a later one superseded, or one whose answer
+  // failed: those land nothing. It draws nothing and carries no number the
+  // page draws: the count is the page's own bookkeeping, never shown.
+  // `audit.render_signal_faults` reads every render for it.
+  const RENDERED = 'gridiron:rendered';
+  let rendersAsked = 0;
+
+  //: A render takes its count before it asks for anything.
+  function renderAsked() {
+    rendersAsked += 1;
+    return rendersAsked;
+  }
+
+  //: The render numbered `count` has written its DOM: say so once what it
+  //: drew -- `node`, an element or its id -- has finished arriving. `name`
+  //: names a part that has no id of its own.
+  function rendered(count, view, node, name) {
+    const panel = typeof node === 'string' ? document.getElementById(node) : node;
+    const what = name || (panel && panel.id) || '';
+    const running = () => (panel ? panel.getAnimations({ subtree: true }) : []).filter(a => {
+      const timing = a.effect && a.effect.getComputedTiming();
+      return !timing || timing.iterations !== Infinity;
+    });
+    const settle = () => {
+      // AND NOTHING INSIDE IT STILL AT ITS START (question 5's prover,
+      // 2026-10-08): a start state is a class the page puts on what it draws
+      // and takes off a frame or two later -- `arrive`'s arrival class, and
+      // the probability bar's `filling` (opacity 0, cleared two frames after
+      // `probBar` draws it). As first built this read the panel's own
+      // arrival class alone, so where no transition was left running to wait
+      // for -- reduced motion, a slate of one game -- the rows said they had
+      // landed with the bars of the row the reader had opened still at
+      // opacity 0 (measured: four bars, cleared two frames after the signal).
+      if (panel && (panel.classList.contains('arriving')
+                    || panel.querySelector('.arriving, .filling'))) {
+        requestAnimationFrame(settle);
+        return;
+      }
+      const still = running();
+      if (still.length) {
+        Promise.all(still.map(a => a.finished.catch(() => null)))
+          .then(() => requestAnimationFrame(settle));
+        return;
+      }
+      document.dispatchEvent(new CustomEvent(RENDERED,
+        { detail: { view: view, panel: what, count: count } }));
+    };
+    requestAnimationFrame(settle);
+  }
   // --- the yesterday strip --------------------------------------------------
 
   function renderYesterday(data) {
@@ -3992,6 +4136,9 @@ const Gridiron = (function () {
     const host = document.getElementById('factors-cards');
     const note = document.getElementById('factors-search-note');
     if (!host) return;
+    // THE SEARCH IS A FILTER, AND SAYS WHEN IT HAS LANDED (operator question
+    // 5, 2026-10-08), as every other redraw does.
+    const asked = renderAsked();
     // BY PLAIN NAME, which is the name a reader has. Searching the code would
     // only help somebody who already knows the identifier, and they have the
     // table underneath.
@@ -4031,6 +4178,7 @@ const Gridiron = (function () {
         : '';
       note.hidden = !pattern;
     }
+    rendered(asked, 'record', host);
   }
 
   // --- HISTORY ------------------------------------------------------------
@@ -4191,6 +4339,8 @@ const Gridiron = (function () {
   let csrfToken = null;
 
   async function renderSettings() {
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
+    const asked = renderAsked();
     const data = await fetchJSON('/api/settings');
     csrfToken = data.csrf || csrfToken;
     document.getElementById('settings-caption').textContent =
@@ -4210,6 +4360,7 @@ const Gridiron = (function () {
     renderFenced(data);
     renderRulings(data.rulings);
     renderRecentChanges(data.recent);
+    rendered(asked, 'settings', host);
   }
 
   function settingRow(s) {
@@ -4248,6 +4399,10 @@ const Gridiron = (function () {
   }
 
   async function saveSetting(name, value, row) {
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08): the
+    // row's line and face, redrawn from the save's answer, say when they
+    // have landed -- whichever answer it was.
+    const asked = renderAsked();
     let said = row.querySelector('.set-said');
     if (!said) { said = el('div', 'set-said'); row.appendChild(said); }
     said.textContent = 'saving...';
@@ -4264,25 +4419,26 @@ const Gridiron = (function () {
         // inventing a friendlier message here would hide which rule stopped
         // it, and the reason is the whole point of the fence.
         said.textContent = body.detail || 'that change was not recorded';
-        return;
+      } else {
+        said.textContent = body.line || 'saved';
+        // THE FACE FOLLOWS THE SAVE (UI audit finding 5, 2026-09-05). The
+        // line said "changed from 1 to 0" while the switch still read "on";
+        // a second click said "is already 0" and it still read "on".
+        const control = row.querySelector('.set-switch, input.inp');
+        const saved = (body.value === undefined || body.value === null) ? String(value) : String(body.value);
+        if (control && control.classList.contains('set-switch')) {
+          const on = saved === '1';
+          control.textContent = on ? 'on' : 'off';
+          control.setAttribute('aria-pressed', String(on));
+        } else if (control) {
+          control.value = saved;
+        }
+        renderRecentChanges(body.recent);
       }
-      said.textContent = body.line || 'saved';
-      // THE FACE FOLLOWS THE SAVE (UI audit finding 5, 2026-09-05). The line
-      // said "changed from 1 to 0" while the switch still read "on"; a second
-      // click said "is already 0" and it still read "on".
-      const control = row.querySelector('.set-switch, input.inp');
-      const saved = (body.value === undefined || body.value === null) ? String(value) : String(body.value);
-      if (control && control.classList.contains('set-switch')) {
-        const on = saved === '1';
-        control.textContent = on ? 'on' : 'off';
-        control.setAttribute('aria-pressed', String(on));
-      } else if (control) {
-        control.value = saved;
-      }
-      renderRecentChanges(body.recent);
     } catch (err) {
       said.textContent = 'the change did not reach the appliance';
     }
+    rendered(asked, 'settings', row, 'settings-row');
   }
 
   function renderAccess(access) {
@@ -4547,6 +4703,9 @@ const Gridiron = (function () {
 
   async function renderResults() {
     const seq = sportSeq;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08): a
+    // filter's table is told from the one asked before it by this alone.
+    const asked = renderAsked();
     const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
     if (stale(seq)) return;
     requireN(data, 'history');
@@ -4602,6 +4761,9 @@ const Gridiron = (function () {
     document.getElementById('history-prev').disabled = state.historyOffset === 0;
     document.getElementById('history-next').disabled =
       state.historyOffset + data.returned >= data.n;
+    // LANDED (operator question 5, 2026-10-08): the table, its settled tiles
+    // and its calendar drawn.
+    rendered(asked, 'results', 'history-table');
   }
 
   // --- sport tabs ---------------------------------------------------------
@@ -4803,6 +4965,10 @@ const Gridiron = (function () {
   async function renderGreeting() {
     const strip = document.getElementById('glance');
     if (!strip) return;
+    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08). The
+    // greeting says when it has landed whether it was drawn or, refused,
+    // hidden with its band line cleared: both are what the page shows.
+    const asked = renderAsked();
     try {
       const seq = sportSeq;
       const data = await fetchJSON(withSport('/api/digest'));
@@ -4831,6 +4997,7 @@ const Gridiron = (function () {
       if (counts) { counts.textContent = ''; counts.title = ''; counts.hidden = true; }
       console.error('greeting failed:', err);
     }
+    rendered(asked, 'games', 'greeting');
   }
 
   // The permanent page. Reads WITHOUT moving the marker, so a day can be
@@ -4987,9 +5154,12 @@ const Gridiron = (function () {
     // day is now a click on the Results calendar, which shows the same day's
     // record with its balance rather than making a reader type a date.
     window.addEventListener('hashchange', route);
+    // A PROMISE NOW (operator question 5, 2026-10-08): the Record page waits
+    // for its parts before it says it has landed, so its refusal arrives as
+    // a rejection, caught here as the synchronous throw was.
     ['chart-market', 'chart-predictor'].forEach(id =>
       document.getElementById(id).addEventListener('change', () => {
-        try { renderRecord(); } catch (err) { showError(err); }
+        renderRecord().catch(showError);
       }));
     document.getElementById('tier-market').addEventListener('change', () =>
       refreshTierTable().catch(showError));
@@ -5021,9 +5191,11 @@ const Gridiron = (function () {
     document.body.dataset.ready = 'true';
   }
 
+  // `rendersAsked` READS THE COUNT, never moves it (operator question 5,
+  // 2026-10-08): a test arms on it, so it takes only a render asked after.
   return { boot, route, state, requireN, MissingSampleSize,
            drawCalibration, drawOverTime, drawSeries, dumbbell, contributions, bucketChip,
-           fetchJSON };
+           fetchJSON, rendersAsked: () => rendersAsked };
 })();
 
 window.Gridiron = Gridiron;

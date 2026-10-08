@@ -4,6 +4,7 @@ picks leave the grid once a slate is not live and nothing said so."""
 from __future__ import annotations
 
 from gridiron import language, views
+from tests.conftest import wait_for_the_render
 
 WIDE = {"width": 1440, "height": 900}
 
@@ -44,20 +45,21 @@ def test_an_open_slate_has_no_settled_line(world_copy):
 
 def test_the_counts_line_names_the_settled_picks(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/games'")
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game", timeout=15000)
     page.evaluate("document.querySelector('.week-more').open = true")
     options = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.value)")
     assert len(options) >= 2, options
     resolved = options[-1]
-    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+    # THE PICKED SLATE, SAID LANDED (operator question 5, 2026-10-08): this
+    # waited 600ms after its answer arrived, and 300ms after putting it back.
+    with wait_for_the_render(page, "games"):
         page.select_option("#week-picker", resolved)
-    page.wait_for_timeout(600)
     # THE DAY STRIP'S COUNTS carry the settled count since GRIDIRON_BOARD
     # (2026-09-24); the old `#week-counts` line went with the Picks page.
     counts = page.text_content("#day-counts")
     assert " settled" in counts, f"the counts line on a finished slate reads {counts!r}"
-    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+    with wait_for_the_render(page, "games"):
         page.select_option("#week-picker", options[0])
-    page.wait_for_timeout(300)
     page.evaluate("document.querySelector('.week-more').open = false")

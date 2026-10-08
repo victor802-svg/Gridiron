@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from gridiron import audit, config
+from tests.conftest import wait_for_the_render
 
 ROUTES = {
     "#/games": "#games-rows .game, #games-notes .empty",
@@ -28,9 +29,11 @@ PAINTED_JS = """() => [...document.querySelectorAll('[hidden]')]
 
 
 def _open(page, route):
-    page.evaluate(f"location.hash = '{route}'")
+    # THE ROUTE'S OWN RENDER, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 300ms after the route's first element appeared.
+    with wait_for_the_render(page, route.split("/")[-1]):
+        page.evaluate(f"location.hash = '{route}'")
     page.wait_for_selector(ROUTES[route], timeout=15000)
-    page.wait_for_timeout(300)
 
 
 @pytest.mark.parametrize("width", [1440, 390])

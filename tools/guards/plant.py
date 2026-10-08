@@ -16167,6 +16167,310 @@ def plant_a_wall_clock_read_in_the_backoff() -> Result:
         f"the machine's speed again, and the test's clock could not reach it")
 
 
+#: `tests/test_hidden.py::_open` AS IT STOOD ON 56d65a4 (2026-10-08), its
+#: 300ms wait held for operator question 5 -- the fixed wait coming back.
+_OPEN_AS_IT_STOOD = '''def _open(page, route):
+    page.evaluate(f"location.hash = '{route}'")
+    page.wait_for_selector(ROUTES[route], timeout=15000)
+    page.wait_for_timeout(300)
+'''
+
+#: THE WAITS THE SCAN DID NOT READ UNTIL QUESTION 5, put back in a copy of
+#: `tests/test_cards.py`: a timer in the script a test hands the page (the
+#: card was read 250ms after its tap that way), and half a second of network
+#: quiet on a sign-in.
+_WAITS_IT_DID_NOT_READ = '''
+
+# PLANTED: THE WAITS THE SCAN DID NOT READ
+def test_planted_read_after_a_timer_in_the_page(page):
+    page.evaluate("async () => { await new Promise(r => setTimeout(r, 250)); }")
+
+
+def test_planted_sign_in_after_the_network_falls_quiet(page, served):
+    page.goto(served + "/login", wait_until="networkidle")
+
+
+# PLANTED: A FADE READ BY THE FRAMES THAT LAND (question 5's prover,
+# 2026-10-08) -- `test_motion.py`'s sampler as the change first left it,
+# which read [0, 1] and went red with the document's timeline run fast; and
+# a sampler kept at the top level under a name no hold names.
+def test_planted_fade_read_by_its_frames(page):
+    page.evaluate("""() => {
+        window.__opacity = [];
+        const el = document.getElementById('props-tiles');
+        const tick = () => {
+            window.__opacity.push(parseFloat(getComputedStyle(el).opacity));
+            if (el.getAnimations().length) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }""")
+    assert any(0 < s < 1 for s in page.evaluate("window.__opacity"))
+
+
+PLANTED_SAMPLER = "() => { requestAnimationFrame(() => { window.__seen = 1; }); }"
+'''
+
+
+def plant_a_fixed_wait_coming_back() -> Result:
+    """A FIXED WAIT ADDED TO A BROWSER TEST (operator question 5, ruled (A)
+    on 2026-09-27; built 2026-10-08: the register is empty and pinned).
+
+    Three forms, each in a copy of the whole tree, each named by the scan:
+    `tests/test_hidden.py::_open` put back as it stood on 56d65a4, its 300ms
+    wait with it; the same with its register entry put back, which the
+    pinned register names as well as the wait; and, in a copy of
+    `tests/test_cards.py`, a timer in the page and a sign-in that waits for
+    the network to fall quiet -- the two kinds of fixed wait the scan did
+    not read until this step -- and, from question 5's prover (2026-10-08),
+    a fade read by the frames that land (`test_motion.py`'s sampler as the
+    change first left it) and a sampler kept at the top level under a name
+    no hold names, each a reading of the page frame by frame. Nothing else
+    in the copied tests may be named: question 20's per-frame check is held
+    by its own name. The gate's own call must refuse the first form, and its
+    step 2 must make that call. ON 56d65a4 EVERY FORM ESCAPES: `_open` held
+    its one wait in the register, and the scan read no string, no
+    `networkidle` and no frame; the frame forms escape on the change as first
+    built too."""
+    import ast as _ast
+
+    from gridiron import audit as _audit
+
+    violation = "a fixed wait put back into a browser test"
+    guard = "audit.elapsed_time_faults"
+    missed: list[str] = []
+    first = ""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = _a_whole_tree(Path(tmp))
+        hidden = Path(tmp) / "tests" / "test_hidden.py"
+        text = hidden.read_text(encoding="utf-8")
+        found = next((node for node in _ast.parse(text).body
+                      if isinstance(node, _ast.FunctionDef) and node.name == "_open"), None)
+        if found is None:
+            return Result(LAW_NO_REAL_TIME, violation, guard, False,
+                          "`tests/test_hidden.py::_open` is gone; re-point the planting")
+        lines = text.splitlines(keepends=True)
+        hidden.write_text("".join(lines[:found.lineno - 1]) + _OPEN_AS_IT_STOOD
+                          + "".join(lines[found.end_lineno:]), encoding="utf-8")
+        cards = Path(tmp) / "tests" / "test_cards.py"
+        cards.write_text(cards.read_text(encoding="utf-8") + _WAITS_IT_DID_NOT_READ,
+                         encoding="utf-8")
+        wanted = {
+            "the wait in `_open` as it stood": "tests/test_hidden.py:",
+            "a timer in the page": "(test_planted_read_after_a_timer_in_the_page) waits a fixed time inside the page",
+            "half a second of network quiet": "(test_planted_sign_in_after_the_network_falls_quiet) waits for the network to fall quiet",
+            "a fade read by the frames that land": "(test_planted_fade_read_by_its_frames) reads the page frame by frame",
+            "a sampler under a name no hold names": "(PLANTED_SAMPLER) reads the page frame by frame",
+        }
+        faults = _audit.elapsed_time_faults(root)
+        opened = [f for f in faults if "(_open) waits a fixed time in the browser" in f]
+        if not opened:
+            missed.append(f"the wait in `_open` as it stood: not named in {faults!r}")
+        for name, words in list(wanted.items())[1:]:
+            if not any(words in f for f in faults):
+                missed.append(f"{name}: not named in {faults!r}")
+        named = [f for f in faults if "(_open)" in f or "(test_planted_" in f
+                 or "(PLANTED_SAMPLER)" in f]
+        if len(named) != len(faults):
+            missed.append(f"something else in the copied tests was named: "
+                          f"{[f for f in faults if f not in named]!r}")
+        first = (opened or faults or [""])[0]
+        # ITS REGISTER ENTRY PUT BACK: the pinned register names the entry,
+        # and the wait under it is still named.
+        held = dict(_audit.ELAPSED_TIME_HELD)
+        try:
+            _audit.ELAPSED_TIME_HELD = dict(held, **{"tests/test_hidden.py:_open": 1})
+            again = _audit.elapsed_time_faults(root)
+        finally:
+            _audit.ELAPSED_TIME_HELD = held
+        if not any("tests/test_hidden.py:_open" in f and "pinned empty" in f for f in again):
+            missed.append(f"its register entry put back: the entry is not named as the "
+                          f"pinned register's in {again!r}")
+        if not any("(_open) waits a fixed time in the browser" in f for f in again):
+            missed.append(f"its register entry put back: the wait went unnamed under it, "
+                          f"{again!r}")
+        # THE GATE'S OWN CALL, on the copy carrying the first form.
+        try:
+            _audit.check_no_test_waits_on_the_clock(root)
+            missed.append("the gate's own call passed the wait put back")
+        except _audit.LawViolation as refused:
+            if "(_open)" not in str(refused):
+                missed.append(f"the gate's own call refused it without naming `_open`: {refused}")
+    gate = REPO / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"), None)
+    if step is None or not any(
+            isinstance(node, _ast.Attribute) and node.attr == "check_no_test_waits_on_the_clock"
+            for node in _ast.walk(step)):
+        missed.append("the gate's step 2 does not call `audit.check_no_test_waits_on_the_clock`")
+    if missed:
+        return Result(LAW_NO_REAL_TIME, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_NO_REAL_TIME, violation, guard, True, first.split(". ")[0])
+
+
+LAW_RENDER_SIGNAL = ("EVERY RENDER SAYS WHEN IT HAS LANDED, NEVER BEFORE "
+                     "(operator question 5)")
+
+
+def _render_signal_forms_caught(violation: str, forms: dict, gate_form: str) -> Result:
+    """Each form of app.js, read by `audit.render_signal_faults`, must be named
+    in its own words; the shipped script must pass; the gate's own call must
+    refuse `gate_form` on a copy of the package; and its step 2 must make that
+    call (read from its syntax tree)."""
+    import ast as _ast
+
+    guard = "audit.render_signal_faults"
+    scan = getattr(audit, "render_signal_faults", None)
+    if scan is None:
+        return Result(LAW_RENDER_SIGNAL, violation, guard, False,
+                      "NOT CAUGHT - the page says nothing when a render lands, and "
+                      "nothing reads it: every browser test waited a fixed time for "
+                      "a render instead (question 5's 27 held waits), and the Results "
+                      "table's redraw landed under a prompt a test had just opened")
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+    shipped = scan(js)
+    if shipped:
+        return Result(LAW_RENDER_SIGNAL, violation, guard, False,
+                      "the shipped page already fails; fix that before trusting this "
+                      "planting: " + shipped[0])
+    missed, first = [], ""
+    for name, (anchor, planted, wanted) in forms.items():
+        if js.count(anchor) != 1:
+            missed.append(f"{name}: its anchor is not in app.js once; re-point it")
+            continue
+        faults = scan(js.replace(anchor, planted))
+        absent = [w for w in wanted if not any(w in f for f in faults)]
+        if absent:
+            missed.append(f"{name}: {absent} not named in {faults!r}")
+        first = first or next((f for f in faults if wanted[0] in f), "")
+    check = getattr(audit, "check_every_render_says_it_landed")
+    anchor, planted, wanted = forms[gate_form]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(web, root / "web", ignore=shutil.ignore_patterns("fonts"))
+        (root / "web" / "app.js").write_text(js.replace(anchor, planted), encoding="utf-8")
+        try:
+            check(root)
+            missed.append(f"the gate's own call passed {gate_form}")
+        except audit.LawViolation as refused:
+            if wanted[0] not in str(refused):
+                missed.append(f"the gate's own call refused {gate_form} without naming "
+                              f"it: {refused}")
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"), None)
+    if step is None or not any(
+            isinstance(node, _ast.Attribute) and node.attr == check.__name__
+            and isinstance(node.value, _ast.Name) and node.value.id == "audit"
+            for node in _ast.walk(step)):
+        missed.append(f"the gate's step 2 does not call `audit.{check.__name__}`")
+    if missed:
+        return Result(LAW_RENDER_SIGNAL, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_RENDER_SIGNAL, violation, guard, True, first[:400])
+
+
+def plant_a_render_that_never_says_it_landed() -> Result:
+    """A VIEW WHOSE REDRAW LANDS WITH NO SIGNAL (operator question 5, ruled
+    (A) on 2026-09-27; built 2026-10-08). Five forms in the page's script:
+    Results' render with its signal taken out; the Settings render with its
+    count taken out (its signal could not say which render landed); a row
+    opened that never says so; a new view routed to a render in no
+    register; and, from question 5's prover (2026-10-08), a payout refused
+    that never says so (its door as first built, held exempt). The browser
+    test of the signal's coverage over every view
+    (`tests/test_the_render_signal.py::test_every_view_and_every_redraw_
+    says_it_has_landed`) names the first and the last by the redraw that
+    waits on it; the gate reads the script. ON 56d65a4 ALL ESCAPE: the page
+    said nothing when a render landed, and nothing read it; the fifth
+    escapes on the change as first built too."""
+    routes = "  const ROUTES = {\n"
+    about = ("  async function renderAbout() {\n"
+             "    const data = await fetchJSON('/api/meta');\n"
+             "    document.getElementById('view-about').textContent = data.colophon || '';\n"
+             "  }\n\n")
+    forms = {
+        "Results' signal taken out": (
+            "    rendered(asked, 'results', 'history-table');\n", "",
+            ("`renderResults` renders and never says it has landed",)),
+        "the Settings render's count taken out": (
+            "  async function renderSettings() {\n"
+            "    // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).\n"
+            "    const asked = renderAsked();\n",
+            "  async function renderSettings() {\n    const asked = 0;\n",
+            ("`renderSettings` never takes its count",)),
+        "a row opened that never says so": (
+            "        rendered(asked, 'games', more, 'game-more');\n", "",
+            ("`gameRow` renders and never says it has landed",)),
+        # QUESTION 5'S PROVER (2026-10-08): the payout's door as first built,
+        # held exempt, its refusal drawn in the row and said nowhere.
+        "a payout refused that never says so": (
+            "        if (refused) rendered(asked, 'props', said, 'payout-said');\n", "",
+            ("`renderPayouts` renders and never says it has landed",)),
+        "a new view in no register": (
+            routes, about + routes + "    about: renderAbout,\n",
+            ("`renderAbout` draws from an answer it asks for",
+             "the 'about' view renders by `renderAbout`")),
+    }
+    return _render_signal_forms_caught("a render that never says it has landed",
+                                       forms, "Results' signal taken out")
+
+
+def plant_a_signal_before_its_render_lands() -> Result:
+    """THE SIGNAL EMITTED BEFORE ITS RENDER LANDS (operator question 5,
+    2026-10-08) -- the Results race's shape: a test told a render had landed
+    taps a panel it is about to replace. Six forms: `rendered` dispatching
+    at once, before what it drew has arrived; the slate saying it landed
+    before its answer is asked; the slate saying another panel landed than
+    the one it arrives; the Record page saying it landed before the parts it
+    fetches on its own; a live tick, which redraws nothing, saying it
+    landed; and, from question 5's prover (2026-10-08), `rendered` as first
+    built, blind to the probability bar's start state (`filling`), which it
+    did not read inside what it drew. `tests/test_the_render_signal.py`
+    holds the page to the same in Chromium (the signal's moment, an answer
+    held, the bars at the moment the rows say they landed). ON 56d65a4 ALL
+    ESCAPE: there was no signal and no reading of one; the sixth escapes on
+    the change as first built too."""
+    forms = {
+        "dispatched at once": (
+            "    requestAnimationFrame(settle);\n  }\n  // --- the yesterday strip",
+            "    document.dispatchEvent(new CustomEvent(RENDERED,\n"
+            "      { detail: { view: view, panel: what, count: count } }));\n"
+            "    requestAnimationFrame(settle);\n  }\n  // --- the yesterday strip",
+            ("`rendered` dispatches the signal at once",)),
+        "the slate before its answer": (
+            "    const asked = renderAsked();\n    // THE OLD ROWS ARE STALE",
+            "    const asked = renderAsked();\n    rendered(asked, 'games', rows);\n"
+            "    // THE OLD ROWS ARE STALE",
+            ("`renderGames` says it has landed before the last answer",)),
+        "another panel than the one that arrives": (
+            "    rendered(asked, 'games', rows);\n  }",
+            "    rendered(asked, 'games', notes);\n  }",
+            ("`renderGames` arrives `rows` and says ['notes'] landed",)),
+        "the Record page before its parts": (
+            "    await Promise.all(parts);\n",
+            "    rendered(asked, 'record', 'view-record');\n    await Promise.all(parts);\n",
+            ("`renderRecord` says it has landed before the last answer",)),
+        "a live tick": (
+            "      put('.game-clock', pick.clock_line);\n",
+            "      put('.game-clock', pick.clock_line);\n"
+            "      rendered(renderAsked(), 'games', 'games-rows');\n",
+            ("`applyLive` says a render landed on a live tick",)),
+        # QUESTION 5'S PROVER (2026-10-08): `rendered` as first built, reading
+        # the panel's own arrival class alone -- under reduced motion, on a
+        # slate of one game, the rows said they had landed with the open
+        # row's bars still at their start, opacity 0.
+        "blind to the bar's start state": (
+            "      if (panel && (panel.classList.contains('arriving')\n"
+            "                    || panel.querySelector('.arriving, .filling'))) {\n",
+            "      if (panel && panel.classList.contains('arriving')) {\n",
+            ("without reading the `filling` start state inside what it drew",)),
+    }
+    return _render_signal_forms_caught("a signal said before its render lands",
+                                       forms, "dispatched at once")
+
+
 def plant_a_deleted_tap() -> Result:
     """Delete a tap instead of retracting it (LAW 3, CARD_FACE F3)."""
     import sqlite3 as _sqlite3
@@ -31569,6 +31873,12 @@ def main() -> int:
     # reads only the clock a test can move.
     results.append(plant_a_test_that_waits_on_the_clock())
     results.append(plant_a_wall_clock_read_in_the_backoff())
+    # OPERATOR QUESTION 5 (ruled (A) 2026-09-27; built 2026-10-08): the page
+    # says when a render has landed, every fixed wait is rebuilt on it, and
+    # the register is empty and pinned.
+    results.append(plant_a_fixed_wait_coming_back())
+    results.append(plant_a_render_that_never_says_it_landed())
+    results.append(plant_a_signal_before_its_render_lands())
     results.append(plant_a_deleted_tap())
     # SCHEMA RULING 4 (2026-09-24): the eight missing snapshot ids were a
     # deletion by hand, and the table now refuses the statement that made

@@ -93,7 +93,9 @@ def _signed_in(browser, base, width, height):
     page = context.new_page()
     page.page_errors = []
     page.on("pageerror", lambda e: page.page_errors.append(str(e)))
-    page.goto(base + "/login", wait_until="networkidle")
+    # THE SIGN-IN PAGE'S LOAD, AN EVENT, not half a second of network quiet
+    # (operator question 5, 2026-10-08; conftest's `page` says why).
+    page.goto(base + "/login")
     page.fill("#token", conftest.SMOKE_TOKEN)
     page.click("#submit")
     page.wait_for_url(base + "/", timeout=15000)
@@ -153,9 +155,19 @@ def test_results_shows_each_reasoning_row_the_prompt_it_carries(
         prompt_world, _browser, width, height):
     context, page = _signed_in(_browser, prompt_world["base"], width, height)
     try:
-        page.evaluate("location.hash = '#/results'")
+        # THE FILTERED TABLE, SAID LANDED, BEFORE A PROMPT IN IT IS OPENED
+        # (operator question 5, 2026-10-08). This waited for a prompt box to
+        # be on the page, and the table before the filter -- both
+        # forecasters' rows -- already held one: a box was opened there and
+        # the filtered table, landing a moment later, replaced it, closed,
+        # under the test (it failed Q38's first gate at 390 on 2026-10-06 and
+        # Q25's on 2026-10-08, passing alone). The page says which render
+        # landed, so the test waits for the one its own choice asked for.
+        with conftest.wait_for_the_render(page, "results"):
+            page.evaluate("location.hash = '#/results'")
         page.wait_for_selector("#history-table tbody tr", timeout=15000)
-        page.select_option("#history-predictor", "llm")
+        with conftest.wait_for_the_render(page, "results"):
+            page.select_option("#history-predictor", "llm")
         page.wait_for_selector("#history-table details.prompt-box", timeout=15000)
         for pid, kind in ((prompt_world["rebuilt"], "reconstructed"),
                           (prompt_world["sent"], "sent")):
@@ -189,11 +201,16 @@ def test_the_record_page_shows_the_prompts_when_the_reasoning_pass_is_picked(
         prompt_world, _browser, width, height):
     context, page = _signed_in(_browser, prompt_world["base"], width, height)
     try:
-        page.evaluate("location.hash = '#/record'")
+        # THE RECORD PAGE AND THEN ITS PROMPT LIST, EACH SAID LANDED, BEFORE A
+        # PROMPT IN IT IS OPENED (operator question 5, 2026-10-08): the
+        # page's own parts were still being drawn when the picker was tapped.
+        with conftest.wait_for_the_render(page, "record"):
+            page.evaluate("location.hash = '#/record'")
         page.wait_for_selector("#forecaster-picker button", timeout=15000)
         assert page.locator("#prompt-record").is_hidden(), \
             "the model's own record grew a panel about the other forecaster"
-        page.click("#forecaster-picker button[data-forecaster='llm']")
+        with conftest.wait_for_the_render(page, "record", "prompt-record"):
+            page.click("#forecaster-picker button[data-forecaster='llm']")
         page.wait_for_selector("#prompt-record-list details.prompt-box", timeout=15000)
         line = page.inner_text("#prompt-record-line")
         assert "with the prompt reconstructed" in line and "as sent" in line, line
@@ -255,9 +272,13 @@ def test_a_reasoning_question_shows_its_prompt_on_the_open_row(
 def test_the_disclosure_keeps_the_tap_floor_on_a_phone(prompt_world, _browser):
     context, page = _signed_in(_browser, prompt_world["base"], 390, 844)
     try:
-        page.evaluate("location.hash = '#/results'")
+        # EACH TABLE SAID LANDED (operator question 5, 2026-10-08), as the
+        # test above; the shape below is still asserted of the one it reads.
+        with conftest.wait_for_the_render(page, "results"):
+            page.evaluate("location.hash = '#/results'")
         page.wait_for_selector("#history-table tbody tr", timeout=15000)
-        page.select_option("#history-predictor", "llm")
+        with conftest.wait_for_the_render(page, "results"):
+            page.select_option("#history-predictor", "llm")
         # THE FILTERED TABLE, not the one it replaces: its Forecaster column
         # goes when one forecaster is shown.
         page.wait_for_function(

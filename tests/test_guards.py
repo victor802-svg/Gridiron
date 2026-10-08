@@ -533,6 +533,12 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_raw_connect_past_the_door",
         "plant_a_test_that_waits_on_the_clock",
         "plant_a_wall_clock_read_in_the_backoff",
+        # OPERATOR QUESTION 5 (ruled (A) 2026-09-27; built 2026-10-08): every
+        # render says when it has landed and never before; every fixed wait
+        # is rebuilt on it, and the register is empty and pinned.
+        "plant_a_fixed_wait_coming_back",
+        "plant_a_render_that_never_says_it_landed",
+        "plant_a_signal_before_its_render_lands",
         # SCHEMA RULINGS 1 AND 2 (built 2026-09-25): the schema matches the
         # release, the register cannot outlive what it records, and a
         # rebuild is verified or not done.

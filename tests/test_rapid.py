@@ -8,11 +8,10 @@ stood in for it.
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 
-from tests.conftest import wait_for_the_redraw_it_starts
+from tests.conftest import (REDRAW_LIMIT_MS, HeldAnswers, wait_for_the_redraw_it_starts,
+                            wait_for_the_render, wait_until_read, watch_the_answers)
 
 WIDE = {"width": 1440, "height": 900}
 
@@ -37,16 +36,19 @@ def _full_and_empty(page):
 def _select(page, sport):
     if page.evaluate("window.Gridiron.state.sport") == sport:
         return
-    with page.expect_response(lambda r: "/api/week" in r.url and f"sport={sport}" in r.url, timeout=20000):
+    # THE SWITCH'S OWN SLATE, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 400ms after the slate's answer arrived.
+    with wait_for_the_render(page, "games"):
         page.click(f"#sport-tabs button[data-sport='{sport}']")
-    page.wait_for_timeout(400)
 
 
 def _open_week(page):
     page.set_viewport_size(WIDE)
-    page.evaluate("location.hash = '#/games'")
+    # THE HASH'S OWN RENDER, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 300ms after the first row appeared.
+    with wait_for_the_render(page, "games"):
+        page.evaluate("location.hash = '#/games'")
     page.wait_for_selector("#games-rows .game, #games-notes .empty", timeout=15000)
-    page.wait_for_timeout(300)
 
 
 def test_a_slower_earlier_slate_does_not_take_the_page(page):
@@ -62,32 +64,43 @@ def test_a_slower_earlier_slate_does_not_take_the_page(page):
     # nothing; the defect is an answer to a question asked BEFORE the second
     # click, arriving after it. So: click the first sport, wait until its slow
     # request has left, then click the second sport, then wait for the answer.
-    def slow(route, request):
-        time.sleep(1.2)
-        route.continue_()
+    #
+    # HELD AND RELEASED, NEVER SLEPT (operator question 5, 2026-10-08: "a
+    # held-and-released response"). The first sport's answer was made late
+    # by `time.sleep(1.2)` in its route handler, and the test waited three
+    # seconds for both sports. Now the answer is held until the second
+    # sport's slate has said it landed, released, and waited for until the
+    # page has read it -- so it always arrives after the second click, the
+    # case the test is about, and is always seen to arrive.
 
     # Phase 1: the week picker. The weeks list for the first sport lands late.
-    page.route(f"**/api/weeks?*sport={full}*", slow)
+    held = HeldAnswers(page, lambda url: "/api/weeks?" in url and f"sport={full}" in url)
     try:
         with page.expect_request(lambda r: "/api/weeks" in r.url and f"sport={full}" in r.url, timeout=10000):
             page.click(f"#sport-tabs button[data-sport='{full}']")
-        page.click(f"#sport-tabs button[data-sport='{empty}']")
-        page.wait_for_timeout(3000)
+        with wait_for_the_render(page, "games"):
+            page.click(f"#sport-tabs button[data-sport='{empty}']")
+        assert held.release() == 1
+        wait_until_read(page, "/api/weeks?", f"sport={full}")
     finally:
-        page.unroute(f"**/api/weeks?*sport={full}*")
+        held.close()
     assert page.evaluate("window.Gridiron.state.sport") == empty
     picker = page.evaluate("[...document.querySelectorAll('#week-picker option')].map(o => o.textContent)")
     assert picker == empty_weeks, f"the week picker holds {picker}, not {empty}'s {empty_weeks}"
 
-    # Phase 2: the slate itself. The first sport's cards land late.
-    page.route(f"**/api/week?*sport={full}*", slow)
+    # Phase 2: the slate itself. The first sport's cards land late. ITS
+    # ADDRESS EXACTLY: a glob's `?` is any one character, so
+    # `**/api/week?*sport=...` held the weeks list too, which comes first.
+    held = HeldAnswers(page, lambda url: "/api/week?" in url and f"sport={full}" in url)
     try:
         with page.expect_request(lambda r: "/api/week?" in r.url and f"sport={full}" in r.url, timeout=10000):
             page.click(f"#sport-tabs button[data-sport='{full}']")
-        page.click(f"#sport-tabs button[data-sport='{empty}']")
-        page.wait_for_timeout(3000)
+        with wait_for_the_render(page, "games"):
+            page.click(f"#sport-tabs button[data-sport='{empty}']")
+        assert held.release() == 1
+        wait_until_read(page, "/api/week?", f"sport={full}")
     finally:
-        page.unroute(f"**/api/week?*sport={full}*")
+        held.close()
     assert page.evaluate("window.Gridiron.state.sport") == empty
     assert page.get_attribute(f"#sport-tabs button[data-sport='{empty}']", "aria-pressed") == "true"
     cards = page.evaluate("document.querySelectorAll('#games-rows .game').length")
@@ -115,6 +128,26 @@ def _tiles_by_id(page, sport):
         "Object.fromEntries(j.board.props.tiles.map(t => [String(t.prediction_id), t.family])))")
 
 
+#: EVERY ANSWER TO ONE SPORT'S SLATE, HELD INSIDE THE PAGE until the test lets
+#: it go, one at a time and in the order the test chooses (question 5's
+#: prover, 2026-10-08): the page's own `fetch` is wrapped, so the request is
+#: sent when it is let go -- a Playwright route released from the test would
+#: release them together, in the order asked. `__unholdSlates` puts the
+#: page's `fetch` back.
+_HOLD_THE_SLATE = """(sport) => {
+    const held = window.__heldSlates = [];
+    const ask = window.fetch;
+    window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : ((input && input.url) || String(input));
+        if (url.includes('/api/week?') && url.includes('sport=' + sport)) {
+            return new Promise(go => held.push(go)).then(() => ask.call(window, input, init));
+        }
+        return ask.apply(this, arguments);
+    };
+    window.__unholdSlates = () => { window.fetch = ask; };
+}"""
+
+
 def test_two_chips_in_quick_succession_leave_the_second_one(page):
     _open_week(page)
     full, _ = _full_and_empty(page)
@@ -129,12 +162,30 @@ def test_two_chips_in_quick_succession_leave_the_second_one(page):
     # BOTH RENDERS SEEN TO LAND, INSIDE THE PAGE (the board merge,
     # 2026-09-29): this waited 2.5s for them. Two chips ask for the slate
     # twice, and the helper waits for two arrivals of the tiles to start and
-    # the last to end, whichever answer comes back first.
-    with wait_for_the_redraw_it_starts(page, "props-tiles", count=2):
-        page.evaluate(f"""() => {{
-            document.querySelector("#props-chips .chip-btn[data-key='{first}']").click();
-            setTimeout(() => document.querySelector("#props-chips .chip-btn[data-key='{second}']").click(), 60);
-        }}""")
+    # the last to end. THE LATER ANSWER FIRST, HELD AND RELEASED (operator
+    # question 5, 2026-10-08: "a held-and-released response"): the second
+    # chip was pressed 60ms after the first by a timer in the page, then (as
+    # first rebuilt) in the same task; either way the answers came back in
+    # whatever order the server gave them, and in the order asked the first
+    # chip's render drew before the second's, so a page that drew the chip it
+    # was asked for, not the one chosen when its answer came, passed
+    # (question 5's prover, measured on such a page). Both answers are held
+    # inside the page, the second chip's let go first and read, then the
+    # first chip's: the late answer always lands last, the case this is
+    # about.
+    watch_the_answers(page)
+    page.evaluate(_HOLD_THE_SLATE, full)
+    try:
+        with wait_for_the_redraw_it_starts(page, "props-tiles", count=2):
+            page.click(f"#props-chips .chip-btn[data-key='{first}']")
+            page.click(f"#props-chips .chip-btn[data-key='{second}']")
+            page.wait_for_function("window.__heldSlates.length === 2", timeout=REDRAW_LIMIT_MS)
+            page.evaluate("window.__heldSlates[1]()")
+            wait_until_read(page, "/api/week?", f"sport={full}")
+            page.evaluate("window.__heldSlates[0]()")
+            wait_until_read(page, "/api/week?", f"sport={full}", count=2)
+    finally:
+        page.evaluate("() => { if (window.__unholdSlates) window.__unholdSlates(); }")
     assert page.evaluate("(document.querySelector('#props-chips .chip-btn[aria-pressed=\"true\"]') || {dataset: {}}).dataset.key") == second
     by_id = _tiles_by_id(page, full)
     shown = page.evaluate("[...document.querySelectorAll('#props-tiles .prop')].map(c => c.dataset.id)")
@@ -182,7 +233,11 @@ def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
     try:
         page.evaluate("window.dispatchEvent(new Event('offline'))")
         page.evaluate(f"document.querySelector(\"#props-chips .chip-btn[data-key='{family}']\").click()")
-        page.wait_for_timeout(1500)
+        # THE FAILED ANSWER SAID ON THE PAGE (operator question 5,
+        # 2026-10-08): this waited 1.5s. A render whose answer failed lands
+        # nothing and says nothing; what it draws is the error box, and that
+        # box shown is the event.
+        page.wait_for_selector("#error:not([hidden])", state="attached", timeout=15000)
         assert page.is_visible("#offline-bar")
         assert page.evaluate("document.getElementById('error').hidden") is False
         shown = page.text_content("#error").strip()
@@ -190,9 +245,10 @@ def test_offline_says_so_in_words_and_a_later_success_clears_it(page):
     finally:
         page.context.set_offline(False)
     page.evaluate("window.dispatchEvent(new Event('online'))")
-    with page.expect_response(lambda r: "/api/week" in r.url, timeout=20000):
+    # THE NEXT TAP'S TILES, SAID LANDED (operator question 5, 2026-10-08):
+    # this waited 600ms after the answer arrived.
+    with wait_for_the_redraw_it_starts(page, "props-tiles"):
         page.evaluate("document.querySelector(\"#props-chips .chip-btn[data-key='']\").click()")
-    page.wait_for_timeout(600)
     assert page.evaluate("document.getElementById('error').hidden") is True, "the error survived the next success"
     assert not page.is_visible("#offline-bar")
 

@@ -12,6 +12,112 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q5 PROVED (2026-10-08 ~20:40-23:15Z, its prover, alone in the worktree;
+  COMMITTED LOCALLY on `repair` on 56d65a4 as one commit, not pushed, for
+  the gate; FOLLOWUPS "The page says when a render has landed ...", THE
+  PROVER; "Rulings taken in your absence (2026-10-08, Q5's prover)"
+  below):** FOUR DEFECTS OF THE CHANGE FOUND AND FIXED -- (1) to (3) each
+  tested (failing on 56d65a4; (1) and (2) on the change as first built too)
+  and planted (escaping on 56d65a4 and on the change as first built, caught
+  here); (4) proved by the defect it now catches. (1) THE SIGNAL CAME
+  BEFORE THE BARS HAD ARRIVED: `rendered` read the panel's own arrival
+  class alone, and the probability bar is drawn
+  at its start (`filling`, opacity 0) and cleared two frames later -- under
+  reduced motion, on a slate of one game, the rows said they had landed with
+  the open row's 4 bars at opacity 0; it now waits for every start state
+  inside what it drew, and the scan reads them off the script. (2) A PAYOUT
+  REFUSED SAID NOTHING: `renderPayouts` was held exempt as though every
+  answer drew through `renderProps`; a refusal draws in its row and now says
+  so. (3) A FADE READ BY THE FRAMES THAT LAND: `test_motion.py`'s fade check
+  and the per-frame tap-target check's sanity each asked that some frame
+  read a panel mid-fade -- with the document's timeline run fast (a stalled
+  renderer, to a sampler) both went red on a page that fades; the fade is
+  read off the fade itself and the sanity off the first frame, the clock
+  scan names a `requestAnimationFrame` in a string a test hands the page,
+  and question 20's per-frame check is held by name with a dated reason. (4)
+  THE TWO CHIPS WERE NOT TESTED: as first rebuilt (both in one task) the
+  test passed 3 of 3 on a page that draws the chip asked for; both answers
+  are held in the page and the later chip's let go first (fails 3 of 3 there).
+  FOR THE QUEUE, NOT BUILT (the queue rule's third clause as the prover reads
+  it): Results draws one forecaster's rows under the other's choice -- an
+  earlier table's late answer, held and released, drew 51 rows, 50 the
+  model's, under "reasoning pass" with no Forecaster column. RENDERED HEAD
+  against this tree at 1300 and 390 (14 pairs, 0 pixels differ, the same
+  words) and read. THE BROWSER TIER REPEATED: each changed browser module 5
+  of 5 (`test_smoke.py` among them) and `test_prompt_disclosure.py` 10 of 10,
+  70 runs, all passing (2,383 s). `plant.py` whole 463/463 caught in 434 s.
+  THE SUITE (detached) twice: 3,276 passed, 4 skipped, 0 failed, in 1,615 s
+  and 1,620 s. `audit.prose_reaching_the_raw_side()` []. No copy of the
+  record made. **Next: the gate and release; then Q10 (the Results finding
+  first if the operator queues it).**
+  **Q5 BUILT (2026-10-08 ~17:30-20:35Z, on 56d65a4 -- Q25 with Q29 and Q26
+  released as d264f1f + cfcf273; UNCOMMITTED for its prover; FOLLOWUPS "The
+  page says when a render has landed, and every fixed wait is rebuilt on
+  it"; CLAUDE.md rows NO REAL TIME and L3):** question 5 (A), ruled
+  2026-09-27 (second set): "After the merge: the app emits a render-finished
+  signal, every fixed wait is rebuilt on it, on a held-and-released response
+  or on page.clock; upper-limit timeouts stay." ONE SIGNAL: app.js dispatches
+  `gridiron:rendered` on the document once a render it started has landed --
+  its DOM written and its arrival ended (`rendered`, question 28's reading) --
+  naming the view, the panel and a count (the render's place in the order
+  the page asked for renders, `renderAsked`; `Gridiron.rendersAsked()` reads
+  it), and nothing the page draws; every view and every redraw (a hash, the
+  week picker, a filter, a sort, a chip, the forecaster, Results' table, the
+  entry check's and the deposit match's answers, the greeting, a setting
+  saved, a row or a prompt opened, a combo taken; the Record page once its
+  parts have drawn -- `renderRecord` now waits for them), never a live tick, a
+  superseded render or a failed answer. MEASURED FIRST: the register's 27
+  waits in 19 functions, each with what it waited for, and three kinds the
+  scan could not read -- two timers in the script a test hands the page
+  (`setTimeout(r, 250)` before reading an opened row; 60ms between two
+  chips) and `networkidle` on eleven page loads. EVERY ONE REBUILT: on the
+  signal (`tests/conftest.py::wait_for_the_render`, which takes only a render
+  asked after it is armed; `wait_for_the_redraw_it_starts` kept as a thin
+  wrapper), on an answer held and released (`HeldAnswers`; `test_rapid.py`'s
+  `time.sleep(1.2)` in a route handler), on the page's own reading of an
+  answer (`watch_the_answers`, `wait_until_read`: the live tick, the empty
+  sport's requests), on the page's count of renders asked (a swipe asks
+  none), on the error box shown (a chip offline), the sign-ins on the load
+  event; `page.clock` not needed. `audit.ELAPSED_TIME_HELD` IS EMPTY AND
+  PINNED (an entry is named, and its waits; the list kept as
+  `ELAPSED_TIME_HELD_UNTIL_QUESTION_5`), and the scan reads a page timer in
+  any string but a docstring and any `networkidle`. THE RACES: the Results
+  test's (it opened a prompt on the table before its filter's) and every
+  other found -- the weekly strip read with its answer in flight, the My day
+  chip's mark, the settled-pick fill, the stale-rows probe, the Record
+  headings' scan, `test_smoke.py`'s route opener -- wait for their own render.
+  PROVED ON 56d65a4 FIRST, by a held answer (never a sleep): the Results test
+  forced fails 2 of 2 there ("Locator.wait_for: Timeout 10000ms ... `pre.
+  prompt-text`", Q38's and Q25's gate failure) and passes 2 of 2 here; the
+  weekly strip blank there, drawn here; four rebuilt tests fail on app.js
+  carrying their defects (a late answer painting, a tick redrawing, an empty
+  slate polling, a swipe redrawing) and pass on the shipped one. THE GATE:
+  `audit.check_every_render_says_it_landed` (step 2, `render_signal_faults`:
+  every function that asks for an answer or arrives a panel is a render that
+  says it landed, a part its render waits for, or exempt with a dated
+  reason; the count taken before asking; the landing said after the last
+  answer, with that count, its view and the panel it arrives; one dispatch,
+  inside the wait, carrying the three and nothing else; every view of
+  `ROUTES`; never the live tick). Plantings: `plant_a_fixed_wait_coming_back`,
+  `plant_a_render_that_never_says_it_landed`,
+  `plant_a_signal_before_its_render_lands`, each ESCAPING on 56d65a4 (`git
+  archive`, this plant.py) and CAUGHT here; `test_the_render_signal.py` (38:
+  the script's reading, and in Chromium every view and redraw the browser
+  world can show, the signal's moment, an answer held, a superseded render, a
+  live tick) and `test_the_clock.py` (the pin; a page timer and a quiet
+  network). NO FLAKE: each changed browser module 5 runs of 5 and
+  `test_prompt_disclosure.py` 10 of 10, all passing (detached, 2,333 s).
+  RENDERED HEAD against this tree on the browser tests' world (Games, a row
+  open, Props, the ladder, Record, Results, Settings at 1300 and 390): 14
+  pairs, 0 pixels differ, the same words -- read: the signal draws nothing.
+  THE SUITE (detached), twice in a row: 3,269 passed, 4 skipped, 0 failed, in
+  1,612 s and 1,607 s; `plant.py` whole 463/463 caught in 435 s (inside the
+  harness's 600 s); `audit.prose_reaching_the_raw_side()` []. No copy of the
+  record made (nothing reads it; no schema change). No question put; nothing
+  joins the queue (FOLLOWUPS, "FOUND, NOT BUILT": Results and the tier table
+  drop no superseded answer within a sport; a stale greeting's failure hides
+  the new sport's; `refreshPulse` unused). **Next: its prover; then the gate
+  and release; then Q10.**
   **Q26 PROVED (2026-10-08 ~14:45-16:00Z, the port's prover; COMMITTED
   LOCALLY on `repair`, the second of two commits on 208dc95, after Q25's;
   not pushed, for the gate; FOLLOWUPS "The history tables hold to their
@@ -2357,6 +2463,19 @@ depend on the answer.
    `audit.ELAPSED_TIME_HELD`; none was changed, none may be added, and the
    register can only shrink. FOLLOWUPS, "HELD: the browser tier's fixed
    waits".
+   **RULED (A) on 2026-09-27 (second set), after the board merge; BUILT
+   2026-10-08** (START HERE, "Q5 BUILT"; FOLLOWUPS, "The page says when a
+   render has landed, and every fixed wait is rebuilt on it"): app.js
+   dispatches `gridiron:rendered` once a render it started has landed; the
+   27 waits the register held after the merge, two timers in the page and
+   eleven `networkidle`s are rebuilt on it, on an answer held and released,
+   or on the page's own reading of an answer; the register is empty and
+   pinned. **PROVED 2026-10-08** (START HERE, "Q5 PROVED"): four defects of
+   the change fixed -- the signal before the bars' start state cleared, a
+   payout refused saying nothing, a fade read by the frames that land, the
+   two-chip test passing on the page it guards against -- and one finding
+   reported for the queue (Results' late table under the other forecaster's
+   choice).
 6. **A companion no-update trigger on `market_snapshots`? (Schema ruling 4;
    asked 2026-09-25.)** The 8 missing ids (174-181) were DELETED by hand at
    2026-09-01T00:08:32Z through a writable `db.connect()` -- a LAW 3
@@ -3429,6 +3548,103 @@ depend on the answer.
     absence (2026-10-08, Q46)"), uncommitted for its prover. PROVED the same
     day (Q46 PROVED, START HERE): no defect found, one local commit for its
     gate.**
+
+## Rulings taken in your absence (2026-10-08, Q5's prover)
+
+Operator question 5, ruled (A) on 2026-09-27 (second set), and schema ruling
+5 of 2026-09-24 ("No test in the gate may depend on elapsed real time"), read
+as the build read them; each reading below the conservative one, reversible
+in a line, none touching a law (FOLLOWUPS, "The page says when a render has
+landed ...", THE PROVER).
+- **A START STATE IS PART OF AN ARRIVAL** (reading (a): "its DOM written and
+  any arrival ended"). A class the page puts on what it draws and takes off a
+  frame later -- the arrival class, and the probability bar's `filling` --
+  means what it drew has not landed; `rendered` waits while anything inside
+  it carries one, and the scan reads the set off the script (a
+  `classList.remove` inside a `requestAnimationFrame`). Reversal: the
+  selector in `rendered` and the loop in `render_signal_faults`.
+- **A REFUSAL DRAWN IS A REDRAW** (reading (a): "every view and every
+  redraw"), as the build read a setting's refused save: a payout the
+  settings door refuses is drawn in its row's line, and says so.
+  `renderPayouts` moves from the exempt register to the renders'.
+- **A PAGE READ FRAME BY FRAME DEPENDS ON ELAPSED REAL TIME** (schema ruling
+  5, question 5's (A) "Literal"; the prover's list, "a poll whose interval
+  decides the result"): what a frame reads depends on when it lands. A
+  reading that decides a result is rebuilt on the thing itself (the fade's
+  own transition, read at a point of its own duration; the first frame,
+  which always sees a fade begin); the scan names a `requestAnimationFrame`
+  in a string a test hands the page; and question 20's per-frame check --
+  ruled per-frame on 2026-09-27 -- is held by its script's name in
+  `ELAPSED_TIME_EXEMPT`, dated, because how many frames land decides nothing
+  it now asserts (its power to see a fault between two frames still rides on
+  them: FOLLOWUPS). The document's timeline run fast through the DevTools
+  protocol (`Animation.setPlaybackRate`) is used only by the two tests that
+  show a reading does not ride on the frame cadence, never as a wait.
+  Reversal: the frame clause in `_clock_faults_in` and the one exemption.
+- **"REBUILT ON A HELD-AND-RELEASED RESPONSE" MEANS THE TEST STILL TESTS
+  WHAT IT NAMES** (reading (b)): the two-chip test, rebuilt by taking its
+  60ms timer away, passed on the page it guards against; it is rebuilt on
+  two answers held in the page and released in the adverse order.
+- **THE QUEUE RULE'S THIRD CLAUSE READS A FORECASTER'S CHANCE UNDER THE
+  OTHER'S NAME AS A WRONG NUMBER ON A PICK**: Results' late table under a
+  later forecaster choice is reported for the queue (notes; FOLLOWUPS), not
+  built in Q5's step -- it is the page's ordering of answers, which the
+  ruling does not name, and its fix is its own step's.
+
+## Rulings taken in your absence (2026-10-08, Q5)
+
+Operator question 5, ruled (A) on 2026-09-27 (second set): "After the merge:
+the app emits a render-finished signal, every fixed wait is rebuilt on it, on
+a held-and-released response or on page.clock; upper-limit timeouts stay. Its
+own step, with renders." Each reading below is the conservative one the task
+gave, reversible in a line; none breaks LAW 1 or LAW 3 or makes a gate count
+false (FOLLOWUPS, "The page says when a render has landed, and every fixed
+wait is rebuilt on it", READINGS TAKEN).
+- **(a) ONE signal.** `gridiron:rendered`, dispatched on the document by
+  app.js once a render the page started has landed -- its DOM written and its
+  arrival ended (the arrival class off and no finite transition running on
+  what it drew; the live mark's pulse, the one loop, aside) -- naming the
+  view, the panel and a count; dispatched for every view and every redraw (a
+  hash, the week picker, a filter, a sort, a chip, the forecaster, Results'
+  table, the entry check's answer, the greeting -- and the deposit match's
+  answer, a setting saved, a row opened, a prompt opened and a combo taken,
+  each a redraw the page makes from an answer or with an arrival); never on a
+  live tick, a render a later one superseded, or an answer that failed;
+  carrying no number the page draws (the count is the page's bookkeeping;
+  nothing is visible). THE COUNT is the render's place in the order the page
+  asked for renders -- "a count" of the reading, read as what tells a waiter
+  which render landed -- and the page's count so far is readable
+  (`Gridiron.rendersAsked()`), so a test arms on it: a reading of state, not
+  a second signal. NOT A RENDER: a form redrawing itself as the operator types
+  (the entry check's and the deposit match's fields: drawn in the keystroke's
+  own task, nothing to wait for), and a sport switch's steps before its view's
+  render (the banner, the footer, the markets, the week picker), which the
+  view's own signal follows. THE RECORD PAGE says so once every part it
+  fetches on its own has drawn, so `renderRecord` now waits for them; nothing
+  it draws moves (the renders), and the route -- the boot's `ready` with it, on
+  that page -- ends later than before. Reversal: one function, `rendered`, and
+  its calls.
+- **(b) EVERY fixed wait in `tests/`.** The 27 the register held after the
+  merge, AND what the scan did not read, found measuring: two timers in the
+  script a test hands the page, and Playwright's `networkidle` (no request for
+  500ms) on eleven page loads -- each a wait by the clock as
+  `wait_for_timeout` is. The `networkidle`s are rebuilt on the page's load
+  event, the "event" of question 5's (A) (the sign-in needs nothing the page
+  fetches after its load, and Playwright waits for the field it types into,
+  an upper limit). One wait, after the test rewrote the tabs' counts itself,
+  waited for nothing the page does: it is gone, the fonts' readiness promise
+  awaited. The register is EMPTY AND PINNED: the scan names any entry and the
+  waits under it, and reads every string a test hands anything (a docstring
+  apart) for a page timer, and any `networkidle`. `wait_for_the_redraw_it_
+  starts` is KEPT AS A THIN WRAPPER of `wait_for_the_render`.
+- **(c) The Results race, and every other found**, on the signal: the weekly
+  strip (read with its answer in flight; 3 failures in 4 run alone on
+  2026-09-30), the My day chip's mark, the settled-pick fill, the stale-rows
+  probe, the Record headings' scan, `test_smoke.py`'s route opener and its
+  screen loop.
+- **`page.clock` is not used**: no wait was on a timer of the page's own (the
+  live poll's 90 seconds is never waited for; its first tick is asked with
+  the render), so the signal and the held answer covered every one.
 
 ## Rulings taken in your absence (2026-10-08, the Q26 port)
 
