@@ -1247,6 +1247,15 @@ def step_2_guards() -> bool:
         # a cache or a derived table named in a register that only shrinks.
         ("no write replaces a row of an append-only table (question 15)",
          audit.check_no_replacing_write_on_an_append_only_table),
+        # OPERATOR QUESTIONS 25 AND 29 (ruled 2026-09-28; question 29's
+        # reading confirmed 2026-09-29; built 2026-09-29): no shipped code
+        # turns the rules off by a connection setting or registers a function
+        # or collation under a name SQLite lists as its own; none writes
+        # SQLite's sequence store but the rebuild door, named in a register
+        # with its dated reason; and none inserts several rows under OR FAIL,
+        # OR IGNORE or OR ROLLBACK on an append-only table.
+        ("nothing switches the rules off or rewrites their marks (questions 25, 29)",
+         audit.check_no_code_switches_the_rules_off_or_rewrites_their_marks),
         # THE OPERATOR'S RULING OF 2026-09-29 (docs/briefs/2026-09-29-player-
         # numbers.md): the roster's numbers are display only. Nothing that
         # forecasts, grades, fits or measures may read the table; it is named

@@ -885,10 +885,25 @@ def _finish_widening_table(conn: sqlite3.Connection, table: str,
     verified `predictions` widening has done this since it was written and
     this one did not, which is the whole of the 2026-09-03 failure.
 
-    EVERY ROW IS COUNTED. The copy uses OR IGNORE because the schema script may
+    EVERY ROW IS COUNTED. The copy used OR IGNORE because the schema script may
     have seeded reference rows, and OR IGNORE is exactly the construct this
     project distrusts -- so it is checked rather than believed. A short copy
     leaves the original in place under `<table>_narrow` and raises.
+
+    NO OR IGNORE (2026-09-29, operator question 29, ruled 2026-09-28 into
+    question 25's scan): "refuse ... any multi-row INSERT OR FAIL / OR IGNORE
+    / OR ROLLBACK on an append-only table" -- and `factors`, one of the tables
+    this copies back, is append-only, while the table is worked out when it
+    runs, so the scan counts every one as such. The copy is a plain insert of
+    every narrow row whose key is not already stored: the rows OR IGNORE
+    skipped for the reason it was written, a row the schema script or a
+    writer put in first, matched on each of the table's unique keys (for
+    every table here, its primary key alone). Any other row the table will
+    not take -- a NOT NULL, a CHECK, a rule -- refuses the whole copy, rolled
+    back with the original left under `<table>_narrow`: OR IGNORE dropped
+    such a row, and the count below caught that only when too few other rows
+    were stored to make up the number. `db.set_meta`'s precedent (question
+    15): the same rows, tested side by side.
     """
     columns = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
     narrow = {r[1] for r in conn.execute(f"PRAGMA table_info({table}_narrow)")}
@@ -897,12 +912,21 @@ def _finish_widening_table(conn: sqlite3.Connection, table: str,
     if expected is None:
         expected = conn.execute(
             f"SELECT COUNT(*) FROM {table}_narrow").fetchone()[0]
+    already = _already_stored(conn, table, shared)
 
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
-        conn.execute(
-            f"INSERT OR IGNORE INTO {table} ({joined})"
-            f" SELECT {joined} FROM {table}_narrow")
+        try:
+            conn.execute(
+                f"INSERT INTO {table} ({joined})"
+                f" SELECT {joined} FROM {table}_narrow AS narrow"
+                f" WHERE NOT ({already})")
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            raise MigrationRefused(
+                f"widening `{table}` would have lost a row the table refuses "
+                f"({exc}). The original is left in place as `{table}_narrow` "
+                f"and nothing was dropped.") from exc
         after = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         if after < expected:
             conn.rollback()
@@ -916,6 +940,33 @@ def _finish_widening_table(conn: sqlite3.Connection, table: str,
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
     return f"{table} ({after} rows)"
+
+
+def _already_stored(conn: sqlite3.Connection, table: str, shared: list[str]) -> str:
+    """The condition, on a row aliased `narrow`, that `table` already stores a
+    row under one of its unique keys -- its primary key, and every unique
+    index -- which is the row OR IGNORE skipped for a key (2026-09-29, the
+    copy that replaced it: question 29). A key over a column the copy does
+    not carry, or over an expression, cannot be matched and is left to
+    refuse the copy; "0" where there is no key to match."""
+    keys: list[list[str]] = []
+    primary = [r[1] for r in sorted(conn.execute(f"PRAGMA table_info({table})"),
+                                    key=lambda r: r[5]) if r[5]]
+    if primary:
+        keys.append(primary)
+    for index in conn.execute(f"PRAGMA index_list({table})"):
+        if index[2]:
+            keys.append([r[2] for r in conn.execute(f"PRAGMA index_info({index[1]})")])
+    matches = []
+    for key in keys:
+        if key and all(c is not None and c in shared for c in key):
+            match = " AND ".join(f"kept.{c} = narrow.{c}" for c in key)
+            if match not in matches:
+                matches.append(match)
+    if not matches:
+        return "0"
+    either = " OR ".join(f"({m})" for m in matches)
+    return f"EXISTS (SELECT 1 FROM {table} AS kept WHERE {either})"
 
 
 def _needs_market_type_widening(conn: sqlite3.Connection) -> bool:
@@ -1100,9 +1151,28 @@ def widen_taken_for_packages(conn: sqlite3.Connection) -> bool:
     expected = conn.execute(
         "SELECT COUNT(*) FROM picks_taken_pre_packages").fetchone()[0]
     conn.execute("PRAGMA foreign_keys = OFF")
-    conn.execute(
-        "INSERT OR IGNORE INTO picks_taken (id, prediction_id, taken_utc)"
-        " SELECT id, prediction_id, taken_utc FROM picks_taken_pre_packages")
+    # A PLAIN COPY, NO OR IGNORE (2026-09-29, operator question 29, ruled
+    # 2026-09-28 into question 25's scan: "refuse ... any multi-row INSERT OR
+    # FAIL / OR IGNORE / OR ROLLBACK on an append-only table", and
+    # `picks_taken` is one). The same effect: the table the schema script
+    # made holds no row to skip, so OR IGNORE skipped only a row the table
+    # refused, and the count below then refused the copy; a plain insert
+    # refuses the same row by stopping, and is refused here in the same
+    # words, rolled back with the original kept -- where a rule's refusal
+    # used to leave this function by a raw error with foreign keys off.
+    # `db.set_meta`'s precedent (question 15), tested side by side.
+    try:
+        conn.execute(
+            "INSERT INTO picks_taken (id, prediction_id, taken_utc)"
+            " SELECT id, prediction_id, taken_utc FROM picks_taken_pre_packages")
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        conn.execute("PRAGMA foreign_keys = ON")
+        raise MigrationRefused(
+            f"rebuilding `picks_taken` would have changed the record: "
+            f"{expected} rows before, and the rebuilt table refused one "
+            f"({exc}). The original is untouched under "
+            f"`picks_taken_pre_packages` and nothing was dropped.") from exc
     after = conn.execute("SELECT COUNT(*) FROM picks_taken").fetchone()[0]
     if after != expected:
         conn.rollback()

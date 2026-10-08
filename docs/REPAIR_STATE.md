@@ -12,6 +12,55 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q25 WITH Q29 PROVED (2026-10-08 ~14:45-16:00Z, the port's prover;
+  COMMITTED LOCALLY on `repair`, the first of two commits on 208dc95, not
+  pushed, for the gate; FOLLOWUPS "The rules stay on", THE PROVER OF THE
+  PORT):** ONE ROAD MORE CLOSED, under question 29's words -- a rule's own
+  insert of ONE row under OR FAIL, OR IGNORE or OR ROLLBACK, or doing
+  nothing on conflict, into an append-only table, in the schema or in a
+  temporary rule the code creates, which the scan as built and as ported
+  read as one row. A rule runs once for every row the statement firing it
+  writes: a plain insert, update or delete of three rows kept rows 3 and 4
+  above a mark of 2 under OR FAIL (measured on scratch worlds). Counted now
+  as several rows under its clause (`executemany`'s reading; a ruling taken
+  in your absence, below); 20 tests, all failing on 208dc95 and 14 on the
+  port as handed; a planting, `plant_a_rules_own_insert_that_can_stop_part_way`,
+  escaping on 208dc95 and on the port as handed and caught here. 43 more
+  forms of the two questions' roads, planted in a copy, each named; the new
+  modules hold none. TO FOLLOWUPS by the queue rule: an UPDATE of several
+  rows under OR FAIL on a table whose rule inserts plainly into an
+  append-only one (measured: the same rows above the mark; the ruling names
+  inserts, and nothing shipped does it). The nine plantings ESCAPE on
+  208dc95 and are CAUGHT here; the shipped code and the schema: nothing;
+  `audit.prose_reaching_the_raw_side()` []. `plant.py` whole and the suite:
+  Q26's lines. No question put; nothing joins the queue. **Next: Q26, its
+  own commit; then the gate and the release.**
+  **Q25 WITH Q29 PORTED (2026-10-08 ~12:50-14:40Z, on 208dc95;
+  UNCOMMITTED for its prover; FOLLOWUPS "The rules stay on", PORTED;
+  CLAUDE.md row "THE RULES STAY ON"):** `q25-held` (3c36861) cherry-picked,
+  no conflict in the code. MEASURED AGAIN over the shipped code as it is
+  now: 127 Python files (120 on bd90dc3; `entry_check`, `entry_math`, `m4`,
+  `picks` and three tools since), 73 statements naming a setting (72), no
+  connection-setting or registering call in the new modules or anywhere,
+  the sequence store written by the rebuild door alone, the same eight OR
+  IGNORE inserts (the two migration copies plain from this port), 27
+  append-only tables (24): the scan names nothing. THE HARNESS'S LIMIT: on
+  this code the scan took about 16 s a run (7 when built) and eight
+  plantings run it -- `plant.py` whole would have been about 500 of its 600
+  s; READ ONCE (a ruling taken in your absence, below): each file read once
+  through question 15's reader, a string where no name could stand not read
+  word by word, and for the plantings alone a memo of each file's readings
+  by its text -- about 7 s a run and 1.3 s a planting after the first, THE
+  SAME FAULTS, fault for fault, the scan as cherry-picked against the scan
+  read once over the shipped package and every planting's copies; the
+  limit not widened. The eight plantings ESCAPE on 208dc95 and are CAUGHT;
+  `test_rules_stay_on.py` 375 (163 new, the read-once tests), 345 failing
+  on 208dc95. No schema change from this part. Gate step 2's rows, dry on
+  one verified copy of the record made for both ports (Q26's lines have
+  it), PASS, this scan's among them; `plant.py` whole and the suite were
+  run on the tree holding both ports (Q26's lines). No question put;
+  nothing joins the queue. **Next: Q26, its own commit; then the gate and
+  the release.**
   **Q46 PROVED (2026-10-08 ~11:15-12:30Z; ONE LOCAL COMMIT on `repair`
   holding exactly the change's files, not pushed, for its gate; FOLLOWUPS
   "The band line above the slate is one category's", THE PROVER):** NO DEFECT
@@ -1571,6 +1620,50 @@
   **Next: Q25 + Q26 + Q29** (then Q5, Q10; the Record page's "market
   ahead" and the pick'em decision, queued after the re-read on 27 Sep, are
   not placed in the later orders and wait at the end).
+  **Q25 WITH Q29 BUILT (2026-09-29), NOT COMMITTED -- left in the worktree
+  for its prover:** `audit.check_no_code_switches_the_rules_off_or_rewrites_
+  their_marks` in gate step 2, beside question 15's scan: refuses in the
+  shipped code a setting of the seven `RULE_SETTINGS` or a `setconfig` of
+  the five `RULE_DBCONFIG` switches that change how a rule runs, an
+  authorizer, an extension, a function or collation under a name SQLite
+  itself lists (`function_list`, `collation_list`), a write of the sequence
+  store but the rebuild door's two statements (`SEQUENCE_WRITES_REGISTERED`,
+  frozen), and an insert of several rows under OR FAIL, OR IGNORE or OR
+  ROLLBACK (or doing nothing on conflict) on an append-only table. Measured
+  first: none in the shipped code but the rebuild door's writes and two
+  migration recovery copies under OR IGNORE (`db.widen_taken_for_packages`,
+  `db._finish_widening_table`), which cannot run on the record (no
+  half-finished widening on it) and are plain inserts now, to the same
+  effect (`db.set_meta`'s precedent). Six plantings escape on bd90dc3 and
+  are caught. No schema change. Readings below ("Rulings taken in your
+  absence (2026-09-29, Q25 + Q29)"); FOLLOWUPS, "The rules stay on". Q26
+  is its own commit, next.
+  **Q25 WITH Q29 PROVED (2026-09-29) AND COMMITTED LOCALLY on `repair`
+  (one commit, "Q25 with Q29: the gate refuses code that switches the rules
+  off or rewrites their marks"; not pushed, not released).** Its prover got
+  eighteen forms past the scan as first built, each within the rulings'
+  words, and closed them: `journal_mode` OFF (measured: a statement a rule
+  refused inside a transaction kept its rows, the refused row among them,
+  above the mark) refused at OFF, WAL left; a setting's name with its verb
+  worked out or in pieces; the calls looked up by any string the scan can
+  render, or by the audit's own values holding their names; a switch
+  disguised under the defensive switch's name; the extension function by a
+  quoted name; the store's name kept apart from its verb or after a verb in
+  pieces; the rebuild door's own DELETE widened to every mark (each register
+  entry now holds its statement as made); an insert of several rows with its
+  verb in pieces or kept apart; a rule raising FAIL on an append-only
+  table, temporary or in the schema (measured: a plain insert stopped part
+  way, rows above the mark); and one row under OR FAIL into a table whose
+  rule inserts several rows into an append-only one (SQLite runs the rule's
+  insert under the firing statement's clause: measured, rows above the
+  mark). Two plantings (eighteen forms) escape on bd90dc3 and on the scan as
+  first built and are caught; each of the scan's twenty-seven parts,
+  neutralised in a copy, lets its planting escape. Beyond the rulings'
+  words, recorded in FOLLOWUPS by the queue rule (no shipped code does
+  either; nothing on the record moved): `blobopen` rewrote a stored row's
+  text past its no-update rule, and a backup written into a database file
+  replaced every page with no rule run; and the roster scan (released)
+  misses its own holder looked up by a string in pieces.
 
 - **RULINGS OF 29 SEP (docs/briefs/2026-09-29-rulings.md):** Q31 (i)(B) and
   (ii)(B): label every fitted row written before Q16's release that is
@@ -2534,6 +2627,11 @@ depend on the answer.
     **RULED 2026-09-28: yes;** the scan also refuses code that turns the
     rules off by a connection setting or registers a function under a
     built-in's name.
+    **BUILT AND PROVED 2026-09-29, with question 29 folded in** (the local
+    commit 3c36861, held on `q25-held` for the order of 30 September);
+    **PORTED 2026-10-08 onto the current repair (START HERE has it);
+    PROVED the same day, one road more closed (a rule's own one row under a
+    ruled clause), and COMMITTED LOCALLY.**
 26. **Tables append-only in words, with no rule. (Found by Q15's scan.)**
     `factor_scores` and `llm_calls` (CLAUDE.md, "Append-only history"),
     `injury_reports`, `lineup_captures` and the observed-weather table
@@ -2636,6 +2734,12 @@ depend on the answer.
     sequence store other than the rebuild's), or leave them in FOLLOWUPS?
     Default until ruled: FOLLOWUPS. (Before Q16, so the new queue rule does
     not yet apply; by it, this touches LAW 3.)
+    **RULED 2026-09-28 (second set): folded into Q25's scan** -- refuse any
+    code that writes sqlite_sequence (the rebuild door excepted, named in a
+    register: confirmed 2026-09-29) and any multi-row INSERT OR FAIL / OR
+    IGNORE / OR ROLLBACK on an append-only table. Built and proved with
+    question 25 on 2026-09-29 (3c36861, held on `q25-held`); ported with it
+    2026-10-08 (START HERE), and proved and committed with it the same day.
 
 30. **Counts that do not read Q17's key. (Found by Q17's numbers step,
     2026-09-28; none moved, none a gate count.)** The header record, the
@@ -3187,6 +3291,38 @@ depend on the answer.
     absence (2026-10-08, Q46)"), uncommitted for its prover. PROVED the same
     day (Q46 PROVED, START HERE): no defect found, one local commit for its
     gate.**
+
+## Rulings taken in your absence (2026-10-08, the Q25 + Q29 port)
+
+Each a precedent, reversible in a line; none breaks LAW 1 or LAW 3 or makes
+a gate count false (FOLLOWUPS, "The rules stay on", PORTED).
+- **The scan is read once, and the plantings keep what it read, rather
+  than the harness's limit widened.** On the current code the scan took
+  about 16 seconds a run and eight plantings run it; `plant.py` whole would
+  have taken about 500 seconds of its 600 (446 measured with the scan read
+  once within a run). The operator's word of 2026-09-27 ("never widen a
+  tolerance") and the orphan scan's precedent (read once, 2026-10-06): the
+  slow thing is made faster and proved identical -- the same faults, fault
+  for fault, over the shipped package and every planting's copies, and
+  held by four tests. The memo of what a file read is passed only by the
+  plantings (`plant._rule_switch_scan`); the gate's call passes none and
+  reads every file. Reversal: drop the memo from `_rule_switch_scan` (about
+  30 seconds back on `plant.py` whole: 446 against 416).
+- **A rule's own insert of one row under a ruled clause is several rows**
+  (the port's prover). Question 29: "any multi-row INSERT OR FAIL / OR
+  IGNORE / OR ROLLBACK on an append-only table". Such a rule's statement IS
+  an INSERT OR FAIL on an append-only table, and a rule runs once for every
+  row the statement firing it writes (measured: rows 3 and 4 above a mark
+  of 2, fired by an insert, an update or a delete); "multi-row" was read on
+  29 September to take in a one-row statement handed to `executemany`, run
+  once a row -- the same reading. Not stretched: the statement is the
+  ruling's verb and clause on the ruling's table. Reversal: drop the
+  `if clauses and several is None and in_a_rule(i):` block in
+  `audit._rule_findings`. LEFT: an UPDATE of several rows under OR FAIL
+  whose table's rule inserts plainly into an append-only one -- the clause
+  is the update's, and carrying the ruling's "INSERT" over to it would be a
+  reading, not the words: FOLLOWUPS by the queue rule (nothing shipped does
+  it).
 
 ## Rulings taken in your absence (2026-10-08, Q46)
 
@@ -3828,6 +3964,52 @@ ranked by edge, never by chance"); each reversible in a line or two.
   neither, sets the word aside as it sets the ruled set to its own. After
   the release: the tool dry through the read-only door, then `--write
   --live`.
+
+## Rulings taken in your absence (2026-09-29, Q25 + Q29)
+
+Each the conservative default, reversible in a line; none breaks LAW 1 or
+LAW 3 or makes a gate count false (FOLLOWUPS, "The rules stay on", READINGS
+TAKEN, has each in full).
+- **"Any PRAGMA that changes how rules run"**: the seven measured to change
+  what a rule does, reads or may call, or whether a connection sees it
+  (`recursive_triggers`, `ignore_check_constraints`, `case_sensitive_like`,
+  `trusted_schema`, `reverse_unordered_selects`, `writable_schema`,
+  `schema_version`), refused whatever the value; left, with reasons:
+  `foreign_keys` (the rebuild door's own), `legacy_alter_table`,
+  `query_only`, `defer_foreign_keys`. An authorizer and an extension are
+  counted as connection settings that turn a rule off (measured / unreadable).
+- **"A built-in's name"**: every name a fresh connection's `function_list`
+  gives (core and compiled-in extensions, any arity, any case) and its
+  `collation_list`.
+- **"The register"** for the rebuild door is this scan's own, made with the
+  door's two statements and frozen that day; question 15's frozen upsert
+  register was never asked to hold it.
+- **"Multi-row"** includes `executemany` (the brief's list; measured to leave
+  no hole), a statement not handed whole to `execute`, and an upsert doing
+  nothing on conflict; a key of an append-only table declared to fail,
+  ignore or roll back is refused (question 15's precedent). OR IGNORE and
+  OR ROLLBACK are refused as ruled though neither left rows above the mark
+  when measured.
+- **The two migration copies the scan found** were rewritten plainly to the
+  same effect (`db.set_meta`'s precedent), not registered: the ruling's one
+  exception is the rebuild door's.
+- **Its prover (2026-09-29).** "Turns the rules off by connection setting"
+  takes in `journal_mode` OFF, measured to leave a refused statement's rows
+  standing inside a transaction; it is refused at OFF or a value the scan
+  cannot read, never at WAL (the schema's own). A rule raising FAIL, IGNORE
+  or ROLLBACK on an append-only table (or a table an insert on one reaches)
+  is refused as a key declared so is -- question 15's precedent read for a
+  rule, since a plain insert of several rows then stops part way as under
+  OR FAIL (measured); and "multi-row" takes in one row under the clause
+  into a table whose rule inserts several rows into an append-only one,
+  since the rule's insert runs under the firing statement's clause
+  (measured; question 15 read a rule's writes the same way for the table).
+  "Named in a register" is read as naming the door's
+  statements, not only their place and verb: each entry holds its statement
+  as made, frozen. A write that is no statement (`blobopen`; a backup or a
+  serialized image written into the record's file) is outside both rulings'
+  words and breaks nothing on the record, so it went to FOLLOWUPS, not to a
+  question (the queue rule).
 
 ## Rulings taken in your absence (2026-09-27, third set)
 

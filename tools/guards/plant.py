@@ -29755,6 +29755,721 @@ def plant_a_read_of_the_roster_numbers_by_another_name() -> Result:
         })
 
 
+# ---------------------------------------------------------------------------
+# THE RULES STAY ON, AND THEIR MARKS STAY PUT (operator questions 25 and 29,
+# ruled 2026-09-28; question 29's reading confirmed 2026-09-29; built
+# 2026-09-29). Question 25: "The scan also refuses any code that turns the
+# rules off by connection setting or registers a function under a built-in's
+# name." Question 29: "refuse any code that writes sqlite_sequence, and any
+# multi-row INSERT OR FAIL / OR IGNORE / OR ROLLBACK on an append-only
+# table." Six plantings, each breaking a copy of the package and each named
+# by the scan, place by place, with a lawful neighbour beside it that must be
+# named by nothing: the connection's switches; its settings; a function or
+# collation under a built-in's name, and an extension; a write of the
+# sequence store; a second door to it past the register; and an insert of
+# several rows that can stop part way, with a key declared to do the same.
+# On the code before (bd90dc3) there is no such scan, and question 15's --
+# the one that reads the statements -- names none of them.
+# ---------------------------------------------------------------------------
+
+LAW_RULES_STAY_ON = ("LAW 3: NO CODE SWITCHES THE RULES OFF OR REWRITES THEIR "
+                     "MARKS (OPERATOR QUESTIONS 25 AND 29)")
+_RULE_SWITCH_GUARD = ("audit.rule_switch_faults (operator questions 25 and 29, "
+                      "gate step 2)")
+
+
+#: READ ONCE ACROSS THE PLANTINGS (2026-10-08, questions 25 and 29 ported
+#: onto the current repair). Each planting below runs the scan on a fresh
+#: copy of the package that differs from the last in a file or two; the
+#: scan took about 16 seconds a run on that day's code, eight runs, and the
+#: harness's 600-second limit is not widened ("never widen a tolerance",
+#: 2026-09-27). The scan keeps what it read of a file here by the file's
+#: path and text, and reads again only a file that changed: the same faults
+#: (`test_rules_stay_on.py`), about a second a planting after the first.
+_RULE_SCAN_MEMO: dict = {}
+
+
+def _rule_switch_scan(plant, register=None, frozen=None):
+    """Copy the package to a scratch directory, let `plant(root)` break the
+    copy, and return (the scan's faults, None) -- or, on a package with no
+    such scan (before the ruling), (None, what question 15's scan says of the
+    same copy)."""
+    import inspect
+
+    scan = getattr(audit, "rule_switch_faults", None)
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(config.PACKAGE_ROOT, root,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        plant(root)
+        if scan is not None:
+            # A scan that keeps no readings (as built on 2026-09-29) is run
+            # as it was.
+            kept = ({"memo": _RULE_SCAN_MEMO}
+                    if "memo" in inspect.signature(scan).parameters else {})
+            if register is None:
+                return scan(root, **kept), None
+            return scan(root, register, frozen, **kept), None
+        said = audit.replacing_write_faults(root)
+        planted = [f for f in said if "planted" in f]
+        return None, ("question 15's scan, the one that reads the statements, "
+                      + (f"names only {planted}" if planted else "names none of them"))
+
+
+def _rule_switch_named(violation: str, got, wanted: dict[str, str]) -> Result:
+    """CAUGHT when every planted place is named in a fault saying what
+    `wanted` says of it, and no fault names anything else."""
+    faults, before = got
+    if faults is None:
+        return Result(LAW_RULES_STAY_ON, violation, _RULE_SWITCH_GUARD, False,
+                      f"NOT CAUGHT - there is no scan for a connection that "
+                      f"switches the rules off, a function under a built-in's "
+                      f"name, a write of the sequence store or an insert of "
+                      f"several rows that can stop part way, and {before}")
+    hit = {marker: [f for f in faults if marker in f and words in f]
+           for marker, words in wanted.items()}
+    missing = [m for m, found in hit.items() if not found]
+    stray = [f for f in faults if not any(m in f for m in wanted)]
+    if missing or stray:
+        return Result(LAW_RULES_STAY_ON, violation, _RULE_SWITCH_GUARD, False,
+                      f"NOT CAUGHT - not named as the planting says: {missing}; "
+                      f"named besides: {stray}; the scan said {faults!r}")
+    return Result(LAW_RULES_STAY_ON, violation, _RULE_SWITCH_GUARD, True,
+                  " / ".join(found[0].split(": ")[0] for found in hit.values()))
+
+
+_PLANTED_RULE_SWITCHES = r'''
+
+# PLANTED VIOLATIONS (questions 25 and 29: a connection's switches)
+def planted_trigger_switch_off(conn):
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
+
+
+def planted_trigger_switch_by_its_number(conn):
+    conn.setconfig(1003, 0)
+
+
+def planted_switch_worked_out(conn, op, on):
+    conn.setconfig(op, on)
+
+
+def planted_schema_made_writable(conn):
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_WRITABLE_SCHEMA, True)
+
+
+def planted_switch_looked_up_by_name(conn):
+    getattr(conn, "setconfig")(1003, False)
+
+
+def planted_authorizer(conn, blind):
+    conn.set_authorizer(blind)
+
+
+def planted_trigger_switch_on(conn):
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, True)
+'''
+
+
+def plant_a_connection_switch_that_turns_the_rules_off() -> Result:
+    """A connection's switches turning the rules off: the trigger switch off
+    by its name, by its number and by a switch worked out when it runs; the
+    schema made writable; the switch looked up by name; and an authorizer,
+    which hands a rule's read back as NULL. A switch turned ON beside them
+    must be named by nothing."""
+    return _rule_switch_named(
+        "a connection's switches turning the rules off: the trigger switch by "
+        "name, number and a value worked out, the schema made writable, the "
+        "call looked up by name, and an authorizer",
+        _rule_switch_scan(lambda root: _append_to(root, "views.py",
+                                                  _PLANTED_RULE_SWITCHES)), {
+            "(planted_trigger_switch_off)": "`SQLITE_DBCONFIG_ENABLE_TRIGGER` off",
+            "(planted_trigger_switch_by_its_number)": "`SQLITE_DBCONFIG_ENABLE_TRIGGER` off",
+            "(planted_switch_worked_out)": "a connection switch the scan cannot read",
+            "(planted_schema_made_writable)": "`SQLITE_DBCONFIG_WRITABLE_SCHEMA` on",
+            "(planted_switch_looked_up_by_name)": "names `setconfig` in a string",
+            "(planted_authorizer)": "sets an authorizer",
+        })
+
+
+_PLANTED_RULE_SETTINGS = r'''
+
+# PLANTED VIOLATIONS (question 25: settings that change how rules run)
+def planted_recursive_triggers(conn):
+    conn.execute("PRAGMA recursive_triggers = ON")
+
+
+def planted_checks_ignored_by_case_and_prefix(conn):
+    conn.execute("pragma MAIN.Ignore_Check_Constraints(1)")
+
+
+def planted_schema_writable_in_a_script(conn):
+    conn.executescript("BEGIN; PRAGMA writable_schema = ON; COMMIT;")
+
+
+def planted_setting_worked_out(conn, name):
+    conn.execute(f"PRAGMA {name} = ON")
+
+
+def planted_like_by_case_kept_for_later(conn):
+    statement = "PRAGMA case_sensitive_like"
+    return statement
+
+
+def planted_foreign_keys_off(conn):
+    conn.execute("PRAGMA foreign_keys = OFF")
+'''
+
+
+def plant_a_setting_that_changes_how_the_rules_run() -> Result:
+    """Settings that change how the rules run: recursive triggers on, checks
+    ignored (by case and a schema's prefix), the schema writable inside a
+    script, a setting whose name is worked out when it runs, a listed setting
+    kept in a string to be finished later -- and in the schema file itself.
+    Foreign keys switched off beside them, the rebuild door's own setting,
+    must be named by nothing."""
+    def plant(root):
+        _append_to(root, "views.py", _PLANTED_RULE_SETTINGS)
+        _append_to(root, "schema.sql", "\nPRAGMA reverse_unordered_selects = ON;\n")
+    return _rule_switch_named(
+        "settings that change how the rules run, in the code and in the schema",
+        _rule_switch_scan(plant), {
+            "(planted_recursive_triggers)": "sets `recursive_triggers`",
+            "(planted_checks_ignored_by_case_and_prefix)": "sets `ignore_check_constraints`",
+            "(planted_schema_writable_in_a_script)": "sets `writable_schema`",
+            "(planted_setting_worked_out)": "a setting whose name the scan cannot read",
+            "(planted_like_by_case_kept_for_later)": "sets `case_sensitive_like`",
+            "gridiron/schema.sql:": "sets `reverse_unordered_selects`",
+        })
+
+
+_PLANTED_BUILT_IN_NAMES = r'''
+
+# PLANTED VIOLATIONS (question 25: a function under a built-in's name)
+def planted_json_valid(conn):
+    conn.create_function("json_valid", 1, lambda value: 1)
+
+
+def planted_json_extract_by_case(conn, pick):
+    conn.create_function("JSON_EXTRACT", 2, pick)
+
+
+def planted_sum_as_an_aggregate(conn, total):
+    conn.create_aggregate("sum", 1, total)
+
+
+def planted_nocase_collation(conn):
+    conn.create_collation("NOCASE", lambda a, b: 0)
+
+
+def planted_name_worked_out(conn, name, fn):
+    conn.create_function(name, 1, fn)
+
+
+def planted_extension(conn):
+    conn.enable_load_extension(True)
+    conn.load_extension("mod_json")
+
+
+def planted_a_name_of_its_own(conn, rank):
+    conn.create_function("gridiron_rank", 1, rank)
+'''
+
+
+def plant_a_function_registered_under_a_built_ins_name() -> Result:
+    """A function or a collation registered under a name SQLite lists as its
+    own -- `json_valid`, which the schema's rules call, `JSON_EXTRACT` by
+    case, `sum` as an aggregate, the NOCASE collation -- one under a name
+    worked out when it runs, and an extension allowed and loaded. A function
+    under a name of its own beside them must be named by nothing."""
+    return _rule_switch_named(
+        "functions and a collation under SQLite's own names, one under a name "
+        "worked out, and an extension loaded",
+        _rule_switch_scan(lambda root: _append_to(root, "views.py",
+                                                  _PLANTED_BUILT_IN_NAMES)), {
+            "(planted_json_valid)": "name `json_valid`, which SQLite lists",
+            "(planted_json_extract_by_case)": "name `JSON_EXTRACT`, which SQLite lists",
+            "(planted_sum_as_an_aggregate)": "name `sum`, which SQLite lists",
+            "(planted_nocase_collation)": "name `NOCASE`, which SQLite lists",
+            "(planted_name_worked_out)": "under a name the scan cannot read",
+            "(planted_extension)": "extension",
+        })
+
+
+_PLANTED_STORE_WRITES = r'''
+
+# PLANTED VIOLATIONS (question 29: the sequence store written)
+def planted_mark_removed(conn, table):
+    conn.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table,))
+
+
+def planted_mark_set_back_by_case_and_quotes(conn):
+    conn.execute('UPDATE main."SQLITE_SEQUENCE" SET seq = 0 WHERE name = \'predictions\'')
+
+
+def planted_mark_named_as_a_literal(conn):
+    conn.execute("DELETE FROM 'sqlite_sequence'")
+
+
+def planted_mark_named_in_pieces(conn, what):
+    conn.execute(f"UPDATE sqlite_{what} SET seq = seq - 1")
+
+
+def planted_mark_by_its_bare_name(conn):
+    store = "sqlite_sequence"
+    conn.execute(f"DELETE FROM {store}")
+
+
+def planted_mark_by_audits_own_name(conn):
+    from gridiron.audit import SEQUENCE_STORE as store
+    conn.execute("DELETE FROM " + store)
+
+
+def planted_mark_read(conn):
+    return conn.execute("SELECT seq FROM sqlite_sequence").fetchall()
+'''
+
+_PLANTED_STORE_RULE = """
+CREATE TRIGGER IF NOT EXISTS planted_mark_rule AFTER INSERT ON games
+BEGIN
+    UPDATE sqlite_sequence SET seq = 0 WHERE name = 'predictions';
+END;
+"""
+
+
+def plant_a_write_to_the_sequence_store() -> Result:
+    """SQLite's sequence store written outside the rebuild door: the mark
+    removed, set back by case and quotes, written with the table as a string
+    literal, named in pieces, by its bare name, by the audit's own value
+    holding it, and by a rule of the schema. A read of it beside them must be
+    named by nothing."""
+    def plant(root):
+        _append_to(root, "views.py", _PLANTED_STORE_WRITES)
+        _append_to(root, "schema.sql", _PLANTED_STORE_RULE)
+    return _rule_switch_named(
+        "the sequence store written seven ways outside the rebuild door",
+        _rule_switch_scan(plant), {
+            "(planted_mark_removed)": "writes `sqlite_sequence` (DELETE)",
+            "(planted_mark_set_back_by_case_and_quotes)": "writes `sqlite_sequence` (UPDATE)",
+            "(planted_mark_named_as_a_literal)": "writes `sqlite_sequence` (DELETE)",
+            "(planted_mark_named_in_pieces)": "writes `sqlite_sequence` (UPDATE)",
+            "(planted_mark_by_its_bare_name)": "(a name the scan cannot place)",
+            "(planted_mark_by_audits_own_name)": "names `SEQUENCE_STORE`",
+            "(trigger planted_mark_rule)": "writes `sqlite_sequence` (UPDATE)",
+        })
+
+
+_REBUILD_DOOR_DELETE = ('        conn.execute("DELETE FROM sqlite_sequence WHERE name = ?", '
+                        '(table,))\n')
+
+_PLANTED_SECOND_DOOR = r'''
+
+# PLANTED VIOLATION (question 29: a second door, registered by hand)
+def planted_second_door(conn, table):
+    conn.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table,))
+'''
+
+
+def plant_a_second_door_to_the_sequence_store() -> Result:
+    """A second door to the sequence store past the register, three ways: a
+    second write inside the rebuild door, under one of its two entries; a
+    write elsewhere given an entry of its own, dated as the rebuild's are,
+    which the register was not made with; and an entry left for a statement
+    the door does not make. The ruling's one exception is the rebuild door's,
+    so the register may only shrink."""
+    violation = ("a second write in the rebuild door, a second door registered "
+                 "by hand, and a stale entry")
+    rebuild_source = (config.PACKAGE_ROOT / "rebuild.py").read_text(encoding="utf-8")
+    register = getattr(audit, "SEQUENCE_WRITES_REGISTERED", None)
+    frozen = getattr(audit, "SEQUENCE_WRITES_REGISTERED_ON_2026_09_29", None)
+    if rebuild_source.count(_REBUILD_DOOR_DELETE) != 1:
+        return Result(LAW_RULES_STAY_ON, violation, _RULE_SWITCH_GUARD, False,
+                      "the planting's anchor in rebuild.py moved; nothing was tested")
+    grown = None
+    if register is not None:
+        grown = dict(register)
+        grown[("gridiron/views.py", "planted_second_door", "DELETE")] = (
+            "2026-09-29: a second door, dated as the rebuild's entries are")
+        grown[("gridiron/rebuild.py", "_rebuild_one", "UPDATE")] = (
+            "2026-09-29: an update the rebuild door does not make")
+
+    def plant(root):
+        victim = root / "rebuild.py"
+        victim.write_text(victim.read_text(encoding="utf-8").replace(
+            _REBUILD_DOOR_DELETE, _REBUILD_DOOR_DELETE + _REBUILD_DOOR_DELETE.replace(
+                "WHERE name = ?\", (table,)", "WHERE seq > 0\"")), encoding="utf-8")
+        _append_to(root, "views.py", _PLANTED_SECOND_DOOR)
+
+    got = _rule_switch_scan(plant, grown, frozen) if grown is not None \
+        else _rule_switch_scan(plant)
+    return _rule_switch_named(violation, got, {
+        "(_rebuild_one) a second write": "under one register entry",
+        "(planted_second_door) DELETE": "not among the entries it was made with",
+        "(_rebuild_one) UPDATE": "no longer found",
+    })
+
+
+_PLANTED_STOPPED_INSERTS = r'''
+
+# PLANTED VIOLATIONS (question 29: several rows that can stop part way)
+def planted_fail_on_two_rows(conn, a, b):
+    conn.execute("INSERT OR FAIL INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (?,?,?), (?,?,?)", a + b)
+
+
+def planted_ignore_from_a_select(conn):
+    conn.execute("INSERT OR IGNORE INTO recommendations (prediction_id, created_utc)"
+                 " SELECT id, created_utc FROM predictions")
+
+
+def planted_rollback_rows_worked_out(conn, rows):
+    conn.execute(f"INSERT OR ROLLBACK INTO market_snapshots (prediction_id) VALUES {rows}")
+
+
+def planted_one_row_run_many_times(conn, rows):
+    conn.executemany("INSERT OR FAIL INTO predictions (id) VALUES (?)", rows)
+
+
+def planted_kept_for_later(conn):
+    statement = "INSERT OR IGNORE INTO picks_taken (prediction_id, taken_utc) VALUES (?, ?)"
+    return statement
+
+
+def planted_nothing_on_conflict(conn, rows):
+    conn.execute("INSERT INTO factors (name) VALUES (?), (?) ON CONFLICT DO NOTHING", rows)
+
+
+def planted_a_table_worked_out(conn, table):
+    conn.execute(f"INSERT OR IGNORE INTO {table} SELECT * FROM {table}_old")
+
+
+def planted_one_row_run_once(conn, row):
+    conn.execute("INSERT OR IGNORE INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (?,?,?)", row)
+'''
+
+_PLANTED_IGNORING_KEY = """
+CREATE TABLE IF NOT EXISTS planted_log (id INTEGER PRIMARY KEY, k TEXT UNIQUE ON CONFLICT IGNORE);
+CREATE TRIGGER IF NOT EXISTS planted_log_no_delete BEFORE DELETE ON planted_log
+BEGIN SELECT RAISE(ABORT, 'planted'); END;
+"""
+
+
+def plant_an_insert_of_several_rows_that_can_stop_part_way() -> Result:
+    """Inserts of several rows under OR FAIL, OR IGNORE and OR ROLLBACK on
+    append-only tables: a VALUES list of two, a SELECT, rows worked out when
+    it runs, one row run many times by executemany, one kept for later, an
+    upsert that does nothing on conflict, and one on a table worked out when
+    it runs; and a key of an append-only table declared in the schema to
+    ignore on conflict. One row under OR IGNORE handed straight to `execute`
+    beside them -- `resolve.void_prediction`'s shape -- must be named by
+    nothing."""
+    def plant(root):
+        _append_to(root, "views.py", _PLANTED_STOPPED_INSERTS)
+        _append_to(root, "schema.sql", _PLANTED_IGNORING_KEY)
+    return _rule_switch_named(
+        "inserts of several rows under OR FAIL, OR IGNORE and OR ROLLBACK on "
+        "append-only tables, and a key declared to ignore",
+        _rule_switch_scan(plant), {
+            "(planted_fail_on_two_rows)": "(a VALUES list of 2) under FAIL on `prediction_voids`",
+            "(planted_ignore_from_a_select)": "(rows a SELECT gives) under IGNORE on `recommendations`",
+            "(planted_rollback_rows_worked_out)": "under ROLLBACK on `market_snapshots`",
+            "(planted_one_row_run_many_times)": "handed to executemany",
+            "(planted_kept_for_later)": "not handed whole to execute",
+            "(planted_nothing_on_conflict)": "under DO NOTHING on `factors`",
+            "(planted_a_table_worked_out)": "a table worked out when it runs",
+            "(table planted_log)": "declared to ignore whenever an insert meets it",
+        })
+
+
+# ---------------------------------------------------------------------------
+# THE PROVER OF QUESTIONS 25 AND 29 (2026-09-29). Each form below was measured
+# getting past the scan as first built, which named none of them: the calls
+# looked up by a string in pieces, by the audit's own values holding their
+# names, or inside a string handed to `exec`; the trigger switch imported
+# under the harmless switch's name; `journal_mode` OFF, a setting that turns a
+# rule's refusal off (measured: a statement a rule refused inside a
+# transaction kept its rows, the refused row among them, above the mark); a
+# setting whose verb is in pieces; the SQL function that loads an extension,
+# called by a quoted name. And for the marks: the store's name kept apart from
+# its verb, a verb in pieces, the audit's value holding it looked up in
+# pieces, the rebuild door's own DELETE widened to every mark, an insert of
+# several rows whose verb is in pieces or kept apart, a rule raising FAIL
+# -- a temporary one the code creates, and one in the schema -- on an
+# append-only table (measured: a plain insert then stopped part way, rows 3
+# and 4 above a mark of 2), and one row under OR FAIL into a table whose rule
+# inserts several rows into an append-only one (SQLite runs the rule's insert
+# under the firing statement's clause: measured, the same rows above the
+# mark). On bd90dc3 there is no scan; each escapes the scan as first built
+# too, and is caught here, a lawful neighbour beside each group named by
+# nothing.
+# ---------------------------------------------------------------------------
+
+_PLANTED_RULE_SWITCHES_THE_FIRST_SCAN_MISSED = r'''
+
+# PLANTED VIOLATIONS (the prover of questions 25 and 29)
+from sqlite3 import SQLITE_DBCONFIG_ENABLE_TRIGGER as SQLITE_DBCONFIG_DEFENSIVE
+
+_PRAG = "PRAG"
+
+
+def planted_switch_looked_up_in_pieces(conn):
+    getattr(conn, "set" + "config")(1003, False)
+
+
+def planted_switch_by_audits_own_names(conn):
+    from gridiron.audit import _RULE_SWITCH_CALLS as calls
+    getattr(conn, calls[0])(1003, False)
+
+
+def planted_function_by_audits_own_names(conn, fn):
+    from gridiron import audit as the_audit
+    getattr(conn, next(iter(the_audit._REGISTERING_CALLS)))("json_valid", 1, fn)
+
+
+def planted_switch_in_a_string_for_exec(conn):
+    exec("conn.setconfig(1003, False)", {"conn": conn})
+
+
+def planted_switch_under_a_harmless_name(conn):
+    conn.setconfig(SQLITE_DBCONFIG_DEFENSIVE, False)
+
+
+def planted_journal_off(conn):
+    conn.execute("PRAGMA journal_mode = OFF")
+
+
+def planted_setting_verb_in_pieces(conn):
+    conn.execute(_PRAG + "MA recursive_triggers = 1")
+
+
+def planted_extension_by_a_quoted_name(conn, path):
+    conn.execute('SELECT "load_extension"(?)', (path,))
+
+
+def planted_journal_wal(conn):
+    conn.execute("PRAGMA journal_mode = WAL")
+
+
+def planted_harmless_switch_off_the_driver(conn):
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, True)
+'''
+
+
+def plant_a_rule_switch_the_first_scan_missed() -> Result:
+    """The prover's forms of question 25 (2026-09-29): a call looked up in
+    pieces, by the audit's own values holding the calls' names (a switching
+    and a registering one), inside a string handed to `exec`; the trigger
+    switch imported under the harmless switch's name; `journal_mode` OFF; a
+    setting's verb in pieces; and the extension's SQL function called by a
+    quoted name. `journal_mode` WAL -- the schema's own -- and the harmless
+    switch read off the driver beside them must be named by nothing. On
+    bd90dc3 there is no scan, and the scan as first built named none."""
+    return _rule_switch_named(
+        "switches, settings and names the scan as first built missed: a call "
+        "in pieces, by audit's names, in exec; a disguised switch; journal "
+        "OFF; a verb in pieces; a quoted extension",
+        _rule_switch_scan(lambda root: _append_to(
+            root, "views.py", _PLANTED_RULE_SWITCHES_THE_FIRST_SCAN_MISSED)), {
+            "(planted_switch_looked_up_in_pieces)": "names `setconfig` in a string",
+            "(planted_switch_by_audits_own_names)": "names `_RULE_SWITCH_CALLS`",
+            "(planted_function_by_audits_own_names)": "names `_REGISTERING_CALLS`",
+            "(planted_switch_in_a_string_for_exec)": "names `setconfig` in a string",
+            "(planted_switch_under_a_harmless_name)": "a connection switch the scan cannot read",
+            "(planted_journal_off)": "sets `journal_mode`: at OFF",
+            "(planted_setting_verb_in_pieces)": "sets `recursive_triggers` with no verb before it",
+            "(planted_extension_by_a_quoted_name)": "loads an extension from SQL",
+        })
+
+
+_PLANTED_MARKS_THE_FIRST_SCAN_MISSED = r'''
+
+# PLANTED VIOLATIONS (the prover of questions 25 and 29)
+def planted_mark_with_its_condition_kept(conn):
+    marks = "sqlite_sequence WHERE name = 'predictions'"
+    conn.execute("DELETE FROM " + marks)
+
+
+def planted_mark_after_a_from_kept(conn, table):
+    tail = "FROM sqlite_sequence WHERE name = ?"
+    conn.execute("DELETE " + tail, (table,))
+
+
+def planted_mark_verb_in_pieces(conn, head):
+    conn.execute(head + "DATE sqlite_sequence SET seq = 0")
+
+
+def planted_mark_by_audits_name_in_pieces(conn):
+    from gridiron import audit as the_audit
+    conn.execute("DELETE FROM " + getattr(the_audit, "SEQUENCE" + "_STORE"))
+
+
+def planted_rows_verb_in_pieces(conn, head):
+    conn.execute(head + "RT OR FAIL INTO predictions (id) SELECT id FROM games")
+
+
+def planted_rows_tail_kept(conn):
+    tail = "OR IGNORE INTO recommendations (prediction_id) SELECT id FROM predictions"
+    conn.execute("INSERT " + tail)
+
+
+def planted_temporary_rule_raising_fail(conn):
+    conn.execute("CREATE TEMP TRIGGER planted_stop BEFORE INSERT ON main.predictions"
+                 " WHEN NEW.model_prob IS NULL BEGIN SELECT RAISE(FAIL, 'stop'); END")
+
+
+def planted_one_row_through_a_rule(conn, k):
+    conn.executescript(
+        "CREATE TEMP TABLE IF NOT EXISTS planted_feed (k TEXT);"
+        " CREATE TEMP TRIGGER IF NOT EXISTS planted_feed_copies AFTER INSERT ON planted_feed"
+        " BEGIN INSERT INTO prediction_voids (prediction_id, voided_utc, reason)"
+        " SELECT id, created_utc, 'copied' FROM predictions; END;")
+    conn.execute("INSERT OR FAIL INTO planted_feed (k) VALUES (?)", (k,))
+
+
+def planted_one_row_through_a_rule_refused_whole(conn, k):
+    conn.execute("INSERT OR ABORT INTO planted_feed (k) VALUES (?)", (k,))
+
+
+def planted_mark_read_with_a_join(conn):
+    return conn.execute("SELECT s.seq FROM sqlite_master AS m"
+                        " JOIN sqlite_sequence AS s ON s.name = m.name").fetchall()
+
+
+def planted_rule_refusing_whole(conn):
+    conn.execute("CREATE TEMP TRIGGER planted_whole BEFORE INSERT ON main.predictions"
+                 " WHEN NEW.model_prob IS NULL BEGIN SELECT RAISE(ABORT, 'no'); END")
+'''
+
+_PLANTED_RULE_RAISING_FAIL = """
+CREATE TRIGGER IF NOT EXISTS planted_stop_rule BEFORE INSERT ON prediction_voids
+WHEN NEW.reason IS NULL
+BEGIN SELECT RAISE(FAIL, 'stopped part way'); END;
+"""
+
+_REBUILD_DOOR_DELETE_WIDENED = '        conn.execute("DELETE FROM sqlite_sequence")\n'
+
+
+def plant_a_mark_or_a_stopped_insert_the_first_scan_missed() -> Result:
+    """The prover's forms of question 29 (2026-09-29): the store's name kept
+    with its condition, after a FROM kept apart, after a verb in pieces, and
+    the audit's value holding it looked up in pieces; the rebuild door's own
+    DELETE widened to every mark, under its register entry; an insert of
+    several rows under OR FAIL with its verb in pieces, and under OR IGNORE
+    with its verb kept apart; a rule raising FAIL on an append-only table,
+    a temporary one the code creates and one in the schema; and one row
+    under OR FAIL into a table whose temporary rule inserts several rows into
+    an append-only one, which SQLite runs under that clause. A read of the
+    store through a join, a rule refusing whole (ABORT), and one row into that
+    table under OR ABORT beside them must be named by nothing. On bd90dc3
+    there is no scan, and the scan as first built named none."""
+    violation = ("marks and stopped inserts the scan as first built missed: the "
+                 "store's name kept apart or after a verb in pieces, the door's "
+                 "statement widened, a verb in pieces, a rule raising FAIL")
+    rebuild_source = (config.PACKAGE_ROOT / "rebuild.py").read_text(encoding="utf-8")
+    if rebuild_source.count(_REBUILD_DOOR_DELETE) != 1:
+        return Result(LAW_RULES_STAY_ON, violation, _RULE_SWITCH_GUARD, False,
+                      "the planting's anchor in rebuild.py moved; nothing was tested")
+
+    def plant(root):
+        victim = root / "rebuild.py"
+        victim.write_text(victim.read_text(encoding="utf-8").replace(
+            _REBUILD_DOOR_DELETE, _REBUILD_DOOR_DELETE_WIDENED), encoding="utf-8")
+        _append_to(root, "views.py", _PLANTED_MARKS_THE_FIRST_SCAN_MISSED)
+        _append_to(root, "schema.sql", _PLANTED_RULE_RAISING_FAIL)
+
+    return _rule_switch_named(violation, _rule_switch_scan(plant), {
+        "(planted_mark_with_its_condition_kept)": "writes `sqlite_sequence` (a name the scan cannot place)",
+        "(planted_mark_after_a_from_kept)": "writes `sqlite_sequence` (a verb worked out when it runs)",
+        "(planted_mark_verb_in_pieces)": "writes `sqlite_sequence` (a name the scan cannot place)",
+        "(planted_mark_by_audits_name_in_pieces)": "names `SEQUENCE_STORE`",
+        "(_rebuild_one)": "not the one the register was made with",
+        "(planted_rows_verb_in_pieces)": "under FAIL on `predictions`",
+        "(planted_rows_tail_kept)": "under IGNORE on `recommendations`",
+        "(planted_temporary_rule_raising_fail)": "a rule on `predictions` raising FAIL",
+        "(trigger planted_stop_rule)": "a rule on `prediction_voids` raising FAIL",
+        "(planted_one_row_through_a_rule)": (
+            "a rule on `planted_feed` inserts rows a SELECT gives into `prediction_voids`"),
+    })
+
+
+# ---------------------------------------------------------------------------
+# THE PROVER OF THE PORT (2026-10-08). A rule whose OWN insert is one row under
+# OR FAIL runs once for every row the statement firing it writes, so a plain
+# insert, update or delete of several rows on its table stops part way there:
+# measured on scratch worlds, three rows fired, the third copying a NULL the
+# append-only table refuses, kept rows 3 and 4 above a mark of 2 -- question
+# 29's hole by a road the scan as built (3c36861) and as ported read as one
+# row, in the schema and in a temporary rule alike. On 208dc95 there is no
+# scan; the scan as ported names none of these; here each is named, and the
+# same rule's insert under OR ABORT, plainly, or into an ordinary table is
+# named by nothing.
+# ---------------------------------------------------------------------------
+
+_PLANTED_RULES_OWN_ONE_ROW = r'''
+
+# PLANTED VIOLATIONS (the prover of the port: a rule's own one row under a clause)
+def planted_temporary_rule_copying_one_row_under_fail(conn):
+    conn.execute("CREATE TEMP TRIGGER planted_copy AFTER INSERT ON main.games"
+                 " BEGIN INSERT OR FAIL INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (NEW.id, NEW.kickoff_utc, 'copied by a rule'); END")
+
+
+def planted_temporary_rule_doing_nothing_on_conflict(conn):
+    conn.execute("CREATE TEMP TRIGGER planted_keep AFTER INSERT ON main.games"
+                 " BEGIN INSERT INTO picks_taken (prediction_id, taken_utc)"
+                 " VALUES (NEW.id, NEW.kickoff_utc) ON CONFLICT DO NOTHING; END")
+
+
+def planted_temporary_rule_copying_one_row_under_abort(conn):
+    conn.execute("CREATE TEMP TRIGGER planted_whole AFTER INSERT ON main.games"
+                 " BEGIN INSERT OR ABORT INTO prediction_voids (prediction_id, voided_utc,"
+                 " reason) VALUES (NEW.id, NEW.kickoff_utc, 'copied by a rule'); END")
+'''
+
+_PLANTED_RULE_COPYING_ONE_ROW = """
+CREATE TABLE IF NOT EXISTS planted_void_log (k INTEGER, at TEXT);
+CREATE TRIGGER IF NOT EXISTS planted_void_log_copies AFTER INSERT ON planted_void_log
+BEGIN
+    INSERT OR ROLLBACK INTO prediction_voids (prediction_id, voided_utc, reason)
+    VALUES (NEW.k, NEW.at, 'copied by a rule of the schema');
+END;
+CREATE TRIGGER IF NOT EXISTS planted_void_log_plainly AFTER INSERT ON planted_void_log
+BEGIN
+    INSERT INTO prediction_voids (prediction_id, voided_utc, reason)
+    VALUES (NEW.k, NEW.at, 'copied by a rule of the schema');
+END;
+"""
+
+
+def plant_a_rules_own_insert_that_can_stop_part_way() -> Result:
+    """The prover of the port (2026-10-08): a rule's own insert of ONE row
+    under OR FAIL, OR ROLLBACK or doing nothing on conflict, aimed at an
+    append-only table -- two temporary rules the code creates and a rule of
+    the schema -- each run once for every row the statement firing it writes,
+    so several rows under that clause (an update or a delete firing it the
+    same: `test_rules_stay_on.py`). The same rule's insert under OR ABORT, and
+    a rule of the schema inserting plainly, beside them must be named by
+    nothing. On 208dc95 there is no scan, and the scan as ported named none."""
+    def plant(root):
+        _append_to(root, "views.py", _PLANTED_RULES_OWN_ONE_ROW)
+        _append_to(root, "schema.sql", _PLANTED_RULE_COPYING_ONE_ROW)
+
+    return _rule_switch_named(
+        "a rule's own insert of one row under FAIL, ROLLBACK or DO NOTHING into an "
+        "append-only table, run once a row of the statement firing it",
+        _rule_switch_scan(plant), {
+            "(planted_temporary_rule_copying_one_row_under_fail)": (
+                "(one row each time the rule runs, and it runs once for every row the "
+                "statement firing it writes) under FAIL on `prediction_voids`"),
+            "(planted_temporary_rule_doing_nothing_on_conflict)": (
+                "(one row each time the rule runs, and it runs once for every row the "
+                "statement firing it writes) under DO NOTHING on `picks_taken`"),
+            "(trigger planted_void_log_copies)": (
+                "(one row each time the rule runs, and it runs once for every row the "
+                "statement firing it writes) under ROLLBACK on `prediction_voids`"),
+        })
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prove the guards by breaking the laws")
     parser.add_argument("--verbose", action="store_true", help="print full failure text")
@@ -29878,6 +30593,24 @@ def main() -> int:
     results.append(plant_a_replacing_write_reaching_an_append_only_table_by_a_key())
     results.append(plant_a_replacing_write_reaching_a_table_the_scan_cannot_read())
     results.append(plant_an_upsert_registered_after_the_register_was_frozen())
+    # OPERATOR QUESTIONS 25 AND 29 (ruled 2026-09-28; question 29's reading
+    # confirmed 2026-09-29; built 2026-09-29): no code switches the rules off
+    # by a connection's switch or setting, registers a function or collation
+    # under a name SQLite lists as its own, writes the sequence store past the
+    # rebuild door, or inserts several rows under OR FAIL, OR IGNORE or OR
+    # ROLLBACK on an append-only table.
+    results.append(plant_a_connection_switch_that_turns_the_rules_off())
+    results.append(plant_a_setting_that_changes_how_the_rules_run())
+    results.append(plant_a_function_registered_under_a_built_ins_name())
+    results.append(plant_a_write_to_the_sequence_store())
+    results.append(plant_a_second_door_to_the_sequence_store())
+    results.append(plant_an_insert_of_several_rows_that_can_stop_part_way())
+    # ITS PROVER (2026-09-29): the forms the scan as first built missed.
+    results.append(plant_a_rule_switch_the_first_scan_missed())
+    results.append(plant_a_mark_or_a_stopped_insert_the_first_scan_missed())
+    # THE PROVER OF THE PORT (2026-10-08): a rule's own insert of one row under
+    # a ruled clause, run once a row of the statement firing it.
+    results.append(plant_a_rules_own_insert_that_can_stop_part_way())
     # OPERATOR QUESTION 24 (ruled 2026-09-28): question 13's rules had the
     # hole question 15's prover closed on predictions -- a recommendation
     # moved above every number given out, out of reach of the rule on the
