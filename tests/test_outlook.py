@@ -66,6 +66,16 @@ def _one_game_three_passes(tmp_path):
     return conn, early, final, llm
 
 
+def _asked_at(monkeypatch, now: str) -> None:
+    """THE CLOCK THE PAGE IS ASKED AT (operator question 33, ruled
+    2026-09-30; built 2026-10-08): a slate is still to come only while a
+    game on it is 'scheduled' and the clock is before its start, so a world
+    whose games are dated in September 2026 is asked at a clock in it --
+    where these tests always meant to stand -- rather than at the real one,
+    after every game in it."""
+    monkeypatch.setattr(db, "utcnow", lambda: now)
+
+
 def _category(categories, market, predictor, tier=None):
     (found,) = [c for c in categories if c["market"] == market
                 and c["filters"]["predictor"] == predictor
@@ -98,10 +108,17 @@ def _as_it_stood(conn, *, sport, market, predictor, event_tier=None,
             for r in rows]
 
 
-def test_the_outlook_counts_the_curves_standing_questions_per_forecaster(tmp_path):
+def test_the_outlook_counts_the_curves_standing_questions_per_forecaster(
+        tmp_path, monkeypatch):
     """One game forecast by two passes and two forecasters is one standing
     question for each, and the outlook beside the statistical curve says the
-    curve's own count: 1, not 2 (the morning pass) or 3 (the reasoning pass)."""
+    curve's own count: 1, not 2 (the morning pass) or 3 (the reasoning pass).
+
+    ASKED THE DAY BEFORE THE GAME STILL TO PLAY (operator question 33,
+    2026-10-08: a slate is still to come only before its start), and from
+    that date the line says the most the count can reach, "at most", where
+    it said "~2 expected"."""
+    _asked_at(monkeypatch, "2026-09-08T00:00:00Z")
     conn, early, final, llm = _one_game_three_passes(tmp_path)
     mine = horizon.standing_questions(conn, sport="mlb", market="moneyline",
                                       predictor="statistical")
@@ -121,8 +138,11 @@ def test_the_outlook_counts_the_curves_standing_questions_per_forecaster(tmp_pat
     # 1 settled + 1 a slate x 1 slate to come
     assert outlook["expected"] == 2
     assert outlook["message"] == language.market_outlook_line(
-        1, GATE, 2, outlook["season_ends"])
-    assert outlook["message"].startswith(f"1 of {GATE} · ~2 expected")
+        1, GATE, 2, outlook["season_ends"], to_come=1, on_to_come=1.0,
+        sport="mlb")
+    assert outlook["message"].startswith(
+        f"1 of {GATE} · at most ~2 this season (~1 more on the 1 day still "
+        f"to come)")
     assert audit.plain_words_violations(outlook["message"]) == []
     # THE REASONING PASS'S CURVE in a market it is still asked carries its N
     # and no projection, as it always has.
@@ -174,10 +194,17 @@ def test_the_door_will_not_count_for_nobody_every_prop_or_across_cards(tmp_path)
         horizon.llm_routed_off_outlook(conn, "ufc", "rounds")  # every card
 
 
-def test_the_rate_is_this_seasons_standing_questions_over_their_slates(tmp_path):
+def test_the_rate_is_this_seasons_standing_questions_over_their_slates(
+        tmp_path, monkeypatch):
     """The pace counts standing questions, never a superseded pass: two games
     on two slates, one of them forecast twice, write 2 a pace of 1 a slate --
-    where every row made it 3 over 2."""
+    where every row made it 3 over 2.
+
+    AND THE MOST IT CAN REACH (operator question 33, 2026-10-08): asked
+    before the three slates still to play, 1 settled, m2's question waiting
+    to settle on a slate already played, and 1 a slate on each of the three
+    -- 5, where the pace times the slates alone said 4."""
+    _asked_at(monkeypatch, "2026-09-09T00:00:00Z")
     conn = db.open_db(tmp_path / "rate.db")
     _game(conn, "m1", week=1)
     _game(conn, "m2", week=2, kickoff="2026-09-08T23:05:00Z")
@@ -190,7 +217,8 @@ def test_the_rate_is_this_seasons_standing_questions_over_their_slates(tmp_path)
     out = horizon.market_outlook(conn, "mlb", "moneyline", predictor="statistical")
     assert (out["resolved"], out["written"], out["slates_used"]) == (1, 2, 2)
     assert out["slates_remaining"] == 3 and out["per_slate"] == 1.0
-    assert out["expected"] == horizon.expected_from(out) == 4
+    assert out["waiting_elsewhere"] == 1 and out["on_slates_to_come"] == 3.0
+    assert out["expected"] == horizon.expected_from(out) == 5
 
 
 def test_nothing_this_season_is_not_nothing_ever(tmp_path):
@@ -232,7 +260,12 @@ def _ufc_card(conn, event: str, tier: str, bouts, *, week: int, status: str) -> 
 def test_a_ufc_outlook_is_one_cards(tmp_path, monkeypatch):
     """LAW 6 one level down: each card's curve carries its own card's outlook,
     paced by that card's slates -- never one count across three cards beside
-    each (UFC said "62 of 100" beside a Numbered-card curve of 0)."""
+    each (UFC said "62 of 100" beside a Numbered-card curve of 0).
+
+    Asked on 10 September, before the three cards still to fight (operator
+    question 33, 2026-10-08: a card is still to come only before its
+    start)."""
+    _asked_at(monkeypatch, "2026-09-10T00:00:00Z")
     conn = db.open_db(tmp_path / "ufc.db")
     _ufc_card(conn, "fn1", "fight_night", ("u1", "u2"), week=1, status="final")
     _ufc_card(conn, "cs1", "contender", ("u3",), week=2, status="final")
@@ -270,7 +303,10 @@ def test_a_ufc_outlook_is_one_cards(tmp_path, monkeypatch):
         calibration.blind_categories(conn, sport="ufc")
 
 
-def test_a_pooled_outlook_is_refused_by_name(tmp_path):
+def test_a_pooled_outlook_is_refused_by_name(tmp_path, monkeypatch):
+    # ASKED THE DAY BEFORE THE GAME STILL TO PLAY (operator question 33,
+    # 2026-10-08), so the honest outlook projects 2, as it did.
+    _asked_at(monkeypatch, "2026-09-08T00:00:00Z")
     conn, _, _, _ = _one_game_three_passes(tmp_path)
     honest = {"sport": "mlb", "record": "rung",
               "categories": calibration.blind_categories(conn, sport="mlb")}

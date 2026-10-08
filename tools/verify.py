@@ -1135,6 +1135,21 @@ def step_2_guards() -> bool:
         # builder's guard, and held to the recount made without its door.
         ("a UFC category counts its own card's voids (question 34, first count)",
          lambda: audit.check_a_ufc_void_count_is_its_cards(_record_conn())),
+        # OPERATOR QUESTION 34'S FIVE NAMED COUNTS (ruled 2026-09-30: "every
+        # UFC count is per card tier: tier table, ranker, taken record, edge
+        # figure, board badge. Planting each."; built 2026-10-08): each built
+        # card by card on the record's copy through its builder's guard, and
+        # held to the recount made without its door.
+        ("a UFC tier table is its card's (question 34)",
+         lambda: audit.check_a_ufc_tier_table_is_its_cards(_record_conn())),
+        ("a UFC ranker count is its card's (question 34)",
+         lambda: audit.check_a_ufc_ranker_count_is_its_cards(_record_conn())),
+        ("a UFC taken record is its card's (question 34)",
+         lambda: audit.check_a_ufc_taken_record_is_its_cards(_record_conn())),
+        ("a UFC edge figure is its card's (question 34)",
+         lambda: audit.check_a_ufc_edge_figure_is_its_cards(_record_conn())),
+        ("a UFC board badge is its card's (question 34)",
+         lambda: audit.check_a_ufc_board_badge_is_its_cards(_record_conn())),
         # OPERATOR QUESTION 17 (ruled 2026-09-27; built 2026-09-28): one
         # function defines a distinct bet -- the forecaster and the venue's
         # question, the rung asked included -- and every count reads it. In

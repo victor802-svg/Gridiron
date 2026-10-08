@@ -474,12 +474,180 @@ def outlook(conn: sqlite3.Connection, *, sport: str, market_type: str,
             season: int) -> dict:
     """The line beside one blind curve, recounted: the distinct bets whose
     standing forecast has settled (`settled`, the curve's n) and those
-    written in `season` (`written`, the pace's)."""
+    written in `season` (`written`, the pace's).
+
+    AND FROM 2026-10-08 (operator question 33) WHAT IS STILL WAITING: every
+    standing question not settled (`waiting`), and this season's standing
+    questions on each of its slates, settled and waiting (`by_slate`: the
+    slate -> [settled, waiting]), from which the guard works out the most
+    the count can reach on the slates still to come."""
     standing = standing_of(forecasts(conn, sport=sport, predictor=predictor,
                                      market_type=market_type,
                                      prop_type=prop_type,
                                      event_tier=event_tier))
+    by_slate: dict[int, list[int]] = {}
+    for r in standing.values():
+        if r["season"] == season:
+            cell = by_slate.setdefault(int(r["week"]), [0, 0])
+            cell[0 if r["resolved_utc"] is not None else 1] += 1
     return {
         "settled": sum(1 for r in standing.values() if r["resolved_utc"] is not None),
         "written": sum(1 for r in standing.values() if r["season"] == season),
+        "waiting": sum(1 for r in standing.values() if r["resolved_utc"] is None),
+        "by_slate": {week: by_slate[week] for week in sorted(by_slate)},
     }
+
+
+def _still_before_its_start(now: str, kickoff: str | None,
+                            under_way: str | None) -> bool:
+    """`now` strictly before a game's start AS OPERATOR QUESTION 38 (A)
+    DEFINES IT -- the earlier of its listed start and the instant the live
+    poll first saw it truly under way -- restated here in Python from the
+    two stored instants, never through the door (`live.start_of`,
+    `live.before_the_start`). A game with no listed start is still before
+    it unless it was seen under way; a start nobody can read is before
+    nothing (item 1's rule: never guessed), as `julianday()` of it is NULL
+    to the door."""
+    try:
+        at = instant(now)
+        if kickoff is not None and not at < instant(kickoff):
+            return False
+        return under_way is None or at < instant(under_way)
+    except (ValueError, TypeError):
+        return False
+
+
+def slates_to_come(conn: sqlite3.Connection, *, sport: str, season: int,
+                   event_tier: str | None, now: str) -> list[int]:
+    """THE SLATES STILL TO COME, RECOUNTED (operator question 33, ruled
+    2026-09-30; built 2026-10-08): every game of the sport's season read
+    straight off its table -- its status, its listed start, the instant the
+    live poll first saw it under way off that table, and its card off its
+    own bout -- and a slate counted when one of its games is 'scheduled'
+    and `now` is strictly before its start (`_still_before_its_start`), in
+    Python. `horizon.slates_to_come` asks the one SQL spelling of the start;
+    a rule put back to the status alone counts a card already fought whose
+    source never marked a bout over (the re-read's 401913546 and
+    401923433), and only this sees it."""
+    keeps = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table'"
+        "   AND name = 'live_first_under_way'").fetchone() is not None
+    under_way = ("(SELECT u.under_way_utc FROM live_first_under_way u"
+                 "  WHERE u.game_id = g.id)" if keeps else "NULL")
+    weeks = set()
+    for r in conn.execute(
+            "SELECT g.week, g.status, g.kickoff_utc,"
+            f"      {under_way} AS under_way_utc,"
+            "       (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+            "          ON e.id = b.event_id WHERE b.id = g.id) AS event_tier"
+            "  FROM games g WHERE g.sport = ? AND g.season = ?",
+            (sport, season)):
+        if event_tier is not None and r["event_tier"] != event_tier:
+            continue
+        if r["status"] == "scheduled" and _still_before_its_start(
+                now, r["kickoff_utc"], r["under_way_utc"]):
+            weeks.add(int(r["week"]))
+    return sorted(weeks)
+
+
+def settled_standing(conn: sqlite3.Connection, *, sport: str, predictor: str,
+                     market_type: str, prop_type: str | None,
+                     event_tier: str | None) -> list[dict]:
+    """One forecaster's settled standing questions in one market -- on one
+    card for UFC -- read straight off the table and chosen by the blind
+    record's standing rule restated here (`standing_of`), each with the
+    first market snapshot's implied probability beside it and the card its
+    own bout was on. THE CURVE'S ROWS, WITHOUT ITS DOOR (operator question
+    34, ruled 2026-09-30: "every UFC count is per card tier: tier table,
+    ranker, taken record, edge figure, board badge"; built 2026-10-08): the
+    recount each of the five counts is held to, so a door that stopped
+    asking for the card -- which agrees with its own rows -- is seen.
+
+    A settled row is one with an outcome (`calibration.resolved` asks
+    `resolved_utc IS NOT NULL`; the resolver writes both together)."""
+    rows = forecasts(conn, sport=sport, predictor=predictor,
+                     market_type=market_type, prop_type=prop_type,
+                     event_tier=event_tier)
+    chosen = [r for r in standing_of(rows).values()
+              if r["resolved_utc"] is not None]
+    if not chosen:
+        return []
+    ids = [r["id"] for r in chosen]
+    implied: dict[int, float] = {}
+    cards: dict[int, str | None] = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        marks = ",".join("?" for _ in chunk)
+        for s in conn.execute(
+                "SELECT prediction_id, implied_prob FROM market_snapshots"
+                f" WHERE prediction_id IN ({marks}) ORDER BY id DESC", chunk):
+            # THE FIRST SNAPSHOT, as the curve's subquery reads it
+            # (`ORDER BY s.id LIMIT 1`): read newest first, the last write
+            # into the dict is the first snapshot.
+            implied[s["prediction_id"]] = s["implied_prob"]
+        for c in conn.execute(
+                "SELECT p.id, (SELECT e.event_tier FROM ufc_bouts b"
+                "   JOIN ufc_events e ON e.id = b.event_id"
+                "  WHERE b.id = p.game_id) AS event_tier"
+                f"  FROM predictions p WHERE p.id IN ({marks})", chunk):
+            cards[c["id"]] = c["event_tier"]
+    return [dict(r, implied_prob=implied.get(r["id"]),
+                 event_tier=cards.get(r["id"])) for r in chosen]
+
+
+def in_bands(rows: list[dict], bands) -> list[int]:
+    """How many of `rows` fall in each confidence band (`calibration.
+    BUCKETS`' (lo, hi, label) triples), by the stored probability, as the
+    tier table's bands count them."""
+    return [sum(1 for r in rows if lo <= r["model_prob"] < hi)
+            for lo, hi, _ in bands]
+
+
+def ranked(conn: sqlite3.Connection, rows: list[dict],
+           ranker_version: str) -> tuple[int, int]:
+    """(led the slate, outranked) among `rows`, by `prediction_ranks` read
+    straight off the table: the ranker version named, ranks written after
+    the fact (backfilled) left out, as the ranker's own record leaves them."""
+    ids = [r["id"] for r in rows]
+    led = rest = 0
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        for k in conn.execute(
+                "SELECT on_shortlist, backfilled FROM prediction_ranks"
+                " WHERE ranker_version = ?"
+                f"   AND prediction_id IN ({','.join('?' for _ in chunk)})",
+                [ranker_version] + chunk):
+            if k["backfilled"]:
+                continue
+            if k["on_shortlist"]:
+                led += 1
+            else:
+                rest += 1
+    return led, rest
+
+
+def taken(conn: sqlite3.Connection, rows: list[dict]) -> int:
+    """How many of `rows` the operator took: a tap on any pass of the
+    question, not retracted, on a forecast no void withdraws -- the keys
+    read straight off the tables and matched by `bet.of`."""
+    keys = set()
+    for t in conn.execute(
+            f"SELECT {bet.columns('p')}, t.id AS tap,"
+            "       EXISTS (SELECT 1 FROM picks_retracted r"
+            "                WHERE r.taken_id = t.id) AS retracted,"
+            "       EXISTS (SELECT 1 FROM prediction_voids v"
+            "                WHERE v.prediction_id = p.id) AS voided"
+            "  FROM picks_taken t JOIN predictions p ON p.id = t.prediction_id"
+            " WHERE t.prediction_id IS NOT NULL"):
+        if not t["retracted"] and not t["voided"]:
+            keys.add(bet.of(t))
+    return sum(1 for r in rows if bet.of(r) in keys)
+
+
+def disagreements(rows: list[dict], threshold: float) -> tuple[int, int]:
+    """(settled questions with a price, those where the model's stated
+    probability is above the price's by more than `threshold`): the edge
+    figure's count and its gate's, from `settled_standing`'s rows."""
+    priced = [r for r in rows if r["implied_prob"] is not None]
+    return (len(priced),
+            sum(1 for r in priced if r["model_prob"] - r["implied_prob"] > threshold))

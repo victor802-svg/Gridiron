@@ -12,6 +12,108 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q33 + Q34 PROVED (2026-10-08 ~05:45-06:55Z; ONE LOCAL COMMIT on
+  `repair` holding exactly the change's files, not pushed, for its gate;
+  FOLLOWUPS "The outlook counts only slates still to come ...", THE
+  PROVER):** ONE DEFECT FOUND AND FIXED, inside the ruling: a UFC forecast
+  on a card the source names with no tier (the record holds one such card,
+  "UFC Freedom 250", and `sports.ufc.slate_questions` forecasts any bout)
+  made the tier chip's door refuse and took UFC's slate and the whole of
+  UFC's Results down (500); its chip now counts 0, in no card's count, as
+  its badge and its rank's gate already did (`calibration.
+  bucket_on_no_card`), and every chip on a card and a Results row is held to
+  its own card's band inside `views.week` and `views.history`
+  (`assert_each_band_is_its_cards`), the gate's tier-table check building
+  Results too; a planting (`plant_a_bout_on_no_declared_card_counted_in_a_
+  cards_band`) and two tests; nothing on the record moves. MEASURED AGAIN on
+  ONE verified copy (05:48:15Z to 05:49:07Z, read-only and served to the
+  render; DELETED 2026-10-08T06:21:41Z): the builder's figures reproduce (10,375
+  of 429,514 values move; no gate's verdict flips); the two spellings of a
+  slate still to come agree at 3,301 clocks; no at-the-line "cannot clear"
+  is false by the blind arithmetic; gate step 2 dry on the copy, 128 rows,
+  PASS before the fix and again after it. RENDERED from the copy (UFC
+  and MLB Record pages, UFC's board and Results, 1300 and 390) and read.
+  ONE FINDING MEETS THE QUEUE RULE, NOT BUILT, REPORTED: the greeting's band
+  line ("50-60% bucket: 370 settled · past the 100 needed, so calibration
+  speaks here", every sport's slate) counts every pass, forecaster, market
+  and UFC card against the hundred -- no NFL or UFC category's own band is
+  past it (the fullest 44 and 36). Plantings: seven, each escaping on
+  c4014a9 and caught here; plant.py whole 447/447 caught in 374 s
+  (detached, a dummy token; inside the harness's 600 s); the suite
+  (detached) 2,656 passed, 4 skipped, 0 failed, in 1,407 s.
+  **Next: the gate and release; then Q25/Q26.**
+  **Q33 + Q34 BUILT (2026-10-08 ~03:50-05:40Z, on c4014a9 -- the entry
+  check's step 4 released as 372eeab; UNCOMMITTED for its prover; FOLLOWUPS
+  "The outlook counts only slates still to come, and says the most the count
+  can reach; every UFC count is per card tier"; CLAUDE.md rows "THE OUTLOOK
+  COUNTS ONLY SLATES STILL TO COME ..." and "EVERY UFC COUNT IS PER CARD
+  TIER ...", and ONE UNIT's):** question 33 as reading (a): ONE RULE for a
+  slate still to come, every sport (`horizon.slates_to_come`: a slate
+  holding a game 'scheduled' whose start, question 38's, is ahead of the
+  clock the page is asked at; `slates_remaining` counts it; the at-the-line
+  outlook reads it, for its own card), and the line says THE MOST THE COUNT
+  CAN REACH -- the count, the questions waiting to settle on slates no
+  longer to come, and each slate still to come at its written questions or
+  the pace, whichever is more ("39 of 100 · at most ~107 this season (2
+  waiting to settle, ~66 more on the 5 cards still to come)"; "THIS GATE
+  CANNOT CLEAR THIS SEASON" exactly under the gate) -- held by the outlook's
+  guard (the slates recounted without the rule, the questions on each
+  without the door, the arithmetic in its own spelling, the words read);
+  question 34 as reading (b): the tier table, the ranker (its panel and
+  `settled_for_gate`, the edge gate a new rank is written with), the taken
+  record, the edge figure and the board badge each through one door that
+  requires the card for UFC (`calibration.PooledCount`), each refused inside
+  its builder when it counts another card's rows or the recount does not
+  make it (`PooledCardCount`; the API answers 500), each a step-2 row; the
+  tier chip on cards and Results rows reads the tier table's door for its
+  own card; the page draws the tier table one card at a time with a Card
+  choice, the ranker and taken record per market and card, the edge
+  question per card, each named; THE HEADLINE CURVE never drawn for UFC and
+  no longer made (it repeated the categories, pooled). MEASURED on ONE
+  verified copy of the record (rebuild.verified_backup, 2026-10-08T03:50:22Z
+  to 03:51:13Z, integrity ok, 67 tables, none mismatched; read through
+  `db.read_only`, the clock held at 03:50:22Z; DELETED 2026-10-08T05:07:36Z,
+  its -wal and -shm with it): the counts have moved since the re-read (bands
+  pooled 39/20/9/4, Fight Night 22/14/2/1, Contender Series 10/3/5/1,
+  Numbered card 7/3/2/2; ranker 66/6 pooled, 33/6, 19/0, 14/0; every forecast
+  and badge 72 pooled, 39, 19, 14; the edge 0 of 0 on every card); HEAD
+  counted 7 Fight Night cards to come where 5 are, 5 Numbered where 3, 2
+  Contender Series where 1, a baseball day where none, a college day whose
+  games had all started; Fight Night "39 of 100 · ~132 expected" is "at most
+  ~107" -- still reachable, the November cards listed since the re-read's
+  ~94 -- and NO GATE'S REACHABLE OR CANNOT-CLEAR MOVES TODAY. HEAD against
+  this tree, 101 payloads (every sport's Record page, learning panel and
+  tier tables, every UFC slate holding a forecast and every sport's current
+  slate, both forecasters, the latest 500 Results rows): 10,374 of 429,514
+  values move -- every statistical outlook line (17 figures move), 11
+  at-the-line outlooks, UFC's Record page (its tier table now one card's,
+  ranker and taken panels 3 -> 9 rows, edge 1 -> 3), 672 of the 728 badges
+  on UFC's 10 slates, the tier chip on 367 UFC cards and 484 UFC Results
+  rows, the glance's "4 of 12 UFC tiers proven" -> "3 of 36"; nothing else
+  (FOLLOWUPS lists each). Gate step 2's rows the build adds or touches, dry
+  on the copy (`q3334\step2_rows.py`): the blind outlook, the void count,
+  the five new rows and the at-the-line record each pass; the unit scan
+  []. RENDERED at 1300 and 390 (a fresh world, served on a free loopback
+  port with a dummy token, never 8848; UFC and MLB) and read: three defects
+  fixed from the pictures -- the scores' heading "Model on moneyline,
+  statistical" over one card's scores, the ranker's note "separately per
+  market" over a row per card, the edge's card named without its market --
+  and the Card choice set beside the market (it sat at the panel's far
+  edge); every tier-table control 44px at 390, the page 390 wide, no page
+  error. Plantings: `plant_an_outlook_counting_a_fought_card`,
+  `plant_a_pooled_ufc_tier_table`, `..._ranker_count`, `..._taken_record`,
+  `..._edge_figure`, `..._board_badge`, each ESCAPING on c4014a9 (`git
+  archive`, this plant.py) and CAUGHT here, about 1.7 s together; plant.py
+  whole 446/446 caught in 371 s (detached, `q3334\run_detached.ps1`, a dummy
+  token; its first run, 373 s, 445/446, found a synthetic at-the-line
+  outlook of an older planting carrying no slates, fixed). The full suite
+  (detached) 2,654 passed, 4 skipped, 0 failed, in 1,386 s, the planting
+  harness inside its 600 s -- on its first run, and again after the
+  render's three fixes; the 30 new tests each fail on c4014a9. No question
+  put; nothing joins the queue (FOLLOWUPS, "FOUND, NOT BUILT": other UFC
+  figures over every card outside the five named, the sizing words of UFC
+  ranks stored before this release). **Next: its prover; then the gate and
+  release; then Q25/Q26.**
   **THE ENTRY CHECK, STEP 4 PROVED (2026-10-08 ~02:20-03:15Z; ONE LOCAL
   COMMIT on `repair` holding exactly the step's files, not pushed, for its
   gate; FOLLOWUPS "Check an entry, step 4", THE PROVER):** the arithmetic
@@ -2950,6 +3052,116 @@ depend on the answer.
     Default until ruled: nothing built (BLOCKED); step 4 goes ahead of it.
     M4 stays "not yet proven, 0 of 100 graded legs" until a record of
     graded legs exists, so step 2's numbers never make a pick meanwhile.
+
+## Rulings taken in your absence (2026-10-08, Q33 + Q34)
+
+Operator questions 33 and 34, ruled 2026-09-30 (docs/briefs/2026-09-30-
+rulings.md): "Q33: the outlook counts only cards still to come; say the real
+maximum reachable this season." "Q34: every UFC count is per card tier: tier
+table, ranker, taken record, edge figure, board badge. Planting each." Each
+reading below is the conservative one the task gave, recorded here and in
+FOLLOWUPS ("The outlook counts only slates still to come ... every UFC count
+is per card tier"); each reversible in a few lines. None needed a word of a
+law or a ruling stretched, so no question is put.
+
+- **(a) A SLATE STILL TO COME, ONE RULE FOR EVERY SPORT.** A card (a week, a
+  day) is still to come while ONE of its games is listed 'scheduled' and the
+  clock the page is asked at is strictly before that game's start as
+  question 38 (A) defines it -- the earlier of its listed start and the
+  first poll that saw it truly under way, read as instants
+  (`horizon.slates_to_come`, through `live.before_the_start`; the same rule
+  as `recommend.not_still_upcoming`). So a fought card holding a bout still
+  marked 'scheduled' is not to come (401913546 and 401923433, the re-read's
+  case), nor a baseball day or a college day whose every game has started;
+  a game with no start time yet is still to come; a start nobody can read is
+  not (item 1's rule). WHY "ONE OF ITS GAMES", not the card's first bout:
+  the parenthetical "a slate of any sport whose games have all started is
+  not to come" is the rule for every sport, and an NFL week whose Thursday
+  game has started still holds Sunday's; a card part-fought differs only by
+  its top-up to the pace, at most the pace less what is written on it.
+  `slates_remaining` and the at-the-line outlook read this one rule (the
+  at-the-line outlook for its own card too: it passed none). Reversal:
+  `slates_to_come`'s one condition.
+- **(a) THE MOST THE COUNT CAN REACH, AND WHICH OF THE TWO.** The outlook
+  line states: the count now; plus every standing question written and not
+  yet settled on a slate no longer to come (each can still settle -- a card
+  fought whose results are not in, a bout never marked over; leaving them out
+  would let the line say a gate cannot clear in the hours between a card's
+  last bout and its results); plus, on each slate still to come, THE
+  QUESTIONS ALREADY WRITTEN FOR IT OR THIS SEASON'S PACE, WHICHEVER IS MORE
+  (less what has settled on it). BOTH, AND WHY: the questions written are a
+  count, not an estimate, but not the whole of a slate -- measured on the
+  copy, a later pass added 11 of 88 UFC moneyline questions this season (4 of
+  9 cards), 43 of 90 NBA spread questions, 61 of 242 NCAAF spread questions
+  -- and the pace is what a slate has held; so the figure is never under
+  what is written and never under the pace for a slate still to come: "the
+  real maximum reachable", an extrapolation, said with "~". The words:
+  "39 of 100 · at most ~107 this season (2 waiting to settle, ~66 more on
+  the 5 cards still to come) · season ends 12-12", and " · THIS GATE CANNOT
+  CLEAR THIS SEASON" exactly where that figure is under the gate. Through
+  language (`market_outlook_line`), held by the outlook's guard
+  (`calibration.refuse_slates_not_still_to_come`,
+  `refuse_a_maximum_not_its_own`: the slates recounted without the rule, the
+  questions on each recounted without the door, the arithmetic in the
+  guard's own spelling, the words read for "at most" and "cannot clear").
+  The at-the-line outlook keeps its own "~N expected" (the ruling's line is
+  the blind outlook's, G1's; FOLLOWUPS). Reversal: `most_reachable` and the
+  guard's spelling of it.
+- **(b) THE FIVE COUNTS, ONE CARD EACH.** The tier table (the confidence
+  bands, through `bucket_record`, which the tier chip on every card and
+  Results row reads too), the ranker (the Record page's ranker panel and
+  `shortlist.settled_for_gate`, the edge gate's count each new rank is
+  written with and the board's badge reads), the taken record ("taken,
+  passed over, every forecast"), the blind edge figure (the Record page's
+  edge question, and `gridiron.cli scorecard`) and the board badge: each door
+  requires the card for UFC and refuses by name otherwise
+  (`calibration.PooledCount`); each builder refuses inside itself a count of
+  another card's rows, every card's, or one the recount made without the
+  door does not make (`calibration.PooledCardCount`), so the API answers
+  500; each a step-2 row on the record's copy; each its own planting. ON THE
+  PAGE: the tier table one card at a time with a Card choice beside the
+  market (the first declared card's by default, the Numbered card); the
+  ranker and the taken record a row per market and card, named; the edge
+  question once per card, named. Ranks already stored keep their count
+  (LAW 3; FOLLOWUPS: the sizing words of the UFC ranks written before this
+  release, none drawn).
+- **(b) THE HEADLINE CURVE: NEVER DRAWN FOR UFC, AND NO LONGER MADE.** It is
+  the chart's fallback, drawn only where no category matches the market and
+  forecaster chosen; every UFC market, card and forecaster has its own
+  category, so it was never drawn for UFC, and what the API served under its
+  name was every card's moneyline as one population. Split, it would only
+  repeat the categories; so `scorecard.headline` is None for a sport that
+  splits by card (refused otherwise, `assert_no_pooled_headline`), the chart
+  falls back to a category of the forecaster chosen, and every line under
+  the chart names a UFC curve's card. Reversal: the scorecard's one branch.
+- **(c) MEASURED FIRST AND WHAT MOVES**: FOLLOWUPS has every figure. Today
+  the counts moved since 29 September; NO GATE'S REACHABLE OR CANNOT-CLEAR
+  MOVES (Fight Night "~132 expected" is "at most ~107": reachable, the cards
+  of 7 and 21 November listed since the re-read's ~94).
+- **Other UFC figures over every card, outside the five** (the week-by-week
+  chart, the factor verdicts, the closest-verdict pace, two sentences no
+  page draws, the sizing's "measured and ahead"): listed in FOLLOWUPS, not
+  built -- the ruling names five, and the factor verdicts are the one UFC
+  fit's, question 16's precedent. If "every UFC count" is to reach them,
+  the list is there.
+- **(b), BY ITS PROVER: A BOUT ON A CARD OF NO DECLARED KIND IS IN NO
+  CARD'S BAND.** The tier chip is the tier table's band, read through its
+  door, which refuses a UFC band asked for no card; a bout on a card the
+  source names with no tier has none. Its badge and its rank's edge gate
+  already count it in no card's count (0), so its chip's band counts 0 too
+  (`calibration.bucket_on_no_card`) and says why, never every card's band
+  and never a refusal that takes UFC's slate and Results down -- the
+  precedent, not a new reading. And every chip is held to its own card's
+  band inside its builder, as the five counts are. Reversal: the two
+  builders' one branch each.
+- **ALSO BY ITS PROVER, LISTED NOT BUILT (FOLLOWUPS, THE PROVER):** the
+  correction gates count UFC's cards together (questions 16 and 23's
+  category, labelled so); the version panel's n sums every category; the
+  closing line per forecaster is every card's (0 today); and the greeting's
+  band line counts every pass, forecaster, market and card against the
+  hundred and says "past the 100 needed, so calibration speaks here" where
+  no category's band is -- a gate count false, so it is reported for the
+  queue rather than built here (it reaches every sport, past the five).
 
 ## Rulings taken in your absence (2026-10-08, the entry check's step 4)
 

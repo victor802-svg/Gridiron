@@ -495,22 +495,33 @@ const Gridiron = (function () {
     renderLearning().catch(showError);
     loadTierMarkets((sc.tier_table || {}).prop_type ||
                     (sc.tier_table || {}).market_type);
+    loadTierCards(sc);
     const tierSel = document.getElementById('tier-market');
+    const cardSel = document.getElementById('tier-card');
     const shownMarket = (sc.tier_table || {}).prop_type || (sc.tier_table || {}).market_type;
     if (tierSel && (tierSel.value !== shownMarket ||
-                    forecasterChoice !== ((sc.tier_table || {}).predictor || 'statistical'))) {
+                    forecasterChoice !== ((sc.tier_table || {}).predictor || 'statistical') ||
+                    (sc.cards && sc.cards.length && cardSel &&
+                     cardSel.value !== (sc.tier_table || {}).event_tier))) {
       refreshTierTable().catch(showError);
     }
     const market = document.getElementById('chart-market').value || 'spread';
     const predictor = document.getElementById('chart-predictor').value || 'statistical';
-    const curve = findCurve(sc, market, predictor) || sc.headline;
+    // NO HEADLINE CURVE FOR A SPORT THAT SPLITS BY CARD (operator question
+    // 34, 2026-10-08): where no category matches, a category of the chosen
+    // forecaster -- one card's, named below -- and never every card's.
+    const curve = findCurve(sc, market, predictor) || sc.headline ||
+      (sc.categories || []).find(c => c.filters.predictor === predictor);
     requireN(curve, 'calibration curve');
 
     const head = document.getElementById('record-headline');
     head.innerHTML = '';
     head.appendChild(el('div', '', curve.largest_gap));
+    // A UFC CURVE NAMES ITS CARD (operator question 34, 2026-10-08): the
+    // category's own label, "moneyline, Numbered card, statistical".
     head.appendChild(el('div', 'sub',
-      marketLabel(market) + ', ' + predictor + '. ' + int(curve.n) + ' resolved' +
+      (curve.event_tier && curve.category_label ? curve.category_label
+        : marketLabel(market) + ', ' + predictor) + '. ' + int(curve.n) + ' resolved' +
       (curve.voided ? ', ' + int(curve.voided) + ' withdrawn' : '') +
       '. The sentence above always names the largest gap, never the best bucket.'));
 
@@ -520,7 +531,9 @@ const Gridiron = (function () {
     // how the market dropdowns sat empty for three sessions.
     const cap = document.getElementById('chart-caption');
     if (cap) {
-      cap.textContent = DASH + ' ' + marketLabel(market) + ', ' + predictor +
+      cap.textContent = DASH + ' ' +
+        (curve.event_tier && curve.category_label ? curve.category_label
+          : marketLabel(market) + ', ' + predictor) +
         ' · ' + int(curve.n) + ' resolved';
     }
     const canvas = document.getElementById('calibration');
@@ -545,7 +558,7 @@ const Gridiron = (function () {
     renderScores(sc, curve, market, predictor);
     renderClosingCharts(sc);
     renderTakenRecord(sc);
-    renderEdge(sc.edge);
+    renderEdges(sc);
     document.getElementById('separation-note').textContent = sc.separation_note;
     renderOverTime(market, predictor).catch(showError);
   }
@@ -595,8 +608,12 @@ const Gridiron = (function () {
     host.appendChild(h);
 
     const grid = el('div', 'scores');
+    // A UFC CURVE NAMES ITS CARD HERE TOO (operator question 34, 2026-10-08):
+    // the render found "Model on moneyline, statistical" over one card's
+    // scores, read as every card's.
     grid.appendChild(scoreCard(
-      'Model on ' + marketLabel(market) + ', ' + predictor, curve.score));
+      'Model on ' + (curve.event_tier && curve.category_label ? curve.category_label
+        : marketLabel(market) + ', ' + predictor), curve.score));
     grid.appendChild(scoreCard('Baseline: always 50%', curve.baselines.always_50,
       curve.baselines.always_50.note));
     grid.appendChild(scoreCard('Baseline: the market', curve.baselines.market,
@@ -975,7 +992,9 @@ const Gridiron = (function () {
       requireN(c.shortlisted, 'shortlisted side of "' + c.market + '"');
       requireN(c.not_shortlisted, 'outranked side of "' + c.market + '"');
       const row = el('div', 'gate-row');
-      row.appendChild(el('div', 'gate-name', marketLabel(c.market)));
+      // ONE CARD'S FOR UFC, NAMED (operator question 34, 2026-10-08): the
+      // server's "moneyline, Fight Night"; every other sport its market.
+      row.appendChild(el('div', 'gate-name', c.category_label || marketLabel(c.market)));
       row.appendChild(el('div', 'gate-why', c.gate_line));
       if (c.verdict) row.appendChild(el('div', 'gate-why', c.verdict));
       host.appendChild(row);
@@ -3106,20 +3125,49 @@ const Gridiron = (function () {
   function tierTableFor(t) {
     const market = t.market || t.prop_type || t.market_type;
     if (!market) return '';
-    return marketLabel(market) + ', ' + forecasterLabel(t.predictor || 'statistical') + ' · ';
+    // ONE CARD'S TABLE FOR UFC, AND IT SAYS WHICH (operator question 34,
+    // 2026-10-08): the card's name is the server's.
+    return marketLabel(market) + (t.card_label ? ', ' + t.card_label : '') +
+      ', ' + forecasterLabel(t.predictor || 'statistical') + ' · ';
+  }
+
+  // THE CARD CHOICE (operator question 34, 2026-10-08): shown only for a
+  // sport whose record splits by card, filled with the server's own card
+  // names, and set to the card the table on screen counts.
+  function loadTierCards(sc) {
+    const label = document.getElementById('tier-card-label');
+    const sel = document.getElementById('tier-card');
+    if (!label || !sel) return;
+    const cards = (sc && sc.cards) || [];
+    if (sel.dataset.sport !== state.sport) {
+      sel.innerHTML = '';
+      cards.forEach(c => {
+        const o = el('option', '', c.label);
+        o.value = c.tier;
+        sel.appendChild(o);
+      });
+      sel.dataset.sport = state.sport;
+      const shown = (sc.tier_table || {}).event_tier;
+      if (shown) sel.value = shown;
+    }
+    label.hidden = cards.length === 0;
   }
 
   // THE SELECT AND THE PICKER FETCH THE TABLE THEY NAME (UI audit finding 6,
   // 2026-09-05). The select was filled and never wired; the picker set a
   // variable nothing read. Both now ask `/api/tier-table` for the market and
-  // forecaster chosen, through the same bucket arithmetic the cards use.
+  // forecaster chosen, through the same bucket arithmetic the cards use --
+  // and for UFC the card chosen (operator question 34, 2026-10-08).
   async function refreshTierTable() {
     const sel = document.getElementById('tier-market');
     const market = sel ? sel.value : '';
     if (!market) return;
+    const cardLabel = document.getElementById('tier-card-label');
+    const cardSel = document.getElementById('tier-card');
+    const ask = { market: market, forecaster: forecasterChoice };
+    if (cardLabel && !cardLabel.hidden && cardSel && cardSel.value) ask.card = cardSel.value;
     const seq = sportSeq;
-    const t = await fetchJSON(withSport('/api/tier-table',
-                                        { market: market, forecaster: forecasterChoice }));
+    const t = await fetchJSON(withSport('/api/tier-table', ask));
     if (stale(seq)) return;
     renderTierTable(t);
   }
@@ -3194,14 +3242,22 @@ const Gridiron = (function () {
     if (current) sel.value = current;
   }
 
-  function renderEdge(edge) {
+  // THE EDGE QUESTION, ONCE PER CARD FOR UFC (operator question 34,
+  // 2026-10-08): the server answers it for each card apart (`edges`), each
+  // naming its card, and never over the cards together; every other sport
+  // carries the one answer it always has (`edge`).
+  function renderEdges(sc) {
     const host = document.getElementById('record-edge');
     host.innerHTML = '';
     const h = el('h2', '', 'The edge question');
     h.appendChild(el('span', 'caption',
       ' ' + DASH + ' where the model disagreed with the market, who was right?'));
     host.appendChild(h);
+    (sc.edges || (sc.edge ? [sc.edge] : [])).forEach(edge => renderEdge(host, edge));
+  }
 
+  function renderEdge(host, edge) {
+    if (edge.card_label) host.appendChild(el('h3', 'edge-card', edge.card_label));
     if (!edge.renderable) {
       const box = el('div', 'empty');
       box.appendChild(el('div', '', edge.message));
@@ -4914,6 +4970,10 @@ const Gridiron = (function () {
         try { renderRecord(); } catch (err) { showError(err); }
       }));
     document.getElementById('tier-market').addEventListener('change', () =>
+      refreshTierTable().catch(showError));
+    // THE CARD CHOICE FETCHES ITS CARD'S TABLE (operator question 34,
+    // 2026-10-08).
+    document.getElementById('tier-card').addEventListener('change', () =>
       refreshTierTable().catch(showError));
     document.getElementById('week-picker').addEventListener('change', () =>
       route().catch(showError));

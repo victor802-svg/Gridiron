@@ -8425,13 +8425,16 @@ def plant_a_horizon_that_counts_days_for_a_weekly_sport() -> Result:
                       "audit.horizon_unit_faults", False,
                       "the shipped horizon already mixes units; fix that "
                       "before trusting this planting")
+    # THE SLATE KEY IS `slates_to_come`'s FROM 2026-10-08 (operator question
+    # 33: one rule for a slate still to come, which `slates_remaining`
+    # counts); it was `slates_remaining`'s "COUNT(DISTINCT week)".
     broken = source.replace(
-        "COUNT(DISTINCT week)",
-        "COUNT(DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10)))", 1)
+        "SELECT DISTINCT week",
+        "SELECT DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10))", 1)
     if broken == source:
         return Result(LAW_UNITS, "a horizon counting days for a weekly sport",
                       "audit.horizon_unit_faults", False,
-                      "slates_remaining is no longer written the way this "
+                      "slates_to_come is no longer written the way this "
                       "planting expects; re-point it")
     faults = _audit.horizon_unit_faults(broken)
     if not faults:
@@ -17164,7 +17167,11 @@ def _atl_category(predictor, n: int, bets: int, *, market: str = "moneyline",
         "forecasters_counted": (counted if counted is not None
                                 else ([predictor] if n else [])),
         "gate": gate, "gate_line": _language.at_the_line_gate_line(n, gate),
-        "outlook": {"resolved": resolved, "n": resolved, "gate": gate},
+        # ITS SLATES STILL TO COME AND THEIR RECOUNT (operator question 33,
+        # 2026-10-08): an honest builder's, none still to come.
+        "outlook": {"resolved": resolved, "n": resolved, "gate": gate,
+                    "slates_remaining": 0, "slates_to_come": [],
+                    "slates_to_come_recounted": []},
     }
 
 
@@ -18101,14 +18108,27 @@ def _outlook_category(sport: str, market: str, predictor, n: int, *,
         outlook["distinct_bets"] = resolved
     elif bets is not None:
         outlook["distinct_bets"] = bets
+    # THE SLATES STILL TO COME, AND THE RECOUNT OF THEM AND OF WHAT WAITS ON
+    # THEM (operator question 33, 2026-10-08): an honest builder's, its
+    # `remaining` slates to come each with nothing written on it yet.
+    ahead = list(range(1001, 1001 + remaining))
+    outlook.update(asked_at="2026-09-01T00:00:00Z", slates_to_come=ahead,
+                   slates_to_come_recounted=list(ahead), recounted_waiting=0,
+                   recounted_by_slate={})
     if routed_off:
-        outlook.update(slates_remaining=0, per_slate=None,
+        outlook.update(slates_remaining=0, per_slate=None, to_come=[],
+                       waiting_elsewhere=None, on_slates_to_come=None,
+                       slates_to_come=[], slates_to_come_recounted=[],
                        expected_is_an_extrapolation=False,
                        routed_off={"since": config.LLM_ROUTING_DECLARED})
     else:
         outlook.update(slates_remaining=remaining,
+                       to_come=[{"slate": w, "settled": 0, "waiting": 0}
+                                for w in ahead],
+                       waiting_elsewhere=0,
                        per_slate=round(written / slates, 2) if slates else None,
                        expected_is_an_extrapolation=True)
+        outlook["on_slates_to_come"] = _horizon.on_slates_to_come_from(outlook)
     outlook["expected"] = (_horizon.expected_from(outlook) if expected is None
                            else expected)
     outlook["reachable"] = (None if outlook["expected"] is None
@@ -18701,6 +18721,837 @@ def plant_a_pooled_void_count() -> Result:
                   "0, Numbered card 0 -- and with the count as it stood "
                   "swapped back in, or the payload pooled: "
                   + " | ".join(caught))
+
+
+# ---------------------------------------------------------------------------
+# THE OUTLOOK COUNTS ONLY SLATES STILL TO COME, AND SAYS THE MOST IT CAN
+# REACH (operator question 33, ruled 2026-09-30; built 2026-10-08)
+# ---------------------------------------------------------------------------
+
+LAW_STILL_TO_COME = ("THE OUTLOOK COUNTS ONLY SLATES STILL TO COME AND SAYS THE "
+                     "MOST IT CAN REACH (LAW 4; OPERATOR QUESTION 33)")
+
+
+def plant_an_outlook_counting_a_fought_card() -> Result:
+    """Put a fought card back among the cards still to come, as
+    `horizon.slates_remaining` counted it until 2026-10-08.
+
+    THE SHIPPED COUNT (the re-read of 29 September, finding G1): every week
+    holding a game still marked 'scheduled' was a slate to come, whatever
+    its date, and two Fight Night cards already fought each kept one bout
+    the source never marked over (401913546, 401923433), so Fight Night's
+    outlook multiplied its pace by six cards where four were still to come
+    and said "39 of 100 · ~121 expected" of a gate the four could take only
+    to ~94. This world plants that shape -- a Fight Night card fought on 12
+    September with one bout still 'scheduled' and its question waiting, and
+    one card still to come on 10 October, asked on 8 October -- and proves
+    the line counts the one card still to come and says the most the count
+    can reach ("2 of 100 · at most ~6 this season (1 waiting to settle, ~3
+    more on the 1 card still to come)", and that this gate cannot clear);
+    then swaps back in the slate rule as it stood (the status alone), the
+    arithmetic as it stood (the pace times the slates, the waiting question
+    forgotten) and the words as they stood ("~N expected"), and demands the
+    Record page's builder, the at-the-line record's and the gate's check
+    refuse each by name; and puts the start out of the rule's source, which
+    the unit scan must name.
+    """
+    import tempfile
+
+    from gridiron import db as _db, horizon as _horizon, language as _language
+
+    guard = ("horizon.slates_to_come, calibration.refuse_slates_not_still_to_come, "
+             "calibration.refuse_a_maximum_not_its_own, "
+             "audit.check_the_blind_outlook_is_never_pooled, "
+             "audit.horizon_unit_faults")
+    violation = "an outlook counting a card already fought as still to come"
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    asked_at = "2026-10-08T03:50:00Z"
+    caught, missed = [], []
+    real_clock = _db.utcnow
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _db.open_db(pathlib.Path(tmp) / "plant.db")
+        for event, week, kickoff, bouts in (
+                ("q33_fought", 1, "2026-09-12T18:00:00Z",
+                 (("q33_f1", "final"), ("q33_f2", "final"),
+                  ("q33_f3", "scheduled"))),
+                ("q33_ahead", 2, "2026-10-10T21:00:00Z",
+                 (("q33_a1", "scheduled"), ("q33_a2", "scheduled")))):
+            conn.execute(
+                "INSERT INTO ufc_events (id, name, event_utc, season,"
+                " fetched_utc, event_tier) VALUES (?, ?, ?, ?, ?,"
+                " 'fight_night')",
+                (event, f"UFC {event}", kickoff, season, "2026-09-01T00:00:00Z"))
+            for bout, status in bouts:
+                played = status == "final"
+                conn.execute(
+                    "INSERT INTO ufc_bouts (id, event_id, bout_utc,"
+                    " scheduled_rounds, fighter_a, fighter_b, status,"
+                    " fetched_utc) VALUES (?, ?, ?, 3, 'A', 'B', ?, ?)",
+                    (bout, event, kickoff, status, "2026-09-01T00:00:00Z"))
+                conn.execute(
+                    "INSERT INTO games (id, sport, season, week, game_type,"
+                    " home, away, kickoff_utc, status, league_date,"
+                    " home_score, away_score) VALUES (?, 'ufc', ?, ?, 'R',"
+                    " 'A', 'B', ?, ?, ?, ?, ?)",
+                    (bout, season, week, kickoff, status, kickoff[:10],
+                     1 if played else None, 0 if played else None))
+        for bout, settled in (("q33_f1", True), ("q33_f2", True),
+                              ("q33_f3", False)):
+            # THE FOUGHT CARD'S QUESTIONS: two settled, and the bout the
+            # source never marked over waiting -- 401913546's shape.
+            conn.execute(
+                "INSERT INTO predictions (created_utc, sport, game_id,"
+                " market_type, subject, line_asked, model_prob, model_side,"
+                " predictor, pass_kind, factor_set_version, factors_json,"
+                " reasoning, resolved_utc, outcome) VALUES"
+                " ('2026-09-11T20:00:00Z', 'ufc', ?, 'moneyline', 'A', NULL,"
+                " 0.6, 'win', 'statistical', 'final', 'fs2', '{}', 'planted',"
+                " ?, ?)",
+                (bout, "2026-09-13T03:00:00Z" if settled else None,
+                 1 if settled else None))
+        conn.commit()
+        _db.utcnow = lambda: asked_at
+
+        def the_outlook():
+            for c in calibration.blind_categories(conn, sport="ufc"):
+                if (c["market"] == "moneyline" and c.get("event_tier") == "fight_night"
+                        and c["filters"]["predictor"] == "statistical"):
+                    return c["outlook"]
+            return None
+
+        try:
+            try:
+                shipped = the_outlook()
+            except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+                conn.close()
+                return Result(LAW_STILL_TO_COME, violation, guard, False,
+                              f"the shipped builder refuses an honest world: "
+                              f"{type(exc).__name__}: {exc}")
+            got = (shipped or {}).get("message") or ""
+            want = ("2 of 100 · at most ~6 this season (1 waiting to settle, "
+                    "~3 more on the 1 card still to come)")
+            if (not shipped or shipped.get("slates_remaining") != 1
+                    or shipped.get("expected") != 6 or not got.startswith(want)
+                    or "CANNOT CLEAR" not in got):
+                conn.close()
+                return Result(LAW_STILL_TO_COME, violation, guard, False,
+                              f"NOT CAUGHT - the Record page says {got!r} "
+                              f"(slates to come "
+                              f"{(shipped or {}).get('slates_remaining')!r}) of "
+                              f"a Fight Night record whose one card still to "
+                              f"come is 10 October -- the card fought on 12 "
+                              f"September, one bout still marked 'scheduled', "
+                              f"counted as still to come; wanted {want!r} and "
+                              f"this gate cannot clear")
+
+            shipped_rule = getattr(_horizon, "slates_to_come")
+            shipped_most = getattr(_horizon, "most_reachable")
+            shipped_words = _language.market_outlook_line
+            gate_check = audit.check_the_blind_outlook_is_never_pooled
+
+            def as_it_stood(conn, sport, season, event_tier=None, *, now=None):
+                # THE RULE UNTIL 2026-10-08: every week holding a game still
+                # marked 'scheduled', whatever its date.
+                sql = ("SELECT DISTINCT week FROM games WHERE sport = ? AND"
+                       " season = ? AND status = 'scheduled'")
+                params = [sport, season]
+                if event_tier is not None:
+                    sql += (" AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN"
+                            " ufc_events e ON e.id = b.event_id WHERE"
+                            " b.id = games.id AND e.event_tier = ?)")
+                    params.append(event_tier)
+                return sorted(int(r[0]) for r in conn.execute(sql, params))
+
+            def pace_times_slates(resolved, waiting_elsewhere, to_come, pace):
+                # THE ARITHMETIC UNTIL 2026-10-08: the pace times the slates,
+                # the question waiting to settle forgotten.
+                on = pace * len(to_come)
+                return resolved + on, on
+
+            def expected_words(n, gate, expected, ends, **kw):
+                # THE WORDS UNTIL 2026-10-08.
+                if expected is None:
+                    return shipped_words(n, gate, expected, ends, **kw)
+                line = f"{n} of {gate} · ~{expected} expected · season ends {ends[5:]}"
+                return line if expected >= gate else (
+                    f"{line} · THIS GATE CANNOT CLEAR THIS SEASON")
+
+            def the_page():
+                calibration.scorecard(conn, sport="ufc")
+
+            def the_line():
+                calibration.at_the_line_scorecard(conn, sport="ufc")
+
+            def the_gate():
+                try:
+                    gate_check(conn)
+                except audit.LawViolation as exc:
+                    named = [line.strip() for line in str(exc).splitlines()
+                             if line.strip().startswith("ufc:")]
+                    if not named:
+                        raise
+                    raise calibration.MergedCurve(
+                        f"the gate names {named[0]}") from exc
+
+            for name, where, planted, build in (
+                    ("the slate rule as it stood, UFC's Record page",
+                     "slates_to_come", as_it_stood, the_page),
+                    ("the slate rule as it stood, the at-the-line record",
+                     "slates_to_come", as_it_stood, the_line),
+                    ("the slate rule as it stood, the gate",
+                     "slates_to_come", as_it_stood, the_gate),
+                    ("the arithmetic as it stood, UFC's Record page",
+                     "most_reachable", pace_times_slates, the_page),
+                    ("the words as they stood, UFC's Record page",
+                     "words", expected_words, the_page)):
+                if where == "words":
+                    _language.market_outlook_line = planted
+                else:
+                    setattr(_horizon, where, planted)
+                try:
+                    build()
+                except calibration.MergedCurve as exc:
+                    caught.append(f"{name}: {str(exc).splitlines()[0][:220]}")
+                else:
+                    missed.append(name)
+                finally:
+                    _horizon.slates_to_come = shipped_rule
+                    _horizon.most_reachable = shipped_most
+                    _language.market_outlook_line = shipped_words
+        finally:
+            _db.utcnow = real_clock
+            conn.close()
+    # AND THE SOURCE: the start taken out of the one rule.
+    source = (config.PACKAGE_ROOT / "horizon.py").read_text(encoding="utf-8")
+    anchor = "f\"   AND {live.before_the_start('clock.now_utc', 'g', conn)}\")"
+    broken = source.replace(anchor, "\"   AND 1 = 1\")", 1)
+    if broken == source or audit.horizon_unit_faults(source):
+        missed.append("the start taken out of the rule's source (the anchor "
+                      "moved, or the shipped source already faulted)")
+    else:
+        faults = [f for f in audit.horizon_unit_faults(broken)
+                  if "before_the_start" in f]
+        if faults:
+            caught.append(f"the start taken out of the rule's source: "
+                          f"{faults[0][:200]}")
+        else:
+            missed.append("the start taken out of the rule's source")
+    if missed:
+        return Result(LAW_STILL_TO_COME, violation, guard, False,
+                      "NOT CAUGHT - " + "; ".join(missed))
+    return Result(LAW_STILL_TO_COME, violation, guard, True,
+                  "the line counts the one card still to come and says the "
+                  "most it can reach on the shipped rule; with the rule, the "
+                  "arithmetic or the words as they stood: " + " | ".join(caught))
+
+
+# ---------------------------------------------------------------------------
+# EVERY UFC COUNT IS PER CARD TIER (operator question 34, ruled 2026-09-30:
+# "every UFC count is per card tier: tier table, ranker, taken record, edge
+# figure, board badge. Planting each."; built 2026-10-08)
+# ---------------------------------------------------------------------------
+
+LAW_PER_CARD = ("EVERY UFC COUNT IS PER CARD TIER (LAW 4, LAW 6 ONE LEVEL DOWN; "
+                "OPERATOR QUESTION 34)")
+
+#: THE WORLD'S QUESTIONS, card by card: (card, bout, the model's number,
+#: outcome, the venue's implied number or None, led its slate, taken).
+_Q34_QUESTIONS = (
+    ("fight_night", "q34_fn_a", 0.55, 1, 0.45, True, True),
+    ("fight_night", "q34_fn_b", 0.65, 0, 0.64, False, False),
+    ("fight_night", "q34_fn_c", 0.75, 1, None, True, False),
+    ("contender", "q34_cs_a", 0.55, 1, 0.40, True, False),
+    ("contender", "q34_cs_b", 0.85, 1, None, True, False),
+    ("numbered", "q34_nc_a", 0.55, 0, 0.52, False, False),
+)
+
+
+def _q34_world(path):
+    """Three UFC cards fought -- Fight Night (three bouts), the Contender
+    Series (two), a Numbered card (one) -- each bout's moneyline forecast
+    by the statistical model, settled, some priced at the venue, some
+    leading their slate, one taken: every count question 34 names has a
+    different number on each card and another over the three together."""
+    from gridiron import db as _db
+
+    conn = _db.open_db(path)
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    cards = {"fight_night": ("q34_fn", 1, "2026-09-05T19:00:00Z"),
+             "contender": ("q34_cs", 2, "2026-09-08T23:00:00Z"),
+             "numbered": ("q34_nc", 3, "2026-09-19T21:00:00Z")}
+    for tier, (event, week, kickoff) in cards.items():
+        conn.execute(
+            "INSERT INTO ufc_events (id, name, event_utc, season,"
+            " fetched_utc, event_tier) VALUES (?, ?, ?, ?, ?, ?)",
+            (event, f"UFC {event}", kickoff, season, "2026-09-01T00:00:00Z", tier))
+    for tier, bout, prob, outcome, implied, led, taken in _Q34_QUESTIONS:
+        event, week, kickoff = cards[tier]
+        conn.execute(
+            "INSERT INTO ufc_bouts (id, event_id, bout_utc, scheduled_rounds,"
+            " fighter_a, fighter_b, status, fetched_utc)"
+            " VALUES (?, ?, ?, 3, 'A', 'B', 'final', ?)",
+            (bout, event, kickoff, "2026-09-01T00:00:00Z"))
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score)"
+            " VALUES (?, 'ufc', ?, ?, 'R', 'A', 'B', ?, 'final', ?, 1, 0)",
+            (bout, season, week, kickoff, kickoff[:10]))
+        written = kickoff[:10] + "T10:00:00Z"
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning, resolved_utc, outcome)"
+            " VALUES (?, 'ufc', ?, 'moneyline', 'A', NULL, ?, 'win',"
+            " 'statistical', 'final', 'fs2', '{\"coverage\": 1.0}', 'planted',"
+            " ?, ?)",
+            (written, bout, prob, kickoff[:10] + "T23:59:00Z", outcome))
+        pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        if implied is not None:
+            conn.execute(
+                "INSERT INTO market_snapshots (prediction_id, fetched_utc,"
+                " source, implied_prob, kind) VALUES (?, ?, 'planted', ?,"
+                " 'open_at_predict')",
+                (pid, kickoff[:10] + "T10:00:05Z", implied))
+        conn.execute(
+            "INSERT INTO prediction_ranks (prediction_id, ranker_version, sport,"
+            " market_type, rank_score, confidence, completeness, edge,"
+            " edge_counted, edge_gate_n, factor_set_version, on_shortlist,"
+            " shortlist_place, backfilled, created_utc) VALUES (?, ?, 'ufc',"
+            " 'moneyline', 0.5, 0.2, 1.0, NULL, 0, 0, 'fs2', ?, ?, 0, ?)",
+            (pid, config.RANKER_VERSION, 1 if led else 0, 0 if led else None,
+             kickoff[:10] + "T10:00:06Z"))
+        if taken:
+            conn.execute("INSERT INTO picks_taken (prediction_id, taken_utc)"
+                         " VALUES (?, ?)", (pid, kickoff[:10] + "T11:00:00Z"))
+    conn.commit()
+    return conn
+
+
+#: EACH CARD'S OWN COUNTS IN `_q34_world`, and the three cards together.
+_Q34_BANDS = {"fight_night": [1, 1, 1, 0], "contender": [1, 0, 0, 1],
+              "numbered": [1, 0, 0, 0]}
+_Q34_RANKER = {"fight_night": (2, 1), "contender": (2, 0), "numbered": (0, 1)}
+_Q34_TAKEN = {"fight_night": (1, 2, 3), "contender": (0, 2, 2),
+              "numbered": (0, 1, 1)}
+_Q34_EDGE = {"fight_night": (2, 1), "contender": (1, 1), "numbered": (1, 0)}
+
+
+def _q34_doors_as_they_stood(real_resolved):
+    """The two pooled shapes of the curve's door every count reads: asked
+    without the card, as every count asked it until 2026-10-08 (its rows
+    carry their own cards), and every card's rows handed back under the
+    card asked for (only a recount made without the door sees it)."""
+    def without_the_card(conn, **kw):
+        return real_resolved(conn, **dict(kw, event_tier=None))
+
+    def named_as_asked(conn, **kw):
+        rows = real_resolved(conn, **dict(kw, event_tier=None))
+        for r in rows:
+            r.event_tier = kw.get("event_tier")
+        return rows
+
+    return (("the door asked without the card", without_the_card),
+            ("every card's rows named as the asked card's", named_as_asked))
+
+
+def _q34_refused(build, name: str, caught: list, missed: list,
+                 errors=None) -> None:
+    errors = errors or (calibration.MergedCurve,)
+    try:
+        build()
+    except errors as exc:
+        caught.append(f"{name}: {str(exc).splitlines()[0][:200]}")
+    else:
+        missed.append(name)
+
+
+def _q34_gate(gate_check, conn):
+    def run():
+        try:
+            gate_check(conn)
+        except audit.LawViolation as exc:
+            named = [line.strip() for line in str(exc).splitlines()
+                     if line.strip().startswith("ufc:")]
+            if not named:
+                raise
+            raise calibration.MergedCurve(f"the gate names {named[0]}") from exc
+    return run
+
+
+def plant_a_pooled_ufc_tier_table() -> Result:
+    """Count a UFC tier table's bands over the three cards together, as
+    `calibration.tier_table` counted them until 2026-10-08.
+
+    THE SHIPPED COUNT (the re-read, 29 September, finding G2): the bands
+    read 28/15/4/2 where Fight Night held 22/14/2/1 and the Contender Series
+    6/1/2/1 -- `bucket_record` asked the curve's door with no card. This
+    world's cards hold different bands; the planting proves each card's
+    table is its own, then puts the door back without the card, and with
+    every card's rows named as the asked card's, and demands the table's
+    builder, the scorecard and the gate's check refuse each by name, and the
+    door refuse a UFC band asked without a card.
+    """
+    import tempfile
+
+    guard = ("calibration.bucket_record, calibration.assert_no_pooled_tier_table, "
+             "audit.check_a_ufc_tier_table_is_its_cards")
+    violation = "a UFC tier table counting the three cards as one"
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+        try:
+            got = {t: [r["n"] for r in calibration.tier_table(
+                conn, sport="ufc", market_type="moneyline",
+                predictor="statistical", event_tier=t)["rows"]]
+                for t in config.event_tiers("ufc")}
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the tier table cannot be asked for one "
+                          f"card: {type(exc).__name__}: {exc}")
+        check = getattr(audit, "check_a_ufc_tier_table_is_its_cards", None)
+        if got != _Q34_BANDS or check is None:
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the tier tables state {got} where "
+                          f"each card's bands are {_Q34_BANDS}"
+                          + ("" if check else "; and the gate checks nothing"))
+        real = calibration.resolved
+        for door, planted in _q34_doors_as_they_stood(real):
+            calibration.resolved = planted
+            try:
+                for where, build in (
+                        ("the table", lambda: calibration.tier_table(
+                            conn, sport="ufc", market_type="moneyline",
+                            predictor="statistical", event_tier="fight_night")),
+                        ("the Record page", lambda: calibration.scorecard(
+                            conn, sport="ufc")),
+                        ("the gate", _q34_gate(check, conn))):
+                    _q34_refused(build, f"{door}, {where}", caught, missed)
+            finally:
+                calibration.resolved = real
+        _q34_refused(lambda: calibration.bucket_record(
+            conn, 0.55, sport="ufc", market_type="moneyline"),
+            "a band asked for no card, the door", caught, missed)
+        conn.close()
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC tier table counts the cards together: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  f"each card's tier table is its own ({_Q34_BANDS}); pooled: "
+                  + " | ".join(caught))
+
+
+def plant_a_pooled_ufc_ranker_count() -> Result:
+    """Count the UFC ranker's record over the three cards together, as
+    `calibration.ranker_comparison` and `shortlist.settled_for_gate` counted
+    until 2026-10-08 ("49 settled on the shortlist and 0 off it", 39/0,
+    10/0 and 0/0 by card, on 29 September); demand the ranker panel's
+    builder and the gate refuse it, and the edge gate's door refuse a UFC
+    count asked without a card.
+    """
+    import tempfile
+
+    from gridiron import shortlist as _shortlist
+
+    guard = ("calibration.ranker_comparison, calibration.assert_no_pooled_ranker, "
+             "shortlist.settled_for_gate, audit.check_a_ufc_ranker_count_is_its_cards")
+    violation = "a UFC ranker count over the three cards as one"
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+        try:
+            got = {c.get("event_tier"): (c["shortlisted"]["n"],
+                                         c["not_shortlisted"]["n"])
+                   for c in calibration.ranker_scorecard(
+                       conn, sport="ufc")["comparisons"]
+                   if c["market"] == "moneyline"}
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"the shipped ranker refuses an honest world: "
+                          f"{type(exc).__name__}: {exc}")
+        check = getattr(audit, "check_a_ufc_ranker_count_is_its_cards", None)
+        if got != _Q34_RANKER or check is None:
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the ranker states {got} where each "
+                          f"card's is {_Q34_RANKER}"
+                          + ("" if check else "; and the gate checks nothing"))
+        real = calibration.resolved
+        for door, planted in _q34_doors_as_they_stood(real):
+            calibration.resolved = planted
+            try:
+                for where, build in (
+                        ("the ranker panel", lambda: calibration.ranker_scorecard(
+                            conn, sport="ufc")),
+                        ("the gate", _q34_gate(check, conn))):
+                    _q34_refused(build, f"{door}, {where}", caught, missed)
+            finally:
+                calibration.resolved = real
+        _q34_refused(lambda: _shortlist.settled_for_gate(
+            conn, "ufc", "moneyline", None, "statistical"),
+            "the edge gate's count asked for no card, the door", caught, missed)
+        conn.close()
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC ranker count pools the cards: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  f"each card's ranker record is its own ({_Q34_RANKER}); "
+                  f"pooled: " + " | ".join(caught))
+
+
+def plant_a_pooled_ufc_taken_record() -> Result:
+    """Count the UFC taken record over the three cards together, as
+    `calibration.taken_comparison` counted it until 2026-10-08 ("passed
+    over 49 of 100 ... every forecast 49", 39, 10 and 0 by card); demand
+    the Record page's builder and the gate refuse it.
+    """
+    import tempfile
+
+    from gridiron import views as _views
+
+    guard = ("calibration.taken_comparison, "
+             "calibration.assert_no_pooled_taken_record, "
+             "audit.check_a_ufc_taken_record_is_its_cards")
+    violation = "a UFC taken record over the three cards as one"
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+        try:
+            got = {m.get("event_tier"): (m["taken"]["n"], m["not_taken"]["n"],
+                                         m["all"]["n"])
+                   for m in _views.scorecard(conn, "ufc")["taken_record"]["markets"]
+                   if m["market"] == "moneyline"}
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"the shipped taken record refuses an honest world: "
+                          f"{type(exc).__name__}: {exc}")
+        check = getattr(audit, "check_a_ufc_taken_record_is_its_cards", None)
+        if got != _Q34_TAKEN or check is None:
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the taken record states {got} where "
+                          f"each card's is {_Q34_TAKEN}"
+                          + ("" if check else "; and the gate checks nothing"))
+        real = calibration.resolved
+        for door, planted in _q34_doors_as_they_stood(real):
+            calibration.resolved = planted
+            try:
+                for where, build in (
+                        ("the taken record", lambda: calibration.taken_comparison(
+                            conn, sport="ufc", market_type="moneyline",
+                            event_tier="fight_night")),
+                        ("the gate", _q34_gate(check, conn))):
+                    _q34_refused(build, f"{door}, {where}", caught, missed)
+            finally:
+                calibration.resolved = real
+        _q34_refused(lambda: calibration.taken_comparison(
+            conn, sport="ufc", market_type="moneyline"),
+            "the taken record asked for no card, the door", caught, missed)
+        conn.close()
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC taken record pools the cards: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  f"each card's taken record is its own ({_Q34_TAKEN}); "
+                  f"pooled: " + " | ".join(caught))
+
+
+def plant_a_pooled_ufc_edge_figure() -> Result:
+    """Count the UFC edge figure over the three cards together, as the
+    Record page's edge question counted it until 2026-10-08 ("0 of the 100
+    disagreements", one count over three), and serve the headline curve over
+    every card; demand the edge's builder, the Record page and the gate
+    refuse each.
+    """
+    import tempfile
+
+    guard = ("calibration.edge, calibration.assert_no_pooled_edge, "
+             "calibration.assert_no_pooled_headline, "
+             "audit.check_a_ufc_edge_figure_is_its_cards")
+    violation = "a UFC edge figure, or a headline curve, over the three cards as one"
+    caught, missed = [], []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+        try:
+            page = calibration.scorecard(conn, sport="ufc")
+            got = {e.get("event_tier"): (e["n"], e["n_disagreements"])
+                   for e in page.get("edges") or []}
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"the shipped edge figure refuses an honest world: "
+                          f"{type(exc).__name__}: {exc}")
+        check = getattr(audit, "check_a_ufc_edge_figure_is_its_cards", None)
+        if (got != _Q34_EDGE or page.get("edge") is not None
+                or page.get("headline") is not None or check is None):
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the Record page states edges {got} "
+                          f"(one over every card: {page.get('edge') is not None}; "
+                          f"a headline curve over every card: "
+                          f"{page.get('headline') is not None}) where each "
+                          f"card's is {_Q34_EDGE}"
+                          + ("" if check else "; and the gate checks nothing"))
+        real = calibration.resolved
+        for door, planted in _q34_doors_as_they_stood(real):
+            calibration.resolved = planted
+            try:
+                for where, build in (
+                        ("the edge figure", lambda: calibration.edge(
+                            conn, sport="ufc", market_type="moneyline",
+                            predictor="statistical", event_tier="fight_night")),
+                        ("the gate", _q34_gate(check, conn))):
+                    _q34_refused(build, f"{door}, {where}", caught, missed)
+            finally:
+                calibration.resolved = real
+        _q34_refused(lambda: calibration.edge(
+            conn, sport="ufc", market_type="moneyline", predictor="statistical"),
+            "the edge asked for no card, the door", caught, missed)
+        # THE PAGE AS IT STOOD: one edge question over every card, and the
+        # headline curve over every card, served under the Record page.
+        pooled_curve = calibration.curve(conn, sport="ufc",
+                                         market_type="moneyline",
+                                         predictor="statistical")
+        conn.close()
+    for name, change in (
+            ("one edge question over every card",
+             {"edge": dict(page["edges"][0], event_tier=None), "edges": None}),
+            ("the headline curve over every card", {"headline": pooled_curve})):
+        _q34_refused(lambda: calibration.assert_no_pooled_headline(
+            dict(page, **change)), f"{name}, the Record page", caught, missed)
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC edge figure pools the cards: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  f"each card's edge figure is its own ({_Q34_EDGE}) and no "
+                  f"headline curve pools them; pooled: " + " | ".join(caught))
+
+
+def plant_a_pooled_ufc_board_badge() -> Result:
+    """Count the badge beside a UFC fight over the three cards together, as
+    `shortlist.settled_for_gate` counted it until 2026-10-08 ("49/100"
+    beside a Fight Night bout whose card's curve held 39); demand the
+    board's own guard (so `/api/week` answers 500) and the gate refuse it.
+    """
+    import tempfile
+
+    from gridiron import board as _board, shortlist as _shortlist, views as _views
+
+    guard = ("board._settled_n, board.assert_each_badge_is_its_cards, "
+             "audit.check_a_ufc_board_badge_is_its_cards")
+    violation = "a UFC badge counting the three cards as one"
+    caught, missed = [], []
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+
+        def the_badges():
+            page = _views.week(conn, "ufc", season, 1, forecaster="statistical")
+            return {(b.get("badge_card"), b["badge_n"])
+                    for g in page["board"]["games"] for b in g["questions"]}
+
+        try:
+            got = the_badges()
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"the shipped board refuses an honest world: "
+                          f"{type(exc).__name__}: {exc}")
+        check = getattr(audit, "check_a_ufc_board_badge_is_its_cards", None)
+        if got != {("fight_night", 3)} or check is None:
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the Fight Night card's rows carry the "
+                          f"badges (card, count) {got} where their card's "
+                          f"count is 3 and the three cards' together 6"
+                          + ("" if check else "; and the gate checks nothing"))
+        real_door = _shortlist.settled_for_gate
+        real_card = _board._card_of
+
+        def as_it_stood(conn, sport, market_type, prop_type, predictor,
+                        event_tier=None):
+            # THE COUNT UNTIL 2026-10-08: every card's settled questions.
+            return len(calibration.resolved(
+                conn, sport=sport, market_type=market_type,
+                prop_type=prop_type, predictor=predictor))
+
+        def the_week():
+            _views.week(conn, "ufc", season, 1, forecaster="statistical")
+
+        for name, swap in (
+                ("the count as it stood, the board", ("door", as_it_stood)),
+                ("a badge naming no card, the board",
+                 ("card", lambda conn, cache, sport, game_id: None))):
+            if swap[0] == "door":
+                _shortlist.settled_for_gate = swap[1]
+            else:
+                _board._card_of = swap[1]
+            try:
+                _q34_refused(the_week, name, caught, missed)
+                if swap[0] == "door":
+                    _q34_refused(_q34_gate(check, conn),
+                                 "the count as it stood, the gate", caught, missed)
+            finally:
+                _shortlist.settled_for_gate = real_door
+                _board._card_of = real_card
+        conn.close()
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC badge pools the cards: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  "each Fight Night row's badge is its card's 3, never the "
+                  "cards' 6; pooled: " + " | ".join(caught))
+
+
+def plant_a_bout_on_no_declared_card_counted_in_a_cards_band() -> Result:
+    """Count the tier chip of a bout on a card of no declared kind in a
+    card's band, or every card's (the prover of operator question 34,
+    2026-10-08).
+
+    THE SHIPPED COUNT, AND THE CHANGE AS HANDED: the chip on every card and
+    Results row is the tier table's band, asked through its door
+    (`calibration.bucket_record`). On c4014a9 the door took no card, so every
+    UFC chip counted every card's band; the change as handed asked it for
+    the card the row's own bout is on -- and for a bout on a card the source
+    names with no tier ("UFC Freedom 250", 14 June 2026, is on the record),
+    whose questions the predict path writes whatever its card, the door
+    refused, and UFC's slate and the whole of UFC's Results answered 500.
+    Such a bout is in no card's count -- its badge 0 (`board.build`), its
+    rank's edge gate 0 (`shortlist.rank_rows`) -- and its chip now counts 0
+    (`calibration.bucket_on_no_card`), every chip held to its own card's
+    band by `calibration.assert_each_band_is_its_cards` inside `views.week`
+    and `views.history`. This world's three cards hold their own bands and a
+    fourth card of no declared kind one settled question; the planting
+    proves the slate and Results answer with that chip at 0 and the Fight
+    Night chip at its own card's 1, then counts the no-card chip in Fight
+    Night's band, and puts the chip's door back to every card's rows named
+    as the asked card's, and demands the slate, Results and the gate's check
+    refuse each by name.
+    """
+    import tempfile
+
+    from gridiron import views as _views
+
+    guard = ("calibration.bucket_on_no_card, "
+             "calibration.assert_each_band_is_its_cards, "
+             "audit.check_a_ufc_tier_table_is_its_cards")
+    violation = ("a UFC tier chip counting a card's band, or every card's, "
+                 "for a bout on a card of no declared kind")
+    caught, missed = [], []
+    season = config.SPORT_CURRENT_SEASON["ufc"]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        conn = _q34_world(pathlib.Path(tmp) / "plant.db")
+        # A CARD THE SOURCE NAMES WITH NO TIER, one settled question on it.
+        kickoff = "2026-06-15T00:00:00Z"
+        conn.execute(
+            "INSERT INTO ufc_events (id, name, event_utc, season, fetched_utc,"
+            " event_tier) VALUES ('q34_nd', 'UFC Freedom 250', ?, ?,"
+            " '2026-06-01T00:00:00Z', NULL)", (kickoff, season))
+        conn.execute(
+            "INSERT INTO ufc_bouts (id, event_id, bout_utc, scheduled_rounds,"
+            " fighter_a, fighter_b, status, fetched_utc) VALUES ('q34_nd_a',"
+            " 'q34_nd', ?, 3, 'A', 'B', 'final', '2026-06-01T00:00:00Z')",
+            (kickoff,))
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date, home_score, away_score) VALUES"
+            " ('q34_nd_a', 'ufc', ?, 4, 'R', 'A', 'B', ?, 'final', ?, 1, 0)",
+            (season, kickoff, kickoff[:10]))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning, resolved_utc, outcome)"
+            " VALUES ('2026-06-14T10:00:00Z', 'ufc', 'q34_nd_a', 'moneyline',"
+            " 'A', NULL, 0.55, 'win', 'statistical', 'final', 'fs2',"
+            " '{\"coverage\": 1.0}', 'planted', '2026-06-15T03:00:00Z', 1)")
+        conn.commit()
+
+        def bands_of(page):
+            return {c["game_id"]: (c["bucket"].get("n"),
+                                   c["bucket"].get("event_tier", "absent"))
+                    for c in page["cards"]}
+
+        try:
+            no_card = bands_of(_views.week(conn, "ufc", season, 4,
+                                           forecaster="statistical"))
+            fight_night = bands_of(_views.week(conn, "ufc", season, 1,
+                                               forecaster="statistical"))
+            results = {i["game_id"]: i["tier"]["n"] for i in _views.history(
+                conn, sport="ufc", limit=50)["items"]}
+        except Exception as exc:  # noqa: BLE001 - a crash is a finding, named
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the slate or Results refuses an honest "
+                          f"world holding a bout on a card of no declared kind: "
+                          f"{type(exc).__name__}: {str(exc)[:200]}")
+        check = getattr(audit, "check_a_ufc_tier_table_is_its_cards", None)
+        if (no_card != {"q34_nd_a": (0, None)}
+                or fight_night.get("q34_fn_a") != (1, "fight_night")
+                or results.get("q34_nd_a") != 0 or results.get("q34_fn_a") != 1
+                or check is None
+                or getattr(calibration, "bucket_on_no_card", None) is None):
+            conn.close()
+            return Result(LAW_PER_CARD, violation, guard, False,
+                          f"NOT CAUGHT - the chip of the bout on no declared "
+                          f"card reads (n, card) {no_card.get('q34_nd_a')} and "
+                          f"{results.get('q34_nd_a')!r} on Results, the Fight "
+                          f"Night bout's {fight_night.get('q34_fn_a')} and "
+                          f"{results.get('q34_fn_a')!r}, where each is its own "
+                          f"card's: 0 on no card, 1 on Fight Night"
+                          + ("" if check else "; and the gate checks nothing"))
+        real_no_card = calibration.bucket_on_no_card
+        real_resolved = calibration.resolved
+
+        def in_fight_nights_band(probability, *, sport):
+            # THE NO-CARD BOUT'S BAND COUNTED IN A CARD'S FIGURE.
+            return dict(calibration.bucket_record(
+                conn, probability, sport=sport, market_type="moneyline",
+                event_tier="fight_night"), event_tier=None)
+
+        def named_as_asked(c, **kw):
+            rows = real_resolved(c, **dict(kw, event_tier=None))
+            for r in rows:
+                r.event_tier = kw.get("event_tier")
+            return rows
+
+        for name, swap, builds in (
+                ("the no-card chip counted in Fight Night's band",
+                 ("no_card", in_fight_nights_band),
+                 (("the slate", lambda: _views.week(
+                     conn, "ufc", season, 4, forecaster="statistical")),
+                  ("Results", lambda: _views.history(conn, sport="ufc", limit=50)),
+                  ("the gate", _q34_gate(check, conn)))),
+                ("the chip's door naming every card's rows as the asked card's",
+                 ("door", named_as_asked),
+                 (("Results", lambda: _views.history(conn, sport="ufc", limit=50)),
+                  ("the gate", _q34_gate(check, conn))))):
+            if swap[0] == "no_card":
+                calibration.bucket_on_no_card = swap[1]
+            else:
+                calibration.resolved = swap[1]
+            try:
+                for where, build in builds:
+                    _q34_refused(build, f"{name}, {where}", caught, missed)
+            finally:
+                calibration.bucket_on_no_card = real_no_card
+                calibration.resolved = real_resolved
+        conn.close()
+    if missed:
+        return Result(LAW_PER_CARD, violation, guard, False,
+                      "NOT CAUGHT - a UFC chip counts another card's band: "
+                      + "; ".join(missed))
+    return Result(LAW_PER_CARD, violation, guard, True,
+                  "the bout on no declared card's chip counts 0 on the slate "
+                  "and Results, the Fight Night chip its own card's 1; "
+                  "pooled: " + " | ".join(caught))
 
 
 # ---------------------------------------------------------------------------
@@ -29141,6 +29992,21 @@ def main() -> int:
     # 35's voids made this one false): the void count beside each card's
     # curve is that card's, through the curve's own door.
     results.append(plant_a_pooled_void_count())
+    # THE OUTLOOK COUNTS ONLY SLATES STILL TO COME AND SAYS THE MOST IT CAN
+    # REACH (operator question 33, ruled 2026-09-30; built 2026-10-08).
+    results.append(plant_an_outlook_counting_a_fought_card())
+    # EVERY UFC COUNT IS PER CARD TIER (operator question 34, ruled
+    # 2026-09-30: "tier table, ranker, taken record, edge figure, board
+    # badge. Planting each."; built 2026-10-08).
+    results.append(plant_a_pooled_ufc_tier_table())
+    results.append(plant_a_pooled_ufc_ranker_count())
+    results.append(plant_a_pooled_ufc_taken_record())
+    results.append(plant_a_pooled_ufc_edge_figure())
+    results.append(plant_a_pooled_ufc_board_badge())
+    # AND THE TIER CHIP OF A BOUT ON A CARD OF NO DECLARED KIND, IN NO CARD'S
+    # BAND, EVERY CHIP HELD TO ITS OWN CARD'S (the prover of question 34,
+    # 2026-10-08).
+    results.append(plant_a_bout_on_no_declared_card_counted_in_a_cards_band())
     # ONE FUNCTION DEFINES A DISTINCT BET (operator question 17, ruled
     # 2026-09-27; question 21, 2026-09-28): every record's door keyed by
     # `gridiron.bet`, recounted without the door, and no key spelled by hand.

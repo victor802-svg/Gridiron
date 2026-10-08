@@ -1580,6 +1580,17 @@ def market_words(sport: str, market: str) -> str:
     return words
 
 
+def card_market_label(sport: str, market: str, tier: str | None) -> str:
+    """"moneyline, Fight Night": one market on one card -- what a UFC count
+    is about from 2026-10-08 (operator question 34, ruled 2026-09-30: "every
+    UFC count is per card tier"), in the Record page's own words. A sport
+    that does not split by card, or a card the source left unnamed, says the
+    market alone."""
+    words = market_words(sport, market)
+    card = tier_label(tier)
+    return f"{words}, {card}" if card else words
+
+
 def fit_rows_words(sport: str, entries: list[dict]) -> str | None:
     """How many training rows carried one factor in each market's active fit.
 
@@ -1613,16 +1624,52 @@ def retired_outlook_line(n: int, gate: int, day: str) -> str:
             f"so {n} settled is the final count")
 
 
+#: WHAT ONE SLATE IS CALLED IN EACH SPORT (operator question 33, 2026-10-08):
+#: the unit `horizon.slates_to_come` counts, `games.week` -- a week for
+#: football and basketball, a day for baseball and college football, a card
+#: for the fights. (singular, plural.)
+SLATE_WORDS = {
+    "nfl": ("week", "weeks"),
+    "nba": ("week", "weeks"),
+    "mlb": ("day", "days"),
+    "cfb": ("day", "days"),
+    "ufc": ("card", "cards"),
+}
+
+
+def slate_words(sport: str | None, count: int) -> str:
+    """"card" or "cards", "week" or "weeks": one sport's slate, counted."""
+    one, many = SLATE_WORDS.get(sport or "", ("slate", "slates"))
+    return one if count == 1 else many
+
+
 def market_outlook_line(n: int, gate: int, expected: int | None,
-                        ends: str | None, *, written_before: bool = False) -> str:
-    """The line beside a blind curve: its count, what the pace projects, and
-    whether the gate can clear this season (ruling R3, 2026-09-05).
+                        ends: str | None, *, written_before: bool = False,
+                        waiting: int = 0, to_come: int = 0,
+                        on_to_come: float | None = None,
+                        sport: str | None = None) -> str:
+    """The line beside a blind curve: its count, the most it can reach this
+    season, and whether the gate can clear (ruling R3, 2026-09-05).
 
     COMPOSED HERE FROM 2026-09-27 (operator question 14, 3 of 3), where it
     was written inside `horizon.market_outlook`: the guard reads the line
     again from the outlook's own numbers, so there is one composition. `n` is
     the curve's own count -- one forecaster's standing questions, one card's
-    for UFC -- and the words are the ones the page has always printed.
+    for UFC.
+
+    THE MOST IT CAN REACH, AND OF WHAT (operator question 33, ruled
+    2026-09-30: "the outlook counts only cards still to come; say the real
+    maximum reachable this season"; built 2026-10-08). `expected` is the
+    most the count can reach (`horizon.most_reachable`), and the line says
+    so -- "at most", never "expected" -- with what it is made of beside it:
+    the questions written and `waiting` to settle on slates no longer to
+    come, and the questions the `to_come` slates still to come hold
+    (`on_to_come`, at what is written for each or the season's pace,
+    whichever is more), or that no slate is still to come. "~" only where
+    the pace is in it. Until this date it said "39 of 100 · ~121 expected"
+    of Fight Night, the pace times six cards, two of them fought; on the
+    four still to come then it was ~94, and the line would have said this
+    gate cannot clear.
 
     NOTHING THIS SEASON IS NOT NOTHING EVER: `n` counts every season's
     questions and the pace only this season's, so with a count from an
@@ -1634,7 +1681,17 @@ def market_outlook_line(n: int, gate: int, expected: int | None,
         return (f"{n} of {gate} · nothing written in this market {when}, so "
                 f"there is no rate to project from")
     ends_short = ends[5:] if ends else "the season's end"
-    line = f"{n} of {gate} · ~{expected} expected · season ends {ends_short}"
+    parts = []
+    if waiting:
+        parts.append(f"{waiting} waiting to settle")
+    if to_come:
+        parts.append(f"~{int(round(on_to_come or 0))} more on the {to_come} "
+                     f"{slate_words(sport, to_come)} still to come")
+    else:
+        parts.append(f"no {slate_words(sport, 1)} still to come")
+    most = f"~{expected}" if to_come else f"{expected}"
+    line = (f"{n} of {gate} · at most {most} this season "
+            f"({', '.join(parts)}) · season ends {ends_short}")
     if expected >= gate:
         return line
     return f"{line} · THIS GATE CANNOT CLEAR THIS SEASON"
@@ -3013,6 +3070,23 @@ def tier_record_line(tier: str, settled: int, needed: int,
     noun = "settled" if settled != 1 else "settled pick"
     return (f"{tier} - {settled} {noun}, not yet proven; "
             f"{needed} needed before it earns a verdict")
+
+
+def tier_on_no_card_line(tier: str) -> str:
+    """"LEAN - this fight's card is of no declared kind, so it is in no
+    card's record and has nothing settled behind it." The tier chip's words
+    for a bout on a card the source named with no tier (the prover of
+    operator question 34, 2026-10-08): its band is no card's, so it counts
+    nothing (`calibration.bucket_on_no_card`), and "0 settled" alone would
+    read as a card's band with nothing in it yet."""
+    return (f"{tier} - this fight's card is of no declared kind, so it is in "
+            f"no card's record and has nothing settled behind it")
+
+
+def band_on_no_card_words(label: str) -> str:
+    """The band's own line for such a bout, beside its label (2026-10-08)."""
+    return (f"the {label} band of no card: this fight's card is of no "
+            f"declared kind, so it is in no card's count")
 
 
 def least_tested_tier_line(tier: str, settled: int, gate: int) -> str | None:
@@ -5992,6 +6066,16 @@ def badge_words(n: int, gate: int) -> str:
     without its two numbers, and a signal never renders without it.
     """
     return f"{int(n)}/{int(gate)}"
+
+
+def card_badge_words(market_words: str, tier: str | None) -> str:
+    """"moneyline, Fight Night": what a UFC badge counts, its card named
+    (operator question 34, 2026-10-08); a bout on a card of no declared
+    kind is "on no declared card", in no card's count."""
+    card = tier_label(tier)
+    if not card:
+        return f"{market_words}, on no declared card"
+    return f"{market_words}, {card}"
 
 
 def badge_tip(n: int, gate: int, market_words: str) -> str:

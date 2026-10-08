@@ -114,7 +114,8 @@ def combine(confidence: float, completeness: float, edge: float | None,
 
 
 def settled_for_gate(conn: sqlite3.Connection, sport: str, market_type: str,
-                     prop_type: str | None, predictor: str) -> int:
+                     prop_type: str | None, predictor: str,
+                     event_tier: str | None = None) -> int:
     """How many of this market's questions have actually resolved.
 
     THE SAME DOOR THE RECORD USES. `calibration.resolved` applies the standing
@@ -123,23 +124,34 @@ def settled_for_gate(conn: sqlite3.Connection, sport: str, market_type: str,
     27) -- so the count that opens the edge gate is the same count the Record page shows
     beside every other figure. A second implementation here would be a second
     definition of "settled", and this project has been bitten by exactly that.
+
+    ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30: "every UFC
+    count is per card tier: ... ranker, ... board badge"; built
+    2026-10-08): the ranker's edge gate and the board's badge both read
+    this count, and for a sport that splits by card the card is required
+    (`calibration.refuse_a_count_across_cards`) -- the count of the card's
+    own curve. Until this date UFC's was every card's: the badge said
+    "49/100" where Fight Night's curve held 39 (the re-read, 29 September).
     """
     from . import calibration
 
+    calibration.refuse_a_count_across_cards(
+        sport, event_tier, "the edge gate's settled count")
     return len(calibration.resolved(
         conn, sport=sport, market_type=market_type, prop_type=prop_type,
-        predictor=predictor))
+        predictor=predictor, event_tier=event_tier))
 
 
 def _gate_lookup(conn: sqlite3.Connection):
-    """Settled counts, once per category per run rather than once per row."""
+    """Settled counts, once per category per run rather than once per row
+    -- and per card for UFC (operator question 34, 2026-10-08)."""
     cache: dict[tuple, int] = {}
 
-    def counted(sport, market_type, prop_type, predictor):
-        key = (sport, market_type, prop_type, predictor)
+    def counted(sport, market_type, prop_type, predictor, event_tier=None):
+        key = (sport, market_type, prop_type, predictor, event_tier)
         if key not in cache:
             cache[key] = settled_for_gate(conn, sport, market_type, prop_type,
-                                          predictor)
+                                          predictor, event_tier)
         return cache[key]
 
     return counted
@@ -168,6 +180,10 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         "SELECT p.id, p.sport, p.game_id, p.market_type, p.prop_type, p.predictor,"
         " p.model_prob, p.factors_json, p.factor_set_version, p.created_utc,"
         " g.season, g.week,"
+        # THE CARD THE ROW'S OWN BOUT IS ON, for its edge gate's count
+        # (operator question 34, 2026-10-08); NULL for every other sport.
+        " (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        "    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier,"
         " (SELECT s.implied_prob FROM market_snapshots s"
         "   WHERE s.prediction_id = p.id ORDER BY s.id LIMIT 1) AS implied_prob,"
         # WHETHER THIS IS THE ROW THE RECORD GRADES. Through the same clause
@@ -211,8 +227,16 @@ def rank_rows(conn: sqlite3.Connection, prediction_ids: list[int] | None = None,
         edge = edge_score(row["model_prob"], row["implied_prob"])
         if edge is None:
             counts["no_line"] += 1
-        settled = gate_count(row["sport"], row["market_type"], row["prop_type"],
-                             row["predictor"])
+        # A BOUT ON A CARD OF NO DECLARED KIND IS IN NO CARD'S COUNT (the
+        # card count beside a UFC card's at-the-line sentence is the
+        # precedent, `views._at_the_line`): 0, never the cards together and
+        # never a refusal that would stop the run (none is forecast: such a
+        # card gets no forecast, `ufc_events.event_tier`).
+        carded = bool(config.event_tiers(row["sport"]))
+        settled = (0 if carded and row["event_tier"] is None else
+                   gate_count(row["sport"], row["market_type"],
+                              row["prop_type"], row["predictor"],
+                              row["event_tier"] if carded else None))
         # THE GATE, AND IT IS THE WHOLE POINT. The edge is stored and shown
         # either way; it moves the ordering only once its own market has a
         # record to stand on.

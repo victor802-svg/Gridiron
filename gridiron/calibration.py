@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sqlite3
 from dataclasses import dataclass, field
 
@@ -209,6 +210,11 @@ class Resolved:
     outcome: int
     implied_prob: float | None
     factors_json: str = "{}"
+    #: THE CARD THE ROW'S OWN BOUT WAS ON, for a sport that splits below the
+    #: market (UFC), read off the bout and never off the category asked for;
+    #: None for every other sport (operator question 34, 2026-10-08). How a
+    #: count's guard sees a door that stopped asking for the card.
+    event_tier: str | None = None
 
 
 def standing_pass_order(forecast: str, game: str, row: str | None = None) -> str:
@@ -457,6 +463,83 @@ def category_filter(
     return where, params
 
 
+# ---------------------------------------------------------------------------
+# EVERY UFC COUNT IS PER CARD TIER (operator question 34, ruled 2026-09-30:
+# "every UFC count is per card tier: tier table, ranker, taken record, edge
+# figure, board badge. Planting each."; built 2026-10-08)
+# ---------------------------------------------------------------------------
+#
+# R2 of 2026-09-03 splits the UFC record by card because one curve over the
+# three "would average those and describe neither" -- a Contender Series bout
+# goes the distance 43.6% of the time and a numbered-card bout 58.0% -- and
+# question 14 (2026-09-27) rebuilt three of the Record page's counts per card
+# ("per tier for UFC"). The re-read of 29 September (finding G2) found five
+# more counting the three cards as one: the tier table's bands (28/15/4/2,
+# where Fight Night held 22/14/2/1 and the Contender Series 6/1/2/1), the
+# ranker's "49 settled on the shortlist and 0 off it" (39/0, 10/0, 0/0), the
+# taken record's "every forecast 49", the edge figure's "0 of the 100
+# disagreements" and the board's badge, `shortlist.settled_for_gate`, 49.
+# Each door now takes the card and refuses a UFC count asked without one
+# (`refuse_a_count_across_cards`, the `PooledCount` precedent of the doors
+# question 14 built), and each builder carries the cards its rows were on
+# (read off each row's own bout) and the count `gridiron.recount` makes
+# without the door, and refuses by name, inside itself, a count of another
+# card than the one it names (`PooledCardCount`), so the API answers 500.
+# (The two errors are declared beside `MergedCurve`, which they are.)
+
+
+def refuse_a_count_across_cards(sport: str, event_tier: str | None,
+                                what: str) -> None:
+    """THE CARD RULE EVERY UFC COUNT'S DOOR ASKS FIRST (operator question
+    34, 2026-10-08): for a sport that splits below the market, one of its
+    declared cards; for one that does not, none."""
+    tiers = config.event_tiers(sport)
+    law = ("LAW 6 ONE LEVEL DOWN (operator question 34, ruled 2026-09-30: "
+           "\"every UFC count is per card tier\")")
+    if tiers and event_tier not in tiers:
+        raise PooledCount(
+            f"{law}: {what} in {sport} was asked for card {event_tier!r}, "
+            f"not one of {sport}'s declared cards {list(tiers)}. Each card's "
+            f"count is its own and they are reported side by side, never "
+            f"summed: name one.")
+    if not tiers and event_tier is not None:
+        raise PooledCount(
+            f"{law}: {what} in {sport} names card {event_tier!r}, but {sport} "
+            f"declares no cards, so it would count nothing that exists.")
+
+
+def refuse_another_cards_count(sport: str, event_tier: str | None,
+                               cards, what: str) -> None:
+    """THE GUARD'S CARD TEST, shared by the five counts: a count naming one
+    of a carded sport's cards counts rows on that card and no other (`cards`,
+    read off each row's own bout -- a bout whose card the source left
+    unnamed is on none); a count in a sport that declares none names none."""
+    tiers = config.event_tiers(sport)
+    law = "QUESTION 34: EVERY UFC COUNT IS PER CARD TIER"
+    if tiers:
+        if event_tier not in tiers:
+            raise PooledCardCount(
+                f"{law}: {what} names card {event_tier!r}, not one of "
+                f"{sport}'s cards {list(tiers)}: a count over the cards "
+                f"together describes none of them.")
+        if cards is None or any(c != event_tier for c in cards):
+            raise PooledCardCount(
+                f"{law}: {what} is the {event_tier!r} card's and counts rows "
+                f"on {cards!r}: {sport}'s cards {list(tiers)} are reported "
+                f"side by side, never summed.")
+    elif event_tier is not None or cards:
+        raise PooledCardCount(
+            f"{law}: {what} names card {event_tier!r} and counts rows on "
+            f"{cards!r} in {sport}, which declares no cards.")
+
+
+def _cards_of(items) -> list:
+    """The cards a count's rows were on, read off each row's own bout:
+    sorted, with an unnamed card (None) kept, so it is seen."""
+    return sorted({getattr(r, "event_tier", None) if not isinstance(r, dict)
+                   else r.get("event_tier") for r in items}, key=str)
+
+
 def resolved(
     conn: sqlite3.Connection,
     *,
@@ -521,12 +604,19 @@ def resolved(
     # takes the latest within it -- without this, asking for fs1 would match
     # the fs2 row's id, fail the outer filter, and return nothing at all.
     standing = standing_row_clause(bool(factor_set_version))
+    # THE CARD EACH ROW'S OWN BOUT WAS ON (operator question 34, 2026-10-08),
+    # for a sport that splits by card: read off the row, so a count of
+    # another card's rows is seen on the payload rather than trusted.
+    card = ("(SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+            "   ON e.id = b.event_id WHERE b.id = p.game_id)"
+            if config.event_tiers(sport) else "NULL")
     rows = conn.execute(
         "SELECT p.id, p.created_utc, p.game_id, g.season, g.week, p.market_type,"
         " p.prop_type, p.predictor, p.factor_set_version, p.subject, p.line_asked,"
         " p.model_prob, p.model_side, p.outcome, p.factors_json,"
         " (SELECT s.implied_prob FROM market_snapshots s WHERE s.prediction_id = p.id"
-        "  ORDER BY s.id LIMIT 1) AS implied_prob"
+        "  ORDER BY s.id LIMIT 1) AS implied_prob,"
+        f" {card} AS event_tier"
         f" FROM predictions p JOIN games g ON g.id = p.game_id"
         f" WHERE {' AND '.join(where)}{standing} ORDER BY p.id",
         params,
@@ -550,6 +640,7 @@ def resolved(
             outcome=r["outcome"],
             implied_prob=r["implied_prob"],
             factors_json=r["factors_json"] if with_factors else "{}",
+            event_tier=r["event_tier"],
         )
         for r in rows
     ]
@@ -779,6 +870,7 @@ def edge(
     prop_type: str | None = None,
     predictor: str | None = None,
     threshold: float | None = None,
+    event_tier: str | None = None,
 ) -> dict:
     """Where the model disagreed with the market, who was right?
 
@@ -787,17 +879,29 @@ def edge(
     threshold. The reverse subset — where the market was more confident than the
     model — is reported alongside it, because showing only the flattering half
     of a comparison is how a record lies while being technically accurate.
+
+    ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30; built
+    2026-10-08): the card is required for a sport that splits by card
+    (`refuse_a_count_across_cards`), the payload carries the cards its rows
+    were on and the count `gridiron.recount` makes without the door, and
+    `assert_no_pooled_edge` refuses another card's count inside this
+    builder. Until this date UFC's "0 of the 100 disagreements required"
+    was one count over the three cards (0 on each, so the number held).
     """
+    from . import db, recount
+
     threshold = config.EDGE_DISAGREEMENT_THRESHOLD if threshold is None else threshold
     require_sport(sport, "calibration.edge")
-    items = [
-        r
-        for r in resolved(
+    refuse_a_count_across_cards(sport, event_tier, "the edge figure's count")
+    with db.one_instant(conn):
+        everything = resolved(
             conn, sport=sport, market_type=market_type, prop_type=prop_type,
-            predictor=predictor,
-        )
-        if r.implied_prob is not None
-    ]
+            predictor=predictor, event_tier=event_tier)
+        again = (recount.disagreements(recount.settled_standing(
+            conn, sport=sport, predictor=predictor, market_type=market_type,
+            prop_type=prop_type, event_tier=event_tier), threshold)
+            if predictor and market_type else None)
+    items = [r for r in everything if r.implied_prob is not None]
 
     model_bolder = [r for r in items if r.model_prob - r.implied_prob > threshold]
     market_bolder = [r for r in items if r.implied_prob - r.model_prob > threshold]
@@ -829,7 +933,19 @@ def edge(
         "n_disagreements": n_eligible,
         "minimum_for_a_claim": minimum,
         "standing_note": EDGE_STANDING_NOTE,
+        # COUNTED AGAIN WITHOUT THE DOOR (operator question 34, 2026-10-08).
+        "recounted": (None if again is None
+                      else {"n": again[0], "n_disagreements": again[1]}),
     }
+    if config.event_tiers(sport):
+        # ONE CARD'S, NAMED -- keys only a carded sport's figure carries, so
+        # no other sport's changes shape.
+        payload["event_tier"] = event_tier
+        # ITS MARKET AND ITS CARD, "moneyline, Fight Night": the render found
+        # the card alone over each answer, the market said nowhere.
+        payload["card_label"] = language.card_market_label(
+            sport, prop_type or market_type, event_tier)
+        payload["tiers_counted"] = _cards_of(everything)
 
     if n_eligible < minimum:
         payload["renderable"] = False
@@ -838,12 +954,44 @@ def edge(
             f"{n_eligible} resolved disagreements of the {minimum} required. "
             f"{minimum - n_eligible} more before this figure will be shown at all."
         )
+        assert_no_pooled_edge(payload)
         return payload
 
     payload["renderable"] = True
     payload["model_more_confident"] = side(model_bolder, "model more confident")
     payload["market_more_confident"] = side(market_bolder, "market more confident")
+    assert_no_pooled_edge(payload)
     return payload
+
+
+def assert_no_pooled_edge(payload: dict) -> None:
+    """THE EDGE FIGURE'S COUNT IS ONE CARD'S FOR UFC (operator question 34,
+    ruled 2026-09-30; built 2026-10-08). Refused by name, inside `edge`, so
+    `/api/scorecard` answers 500: a count naming no card, or one of none, in
+    a sport that splits by card; one counting rows on another card than it
+    names, or on every card (`tiers_counted`, read off each row's own bout);
+    and a count of settled questions with a price, or of disagreements, that
+    `gridiron.recount` does not make without the door (`recounted`; asked
+    of one forecaster in one market, as the page asks it)."""
+    what = (f"the edge figure for {payload.get('sport')} "
+            f"{payload.get('market_type')}, {payload.get('predictor')}")
+    refuse_another_cards_count(payload.get("sport"), payload.get("event_tier"),
+                               payload.get("tiers_counted", []), what)
+    again = payload.get("recounted")
+    if again is None:
+        if config.event_tiers(payload.get("sport")):
+            raise PooledCardCount(
+                f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} "
+                f"carries no recount, so nothing shows it is one card's.")
+        return
+    if (again.get("n"), again.get("n_disagreements")) != (
+            payload.get("n"), payload.get("n_disagreements")):
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} counts "
+            f"{payload.get('n_disagreements')!r} disagreements of "
+            f"{payload.get('n')!r} settled with a price where the recount "
+            f"made without its door finds {again.get('n_disagreements')!r} "
+            f"of {again.get('n')!r}.")
 
 
 # ---------------------------------------------------------------------------
@@ -1125,6 +1273,7 @@ def bucket_record(
     prop_type: str | None = None,
     predictor: str = "statistical",
     factor_set_version: str | None = None,
+    event_tier: str | None = None,
 ) -> dict:
     """How this bucket has actually done, for the chip on a pick card.
 
@@ -1132,15 +1281,26 @@ def bucket_record(
     accuracy without its sample size would be the most persuasive lie on the
     page: it sits right next to a specific forecast and reads as a track record
     for THAT pick.
+
+    THE ONE DOOR A BAND IS COUNTED THROUGH -- the tier table's rows and the
+    tier chip on every card -- AND ONE CARD'S FOR UFC (operator question 34,
+    ruled 2026-09-30: "every UFC count is per card tier: tier table, ...";
+    built 2026-10-08). The card is required for a sport that splits by card
+    (`refuse_a_count_across_cards`); each entry carries it and the cards its
+    rows were on (`tiers_counted`). Until this date a UFC band counted every
+    card: "28 of 100" in moneyline's 50-60% band where Fight Night held 22
+    and the Contender Series 6 (the re-read, 29 September).
     """
     label = bucket_label(probability)
     lo, hi = next((lo, hi) for lo, hi, name in BUCKETS if name == label)
     require_sport(sport, "calibration.bucket_record")
+    refuse_a_count_across_cards(sport, event_tier, "a confidence band's count")
     items = [
         r
         for r in resolved(
             conn, sport=sport, market_type=market_type, prop_type=prop_type,
             predictor=predictor, factor_set_version=factor_set_version,
+            event_tier=event_tier,
         )
         if lo <= r.model_prob < hi
     ]
@@ -1151,6 +1311,11 @@ def bucket_record(
         "provisional": n < config.MIN_SAMPLE_FOR_BUCKET_POINT,
         "minimum": config.MIN_SAMPLE_FOR_BUCKET_POINT,
     }
+    if config.event_tiers(sport):
+        # WHICH CARD, AND THE CARDS ITS ROWS WERE ON: only where the sport
+        # splits by card, so no other sport's chip changes shape.
+        entry["event_tier"] = event_tier
+        entry["tiers_counted"] = _cards_of(items)
     if n:
         entry["actual"] = round(sum(r.outcome for r in items) / n, 4)
         entry["claimed"] = round(sum(r.model_prob for r in items) / n, 4)
@@ -1159,6 +1324,44 @@ def bucket_record(
         entry["claimed"] = None
         entry["message"] = f"no resolved predictions in the {label} bucket yet"
     return entry
+
+
+def bucket_on_no_card(probability: float, *, sport: str) -> dict:
+    """THE BAND OF A QUESTION WHOSE OWN BOUT IS ON A CARD OF NO DECLARED KIND
+    (the prover of operator question 34, 2026-10-08): in no card's count, so
+    nothing settled stands behind it -- 0, named on no card.
+
+    WHY NOT THE DOOR: `bucket_record` refuses a carded sport's band asked for
+    no card, as it must (a band over every card is the pool question 34
+    forbids), and the tier chip on every card and Results row asked it with
+    the card read off the row's own bout. The source names some cards with no
+    tier ("UFC Freedom 250", 14 June, is on the record) and the predict path
+    writes a bout's questions whatever its card (`sports.ufc.slate_questions`
+    reads no tier), so ONE such forecast made the door refuse inside
+    `views.week` and `views.history` -- UFC's slate and the whole of UFC's
+    Results answering 500 -- where until this release the chip counted every
+    card. The board's badge (`board.build`) and the ranker's edge gate
+    (`shortlist.rank_rows`) already count such a bout in no card's count, 0;
+    this is the chip's same answer, and `assert_each_band_is_its_cards` holds
+    every chip to it."""
+    tiers = config.event_tiers(sport)
+    if not tiers:
+        raise PooledCount(
+            f"a band on no declared card was asked in {sport}, which declares "
+            f"no cards; its band is the door's (`bucket_record`).")
+    label = bucket_label(probability)
+    return {
+        "label": label,
+        "n": 0,
+        "provisional": True,
+        "minimum": config.MIN_SAMPLE_FOR_BUCKET_POINT,
+        "event_tier": None,
+        "tiers_counted": [],
+        "on_no_card": True,
+        "actual": None,
+        "claimed": None,
+        "message": language.band_on_no_card_words(label),
+    }
 
 
 def tier_from_bucket(bucket: dict) -> dict:
@@ -1193,6 +1396,11 @@ def tier_from_bucket(bucket: dict) -> dict:
     # 19 settled, not yet proven" is the same fact and needs nothing carried.
     entry["message"] = language.tier_record_line(
         tier, n, TIER_MIN_SETTLED, entry["earned"])
+    if bucket.get("on_no_card"):
+        # A BOUT ON A CARD OF NO DECLARED KIND SAYS SO (the prover of
+        # operator question 34, 2026-10-08): its band is in no card's record,
+        # which "0 settled" alone would not say (`bucket_on_no_card`).
+        entry["message"] = language.tier_on_no_card_line(tier)
     # WHAT THE CHIP ITSELF READS (2026-09-04). Composed here rather than in the
     # browser, so a renderer cannot invent it -- and composed at all because
     # `message` above reached a grid card only as a hover tooltip, which is no
@@ -1269,6 +1477,21 @@ def over_time(
 
 class MergedCurve(RuntimeError):
     """Two categories were averaged into one, which describes neither."""
+
+
+class PooledCount(MergedCurve):
+    """A count of a sport that splits below the market was asked for across
+    its cards, or of a card that is not one of its declared tiers -- or a
+    card was named in a sport that declares none (operator question 34,
+    2026-10-08). Raised by the door, before anything is counted. A
+    `MergedCurve`, so every door that answers 500 for a merged curve
+    answers 500 for it."""
+
+
+class PooledCardCount(MergedCurve):
+    """A count beside a UFC card's name counted another card's rows, or
+    every card's, or one the recount made without the door does not make
+    (operator question 34, 2026-10-08). Raised by the builder's guard."""
 
 
 def assert_no_merged_categories(payload: dict) -> None:
@@ -1759,6 +1982,133 @@ def assert_no_pooled_outlooks(payload: dict) -> None:
                 f"keyed any other way -- without the rung, or across "
                 f"forecasters -- counts other bets than the record holds "
                 f"(operator question 17, 2026-09-28).")
+        # ONLY SLATES STILL TO COME, AND THE MOST IT CAN REACH (operator
+        # question 33, ruled 2026-09-30; built 2026-10-08).
+        refuse_slates_not_still_to_come(outlook, what)
+        refuse_a_maximum_not_its_own(outlook, what)
+
+
+class SlateNotStillToCome(MergedCurve):
+    """An outlook multiplied its pace by a slate that is not still to come,
+    or stated a most-reachable figure that is not its own counts'
+    (operator question 33, 2026-10-08). A `MergedCurve`, so every door that
+    answers 500 for a merged curve answers 500 for it."""
+
+
+def refuse_slates_not_still_to_come(outlook: dict, what: str) -> None:
+    """Every outlook that multiplies a pace by slates to come -- the blind
+    record's and the at-the-line record's -- counts THE SLATES STILL TO
+    COME AT THE CLOCK IT WAS ASKED AT, by the one rule, and no other
+    (operator question 33, ruled 2026-09-30: "the outlook counts only cards
+    still to come"; built 2026-10-08).
+
+    Refused by name: an outlook carrying no slates or no recount of them (a
+    payload carrying none, the precedent of question 17's `recounted`); one
+    whose slates are not the ones `gridiron.recount.slates_to_come` finds
+    without the rule -- a slate whose every game has started, or is past
+    its listed start, counted because a game on it is still marked
+    'scheduled' (the re-read's two fought Fight Night cards) -- naming each
+    slate; and a count of slates that is not the list's. A retired market
+    and a market the reasoning pass no longer asks project nothing and
+    count none."""
+    law = "QUESTION 33: AN OUTLOOK COUNTS ONLY SLATES STILL TO COME"
+    if outlook.get("retired") or outlook.get("routed_off"):
+        if outlook.get("slates_remaining") != 0 or outlook.get("to_come"):
+            raise SlateNotStillToCome(
+                f"{law}: {what} projects nothing and counts "
+                f"{outlook.get('slates_remaining')!r} slates to come.")
+        return
+    ahead = outlook.get("slates_to_come")
+    again = outlook.get("slates_to_come_recounted")
+    if not isinstance(ahead, list) or not isinstance(again, list):
+        raise SlateNotStillToCome(
+            f"{law}: {what} carries no slates still to come, or no recount "
+            f"of them, so nothing can show they are still to come.")
+    if sorted(ahead) != sorted(again):
+        extra = sorted(set(ahead) - set(again))
+        lost = sorted(set(again) - set(ahead))
+        raise SlateNotStillToCome(
+            f"{law}: {what} counts as still to come the slates {sorted(ahead)} "
+            f"where the recount made without its rule finds {sorted(again)}"
+            + (f": every game on {extra} has started or is past its start, "
+               f"though one may still be marked 'scheduled'" if extra else "")
+            + (f"; and it leaves out {lost}, which hold a game still to come"
+               if lost else "") + ".")
+    if outlook.get("slates_remaining") != len(ahead):
+        raise SlateNotStillToCome(
+            f"{law}: {what} multiplies by {outlook.get('slates_remaining')!r} "
+            f"slates to come beside a list of {len(ahead)}.")
+
+
+def refuse_a_maximum_not_its_own(outlook: dict, what: str) -> None:
+    """The most a blind outlook says its count can reach is its own counts'
+    arithmetic, from the questions the recount finds on each slate
+    (operator question 33, ruled 2026-09-30: "say the real maximum
+    reachable this season"; built 2026-10-08).
+
+    Refused by name: slates still to come other than the outlook's own
+    list; questions on one of them -- settled or waiting -- or waiting on
+    no slate still to come, other than `gridiron.recount.outlook` finds
+    without the door; a part on the slates to come that is not its own
+    arithmetic (`horizon.on_slates_to_come_from`); and a gate called
+    reachable or not other than that figure against it. (The figure itself
+    and the line are held above: `horizon.expected_from`,
+    `horizon.outlook_words`.)"""
+    law = "QUESTION 33: THE MOST AN OUTLOOK CAN REACH IS ITS OWN COUNTS'"
+    if outlook.get("retired") or outlook.get("routed_off"):
+        return
+    to_come = outlook.get("to_come")
+    if not isinstance(to_come, list):
+        raise SlateNotStillToCome(
+            f"{law}: {what} carries no questions on its slates to come.")
+    if [e.get("slate") for e in to_come] != list(outlook.get("slates_to_come") or []):
+        raise SlateNotStillToCome(
+            f"{law}: {what} counts questions on the slates "
+            f"{[e.get('slate') for e in to_come]} beside its slates still to "
+            f"come {outlook.get('slates_to_come')!r}.")
+    by_slate = outlook.get("recounted_by_slate") or {}
+    for e in to_come:
+        want = list(by_slate.get(e["slate"], by_slate.get(str(e["slate"]),
+                                                          [0, 0])))
+        if [e.get("settled"), e.get("waiting")] != want:
+            raise SlateNotStillToCome(
+                f"{law}: {what} counts {e.get('settled')!r} settled and "
+                f"{e.get('waiting')!r} waiting on slate {e['slate']} where the "
+                f"recount made without its door finds {want[0]} and "
+                f"{want[1]}.")
+    waiting = outlook.get("recounted_waiting")
+    elsewhere = (None if waiting is None
+                 else waiting - sum(e["waiting"] for e in to_come))
+    if outlook.get("waiting_elsewhere") != elsewhere:
+        raise SlateNotStillToCome(
+            f"{law}: {what} counts {outlook.get('waiting_elsewhere')!r} "
+            f"questions waiting to settle on slates no longer to come where "
+            f"the recount finds {elsewhere!r}.")
+    on = horizon.on_slates_to_come_from(outlook)
+    if outlook.get("on_slates_to_come") != on:
+        raise SlateNotStillToCome(
+            f"{law}: {what} puts {outlook.get('on_slates_to_come')!r} on its "
+            f"slates still to come where its own counts make {on!r}.")
+    expected = outlook.get("expected")
+    gate = outlook.get("gate", config.MIN_SAMPLE_FOR_EDGE_CLAIM)
+    if expected is not None and outlook.get("reachable") != (expected >= gate):
+        raise SlateNotStillToCome(
+            f"{law}: {what} calls its gate reachable={outlook.get('reachable')!r} "
+            f"where the most it can reach is {expected} of {gate!r}.")
+    # THE WORDS SAY IT AS THE MOST, AND SAY IT CANNOT CLEAR EXACTLY WHERE IT
+    # CANNOT (read here apart from the one composition, so words put back to
+    # "~N expected" are seen even where the composer itself was put back).
+    said = outlook.get("message") or ""
+    if expected is not None:
+        if not re.search(rf"\bat most ~?{expected}\b", said):
+            raise SlateNotStillToCome(
+                f"{law}: {what} says {said!r}, which does not say the most it "
+                f"can reach, {expected}, as the most ('at most').")
+        if ("CANNOT CLEAR" in said) != (expected < gate):
+            raise SlateNotStillToCome(
+                f"{law}: {what} says {said!r} of a most of {expected} against "
+                f"a gate of {gate}: the gate cannot clear exactly where the "
+                f"most it can reach is under it.")
 
 
 class PooledVoidCount(MergedCurve):
@@ -2001,13 +2351,37 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     require_sport(sport, "calibration.scorecard")
     markets = config.SPORT_MARKETS.get(sport, ())
     categories = blind_categories(conn, sport=sport)
+    tiers = config.event_tiers(sport)
 
     headline_market = markets[0] if markets else "spread"
-    headline = curve(conn, sport=sport,
-                     market_type=market_type_of(sport, headline_market),
-                     prop_type=prop_type_of(sport, headline_market),
-                     predictor="statistical")
-    headline["market"] = headline_market
+    # THE HEADLINE CURVE IS NEVER DRAWN FOR A SPORT THAT SPLITS BY CARD, AND
+    # IS NOT MADE FOR ONE (operator question 34, ruled 2026-09-30; built
+    # 2026-10-08). It is the chart's fallback, drawn only where no category
+    # matches the market and forecaster chosen (app.js `findCurve`); every
+    # UFC market, card and forecaster is a category of its own, so it was
+    # never drawn for UFC -- and what the API served under its name was every
+    # card's moneyline curve as one population, the pool LAW 6 forbids one
+    # level down (the void-count row of CLAUDE.md named it "question 34's
+    # ground"). Split, it would only repeat the categories; so it is None,
+    # and the chart falls back to a category of the forecaster chosen.
+    headline = None
+    if not tiers:
+        headline = curve(conn, sport=sport,
+                         market_type=market_type_of(sport, headline_market),
+                         prop_type=prop_type_of(sport, headline_market),
+                         predictor="statistical")
+        headline["market"] = headline_market
+    # THE TIER TABLE AND THE EDGE FIGURE, ONE CARD'S EACH (operator question
+    # 34, 2026-10-08): for UFC the tier table is the first declared card's
+    # (the page's card choice asks for any other through `/api/tier-table`)
+    # and the edge question is answered once per card, each named.
+    first_card = tiers[0] if tiers else None
+
+    def edge_of(tier):
+        return edge(conn, sport=sport,
+                    market_type=market_type_of(sport, headline_market),
+                    prop_type=prop_type_of(sport, headline_market),
+                    predictor="statistical", event_tier=tier)
 
     payload = {
         "sport": sport,
@@ -2022,14 +2396,11 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             conn, sport=sport,
             market_type=market_type_of(sport, headline_market),
             prop_type=prop_type_of(sport, headline_market),
-            predictor="statistical",
+            predictor="statistical", event_tier=first_card,
         ),
         "categories": categories,
         "markets": list(markets),
-        "edge": edge(conn, sport=sport,
-                     market_type=market_type_of(sport, headline_market),
-                     prop_type=prop_type_of(sport, headline_market),
-                     predictor="statistical"),
+        "edge": None if tiers else edge_of(None),
         "versions": version_comparison(conn, sport=sport),
         "separation_note": (
             "Curves are never merged, and never across sports (LAW 6). Each "
@@ -2038,6 +2409,12 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
             "any of these describes nobody."
         ),
     }
+    if tiers:
+        # THE CARDS, IN WORDS, FOR THE PAGE'S CARD CHOICE, AND ONE EDGE
+        # QUESTION PER CARD (operator question 34, 2026-10-08).
+        payload["cards"] = [{"tier": t, "label": language.tier_label(t)}
+                            for t in tiers]
+        payload["edges"] = [edge_of(t) for t in tiers]
     # THE OTHER RECORD, BESIDE THIS ONE AND NEVER INSIDE IT (E4, 2026-09-06).
     # Its own curves, its own gate, its own guard; the Record page draws it as
     # a separate section for the same reason.
@@ -2098,7 +2475,40 @@ def scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
     assert_no_merged_categories(payload)
     assert_the_records_stay_apart(payload)
     assert_single_sport(payload, sport)
+    assert_no_pooled_headline(payload)
     return payload
+
+
+def assert_no_pooled_headline(payload: dict) -> None:
+    """NO HEADLINE CURVE AND NO EDGE QUESTION OVER EVERY CARD (operator
+    question 34, ruled 2026-09-30; built 2026-10-08). For a sport that
+    splits by card the Record page's payload carries no headline curve (it
+    would be every card's moneyline as one population), no edge question
+    but one per card, each naming its own (`edges`), and a tier table naming
+    a card. Refused by name inside `scorecard`, so `/api/scorecard` answers
+    500 rather than serve the pool."""
+    sport = payload.get("sport")
+    tiers = config.event_tiers(sport)
+    law = "QUESTION 34: EVERY UFC COUNT IS PER CARD TIER"
+    if not tiers:
+        return
+    if payload.get("headline") is not None:
+        raise PooledCardCount(
+            f"{law}: the {sport} Record page carries a headline curve, every "
+            f"card's {payload.get('headline_market')} as one population; "
+            f"{sport}'s cards {list(tiers)} are reported side by side.")
+    if payload.get("edge") is not None:
+        raise PooledCardCount(
+            f"{law}: the {sport} Record page carries one edge question over "
+            f"every card; it is asked once per card.")
+    asked = [e.get("event_tier") for e in payload.get("edges") or []]
+    if asked != list(tiers):
+        raise PooledCardCount(
+            f"{law}: the {sport} Record page answers the edge question for "
+            f"the cards {asked!r}, not once for each of {list(tiers)}.")
+    if (payload.get("tier_table") or {}).get("event_tier") not in tiers:
+        raise PooledCardCount(
+            f"{law}: the {sport} Record page's tier table names no card.")
 
 # ---------------------------------------------------------------------------
 # THE TIER TABLE — the record as the operator already reads it
@@ -2167,6 +2577,7 @@ def tier_table(
     market_type: str,
     prop_type: str | None = None,
     predictor: str = "statistical",
+    event_tier: str | None = None,
 ) -> dict:
     """One row per confidence band, with its verdict.
 
@@ -2174,16 +2585,35 @@ def tier_table(
     a pick card calls. Not a reimplementation that happens to agree today: the
     chip and this table cannot drift, because there is one place that counts a
     bucket and one number it can produce.
+
+    ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30; built
+    2026-10-08): the card is required for a sport that splits by card, the
+    table names it, and carries the cards its bands' rows were on and each
+    band's count as `gridiron.recount` makes it without the door;
+    `assert_no_pooled_tier_table` refuses another card's count inside this
+    builder, so `/api/scorecard` and `/api/tier-table` answer 500. Until
+    this date UFC's bands read 28/15/4/2 over the three cards together.
     """
+    from . import db, recount
+
     require_sport(sport, "calibration.tier_table")
+    refuse_a_count_across_cards(sport, event_tier, "the tier table")
 
     rows = []
-    for lo, hi, label in BUCKETS:
-        midpoint = (lo + min(hi, 1.0)) / 2.0
-        bucket = bucket_record(
-            conn, midpoint, sport=sport, market_type=market_type,
-            prop_type=prop_type, predictor=predictor,
-        )
+    cards: set = set()
+    with db.one_instant(conn):
+        buckets = []
+        for lo, hi, label in BUCKETS:
+            midpoint = (lo + min(hi, 1.0)) / 2.0
+            buckets.append((label, bucket_record(
+                conn, midpoint, sport=sport, market_type=market_type,
+                prop_type=prop_type, predictor=predictor,
+                event_tier=event_tier)))
+        again = recount.in_bands(recount.settled_standing(
+            conn, sport=sport, predictor=predictor, market_type=market_type,
+            prop_type=prop_type, event_tier=event_tier), BUCKETS)
+    for label, bucket in buckets:
+        cards.update(bucket.get("tiers_counted") or [])
         n = bucket.get("n") or 0
         proven = n >= TIER_MIN_SETTLED
         claimed = bucket.get("claimed") if proven else None
@@ -2207,7 +2637,7 @@ def tier_table(
                 n, TIER_MIN_SETTLED, config.MIN_SAMPLE_FOR_EDGE_CLAIM),
         })
 
-    return {
+    table = {
         "sport": sport,
         "market_type": market_type,
         "prop_type": prop_type,
@@ -2235,6 +2665,119 @@ def tier_table(
         # reader to work out by comparing four rows.
         "closest": _closest_verdict(conn, rows, sport=sport),
     }
+    if config.event_tiers(sport):
+        # ONE CARD'S, NAMED, AND COUNTED AGAIN WITHOUT THE DOOR (operator
+        # question 34, 2026-10-08) -- keys only a carded sport's table
+        # carries, so no other sport's table changes shape.
+        table["event_tier"] = event_tier
+        table["card_label"] = language.tier_label(event_tier) or None
+        table["tiers_counted"] = sorted(cards, key=str)
+    table["recounted"] = again
+    assert_no_pooled_tier_table(table)
+    return table
+
+
+def assert_no_pooled_tier_table(table: dict) -> None:
+    """THE TIER TABLE'S BANDS ARE ONE CARD'S FOR UFC (operator question 34,
+    ruled 2026-09-30; built 2026-10-08). Refused by name, inside
+    `tier_table`: a table naming no card, or one of none, in a sport that
+    splits by card; bands counting rows on another card than it names, or
+    on every card (`tiers_counted`, read off each row's own bout); a band
+    whose count is not the one `gridiron.recount` makes without the door
+    (`recounted`); and a table's n that is not its bands' sum."""
+    sport = table.get("sport")
+    what = (f"the tier table for {sport} "
+            f"{table.get('prop_type') or table.get('market_type')}, "
+            f"{table.get('predictor')}")
+    refuse_another_cards_count(sport, table.get("event_tier"),
+                               table.get("tiers_counted", []), what)
+    counts = [r.get("n") for r in table.get("rows") or []]
+    if table.get("recounted") != counts:
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} counts "
+            f"{counts} settled in its bands where the recount made without "
+            f"its door finds {table.get('recounted')!r}.")
+    if table.get("n") != sum(c or 0 for c in counts):
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} says "
+            f"{table.get('n')!r} settled beside bands of {counts}.")
+
+
+def assert_each_band_is_its_cards(conn: sqlite3.Connection, sport: str,
+                                  bands: list) -> None:
+    """THE TIER CHIP'S BAND ON EVERY CARD AND RESULTS ROW IS ITS OWN CARD'S
+    (the prover of operator question 34, 2026-10-08: the chip reads the tier
+    table's door, and nothing held it). `bands` is (prediction id, band) for
+    each chip a page draws -- the band as `bucket_record` or
+    `bucket_on_no_card` gave it. Refused by name, inside `views.week` and
+    `views.history`, so `/api/week` and `/api/history` answer 500, for a sport
+    that splits by card: a band naming another card than its question's own
+    bout is on (read here off the forecast, never off the band), counting
+    rows on any other card (`tiers_counted`), or counting other than the
+    recount made without the door finds in that card's band
+    (`recount.settled_standing`) -- and a question on a card of no declared
+    kind counting anything at all (in no card's count, the badge's rule); and
+    in a sport that declares no cards, a band naming one."""
+    from . import recount
+
+    tiers = config.event_tiers(sport)
+    law = "QUESTION 34: EVERY UFC COUNT IS PER CARD TIER (THE TIER CHIP)"
+    if not tiers:
+        for pid, band in bands:
+            if band.get("event_tier") is not None or band.get("tiers_counted"):
+                raise PooledCardCount(
+                    f"{law}: the band on question {pid} names card "
+                    f"{band.get('event_tier')!r} in {sport}, which declares "
+                    f"no cards.")
+        return
+    ids = sorted({pid for pid, _ in bands})
+    rows: dict = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        for r in conn.execute(
+                "SELECT p.id, p.market_type, p.prop_type, p.predictor,"
+                " (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+                "    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
+                f"  FROM predictions p WHERE p.id IN ({','.join('?' for _ in chunk)})",
+                chunk):
+            rows[r["id"]] = r
+    again: dict[tuple, list] = {}
+    for pid, band in bands:
+        row = rows.get(pid)
+        card = row["event_tier"] if row is not None else None
+        what = f"the band on question {pid} ({band.get('label')})"
+        if band.get("event_tier", "absent") != card:
+            raise PooledCardCount(
+                f"{law}: {what} names card {band.get('event_tier', 'none')!r} "
+                f"where its question's bout is on {card!r}: a UFC band is its "
+                f"own card's.")
+        if any(c != card for c in (band.get("tiers_counted") or [])):
+            owner = (f"the {card!r} card's" if card is not None
+                     else "on a card of no declared kind")
+            raise PooledCardCount(
+                f"{law}: {what} is {owner} and counts rows on "
+                f"{band.get('tiers_counted')!r}: {sport}'s cards are counted "
+                f"side by side, never summed.")
+        if card is None or row is None:
+            want = 0
+        else:
+            key = (row["market_type"], row["prop_type"], row["predictor"], card)
+            if key not in again:
+                again[key] = recount.settled_standing(
+                    conn, sport=sport, predictor=row["predictor"],
+                    market_type=row["market_type"], prop_type=row["prop_type"],
+                    event_tier=card)
+            lo, hi = next(((lo, hi) for lo, hi, name in BUCKETS
+                           if name == band.get("label")), (None, None))
+            want = (None if lo is None else
+                    sum(1 for r in again[key] if lo <= r["model_prob"] < hi))
+        if band.get("n") != want:
+            raise PooledCardCount(
+                f"{law}: {what} says {band.get('n')!r} settled where the "
+                f"recount made without its door finds {want!r} on its own card "
+                f"({card!r})"
+                + ("; a question on a card of no declared kind is in no "
+                   "card's count" if card is None else "") + ".")
 
 
 def recent_settled(conn: sqlite3.Connection, *, sport: str, since: str) -> tuple[int, int]:
@@ -2839,6 +3382,11 @@ def assert_no_pooled_claims(payload: dict) -> None:
             raise MergedCurve(
                 f"{law}: {what} counts {n} settled beside an outlook of "
                 f"{outlook.get('resolved')!r}: two counts of one record.")
+        # ITS SLATES ARE THE ONE RULE'S, ONE CARD'S FOR UFC (operator
+        # questions 33 and 34, 2026-10-08): the slates it multiplies its
+        # pace by are those still to come, as the recount made without the
+        # rule finds them.
+        refuse_slates_not_still_to_come(outlook, f"the outlook beside {what}")
         said = language.at_the_line_gate_line(n, category.get("gate"))
         if category.get("gate_line") != said:
             raise MergedCurve(
@@ -2942,14 +3490,31 @@ def assert_the_records_stay_apart(payload: dict) -> None:
 
 def ranker_comparison(conn: sqlite3.Connection, *, sport: str,
                       market_type: str, prop_type: str | None = None,
-                      predictor: str = "statistical") -> dict:
-    """Did the shortlist calibrate better than what it outranked?"""
+                      predictor: str = "statistical",
+                      event_tier: str | None = None) -> dict:
+    """Did the shortlist calibrate better than what it outranked?
+
+    ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30; built
+    2026-10-08): the card is required for a sport that splits by card, the
+    comparison names it ("moneyline, Fight Night") and carries the cards its
+    rows were on and both sides as `gridiron.recount` counts them without
+    the door; `assert_no_pooled_ranker` refuses another card's count inside
+    this builder. Until this date UFC's "49 settled on the shortlist and 0
+    off it" counted the three cards as one (39/0, 10/0, 0/0 on 29 September).
+    """
+    from . import db, recount
     from . import shortlist as ranker
 
     require_sport(sport, "calibration.ranker_comparison")
-    items = resolved(conn, sport=sport, market_type=market_type,
-                     prop_type=prop_type, predictor=predictor)
-    ranks = ranker.ranks_for(conn, [r.id for r in items])
+    refuse_a_count_across_cards(sport, event_tier, "the ranker's record")
+    with db.one_instant(conn):
+        items = resolved(conn, sport=sport, market_type=market_type,
+                         prop_type=prop_type, predictor=predictor,
+                         event_tier=event_tier)
+        ranks = ranker.ranks_for(conn, [r.id for r in items])
+        again = recount.ranked(conn, recount.settled_standing(
+            conn, sport=sport, predictor=predictor, market_type=market_type,
+            prop_type=prop_type, event_tier=event_tier), config.RANKER_VERSION)
     led, rest = [], []
     for row in items:
         rank = ranks.get(row.id)
@@ -2984,18 +3549,59 @@ def ranker_comparison(conn: sqlite3.Connection, *, sport: str,
     else:
         payload["verdict"] = None
         payload["shortfall"] = max(gate - len(led), 0) + max(gate - len(rest), 0)
+    payload["recounted"] = {"shortlisted": again[0], "not_shortlisted": again[1]}
+    if config.event_tiers(sport):
+        # ONE CARD'S, NAMED (operator question 34, 2026-10-08) -- keys only a
+        # carded sport's comparison carries, so no other sport's changes.
+        payload["event_tier"] = event_tier
+        payload["category_label"] = language.card_market_label(
+            sport, prop_type or market_type, event_tier)
+        payload["tiers_counted"] = _cards_of(led + rest)
+    assert_no_pooled_ranker(payload)
     return payload
 
 
+def assert_no_pooled_ranker(payload: dict) -> None:
+    """THE RANKER'S RECORD IS ONE CARD'S FOR UFC (operator question 34,
+    ruled 2026-09-30; built 2026-10-08). Refused by name, inside
+    `ranker_comparison`, so `/api/scorecard` answers 500: a comparison
+    naming no card, or one of none, in a sport that splits by card; one
+    counting rows on another card than it names, or on every card
+    (`tiers_counted`, read off each row's own bout); either side's count
+    other than the one `gridiron.recount` makes without the door
+    (`recounted`); and a total that is not the two sides'."""
+    sport = payload.get("sport")
+    what = f"the ranker's record for {sport} {payload.get('market')}"
+    refuse_another_cards_count(sport, payload.get("event_tier"),
+                               payload.get("tiers_counted", []), what)
+    led = (payload.get("shortlisted") or {}).get("n")
+    rest = (payload.get("not_shortlisted") or {}).get("n")
+    again = payload.get("recounted") or {}
+    if (again.get("shortlisted"), again.get("not_shortlisted")) != (led, rest):
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} counts "
+            f"{led!r} that led the slate and {rest!r} outranked where the "
+            f"recount made without its door finds "
+            f"{again.get('shortlisted')!r} and {again.get('not_shortlisted')!r}.")
+    if payload.get("n") != (led or 0) + (rest or 0):
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} says "
+            f"{payload.get('n')!r} beside {led!r} and {rest!r}.")
+
+
 def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
-    """One comparison per market of one sport, kept apart like every curve."""
+    """One comparison per market of one sport, kept apart like every curve
+    -- and per card for a sport that splits by card (operator question 34,
+    2026-10-08): "moneyline, Numbered card", "moneyline, Fight Night", ..."""
     require_sport(sport, "calibration.ranker_scorecard")
     markets = config.SPORT_MARKETS.get(sport, ())
     comparisons = [
         ranker_comparison(conn, sport=sport,
                           market_type=market_type_of(sport, market),
-                          prop_type=prop_type_of(sport, market))
+                          prop_type=prop_type_of(sport, market),
+                          event_tier=tier)
         for market in markets
+        for tier in (config.event_tiers(sport) or (None,))
     ]
     return {
         "sport": sport,
@@ -3004,12 +3610,20 @@ def ranker_scorecard(conn: sqlite3.Connection, *, sport: str) -> dict:
         # THE NAME'S ONE PLACE ON THE PAGE (operator question 19; the board
         # merge, 2026-09-29): the heading's tooltip, with what it names.
         "version_tip": language.version_tip("ranker", config.RANKER_VERSION),
-        "n": sum(c["n"] for c in comparisons),
+        # HOW MANY COMPARISONS, NEVER A SUM OF THEIR COUNTS (operator
+        # question 34, 2026-10-08): the sum over markets -- and with UFC's
+        # cards apart, over cards -- was nobody's record and nothing read
+        # it (the learning panel's `n`, question 16, is the precedent).
+        "n": len(comparisons),
         "comparisons": comparisons,
+        # "AND CARD" WHERE THE SPORT SPLITS BY CARD (operator question 34,
+        # 2026-10-08): the render read "separately per market" above nine
+        # rows, three cards to each market.
         "note": (
             "The shortlist is an ordering, and an ordering can be wrong. These "
             "compare what led each slate against what it outranked, separately "
-            "per market, with the same gate as every other figure. Ranks "
+            f"per market{' and card' if config.event_tiers(sport) else ''}, "
+            "with the same gate as every other figure. Ranks "
             "computed after the fact are left out: a formula written today "
             "cannot be scored on games it already knows the answer to."
         ),
@@ -3693,7 +4307,8 @@ class _PricedResolved:
 
 def taken_comparison(conn: sqlite3.Connection, *, sport: str,
                      market_type: str, prop_type: str | None = None,
-                     predictor: str = "statistical") -> dict:
+                     predictor: str = "statistical",
+                     event_tier: str | None = None) -> dict:
     """Do the picks the operator took score better than the ones he passed over?
 
     THREE CURVES, NEVER MERGED: taken, not taken, and all of them. The third is
@@ -3705,10 +4320,27 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
     choices, read after the fact; `audit.check_taken_not_in_training` refuses
     the table's name in anything that trains or corrects, and a planting proves
     it fires.
+
+    ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30; built
+    2026-10-08): the card is required for a sport that splits by card, the
+    payload names it and carries the cards its rows were on and the three
+    counts as `gridiron.recount` makes them without the door, and
+    `assert_no_pooled_taken_record` refuses another card's count inside this
+    builder. Until this date UFC's "passed over 49 of 100 ... every forecast
+    49" counted the three cards as one (39, 10 and 0 on 29 September).
     """
+    from . import db, recount
+
     require_sport(sport, "calibration.taken_comparison")
-    items = resolved(conn, sport=sport, market_type=market_type,
-                     prop_type=prop_type, predictor=predictor)
+    refuse_a_count_across_cards(sport, event_tier, "the taken record")
+    with db.one_instant(conn):
+        items = resolved(conn, sport=sport, market_type=market_type,
+                         prop_type=prop_type, predictor=predictor,
+                         event_tier=event_tier)
+        standing = recount.settled_standing(
+            conn, sport=sport, predictor=predictor, market_type=market_type,
+            prop_type=prop_type, event_tier=event_tier)
+        again_taken = recount.taken(conn, standing)
     # SINGLE TAPS ONLY IN THIS COMPARISON. A package tap is a row in the same
     # table carrying a package id instead of a prediction id, and it belongs to
     # `combo_2`/`combo_3` rather than to this market -- counting it here would
@@ -3764,7 +4396,42 @@ def taken_comparison(conn: sqlite3.Connection, *, sport: str,
         len(took), len(passed), gate,
         payload["taken"]["score"]["brier"] if payload["renderable"] else None,
         payload["not_taken"]["score"]["brier"] if payload["renderable"] else None)
+    payload["recounted"] = {"taken": again_taken,
+                            "not_taken": len(standing) - again_taken,
+                            "all": len(standing)}
+    if config.event_tiers(sport):
+        # ONE CARD'S, NAMED (operator question 34, 2026-10-08) -- keys only a
+        # carded sport's record carries, so no other sport's changes.
+        payload["event_tier"] = event_tier
+        payload["tiers_counted"] = _cards_of(items)
+    assert_no_pooled_taken_record(payload)
     return payload
+
+
+def assert_no_pooled_taken_record(payload: dict) -> None:
+    """THE TAKEN RECORD IS ONE CARD'S FOR UFC (operator question 34, ruled
+    2026-09-30; built 2026-10-08). Refused by name, inside
+    `taken_comparison`, so `/api/scorecard` answers 500: a record naming no
+    card, or one of none, in a sport that splits by card; one counting rows
+    on another card than it names, or on every card (`tiers_counted`, read
+    off each row's own bout); and a count of taken, passed over or every
+    forecast other than the one `gridiron.recount` makes without the door
+    (`recounted`)."""
+    sport = payload.get("sport")
+    what = (f"the taken record for {sport} {payload.get('market')}, "
+            f"{payload.get('predictor')}")
+    refuse_another_cards_count(sport, payload.get("event_tier"),
+                               payload.get("tiers_counted", []), what)
+    said = tuple((payload.get(k) or {}).get("n")
+                 for k in ("taken", "not_taken", "all"))
+    again = payload.get("recounted") or {}
+    want = tuple(again.get(k) for k in ("taken", "not_taken", "all"))
+    if said != want or payload.get("n") != said[2]:
+        raise PooledCardCount(
+            f"QUESTION 34: EVERY UFC COUNT IS PER CARD TIER: {what} counts "
+            f"taken, passed over and every forecast {said} (n "
+            f"{payload.get('n')!r}) where the recount made without its door "
+            f"finds {want}.")
 
 
 # `combo_kill_verdict` STOOD HERE from 2026-09-08 until C4 was WITHDRAWN on

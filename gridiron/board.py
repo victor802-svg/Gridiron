@@ -124,7 +124,8 @@ def _signal(card: dict, entry: dict | None, state: str) -> str:
 
 
 def _settled_n(conn: sqlite3.Connection, cache: dict, *, sport: str,
-               market_type: str, prop_type: str | None, predictor: str) -> int:
+               market_type: str, prop_type: str | None, predictor: str,
+               event_tier: str | None = None) -> int:
     """How many questions in this category have settled: the badge's numerator.
 
     THROUGH THE EDGE GATE'S OWN DOOR (the board merge, 2026-09-29):
@@ -134,14 +135,99 @@ def _settled_n(conn: sqlite3.Connection, cache: dict, *, sport: str,
     `calibration.standing_row_clause`), its final pass before the start
     standing by question 27's order. The board counted the same rows by
     calling `resolved` itself; it asks the door now, so the badge beside a
-    signal and the gate behind the signal are one count by construction."""
+    signal and the gate behind the signal are one count by construction.
+
+    AND ONE CARD'S FOR UFC (operator question 34, ruled 2026-09-30: "every
+    UFC count is per card tier: ... board badge"; built 2026-10-08): the
+    card the question's own bout is on, which the door requires. Until this
+    date a UFC badge said every card's count, "49/100" beside a Fight Night
+    bout whose card's curve held 39 (the re-read, 29 September)."""
     from . import shortlist
 
-    key = (sport, market_type, prop_type, predictor)
+    key = (sport, market_type, prop_type, predictor, event_tier)
     if key not in cache:
         cache[key] = shortlist.settled_for_gate(
-            conn, sport, market_type, prop_type, predictor)
+            conn, sport, market_type, prop_type, predictor, event_tier)
     return cache[key]
+
+
+def _card_of(conn: sqlite3.Connection, cache: dict, sport: str,
+             game_id: str) -> str | None:
+    """The card a question's own bout is on, for a sport that splits by
+    card; None for every other sport (operator question 34, 2026-10-08)."""
+    from .market import at_the_line
+
+    if not config.event_tiers(sport):
+        return None
+    if game_id not in cache:
+        cache[game_id] = at_the_line.event_tier_of(conn, sport, game_id)
+    return cache[game_id]
+
+
+def assert_each_badge_is_its_cards(conn: sqlite3.Connection, sport: str,
+                                   blocks: list[dict]) -> None:
+    """EVERY BADGE ON A UFC ROW OR TILE IS ITS OWN CARD'S COUNT (operator
+    question 34, ruled 2026-09-30; built 2026-10-08). Refused by name,
+    inside `build`, so `/api/week` answers 500 rather than serve it: a
+    block of a sport that splits by card whose badge names no card, or
+    another card than the one its question's own bout is on (read here off
+    the forecast, never off the block), and a badge count other than the
+    one `gridiron.recount` makes without the door for that forecaster,
+    market and card; and a block of any other sport naming a card. A bout
+    on a card of no declared kind is in no card's count: its badge is 0."""
+    from . import calibration, recount
+
+    law = "QUESTION 34: EVERY UFC COUNT IS PER CARD TIER (THE BOARD'S BADGE)"
+    carded = bool(config.event_tiers(sport))
+    ids = [b["prediction_id"] for b in blocks if "badge_n" in b]
+    if not ids:
+        return
+    rows = {}
+    for start in range(0, len(ids), 500):
+        chunk = ids[start:start + 500]
+        for r in conn.execute(
+                "SELECT p.id, p.market_type, p.prop_type,"
+                " (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+                "    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
+                f"  FROM predictions p WHERE p.id IN ({','.join('?' for _ in chunk)})",
+                chunk):
+            rows[r["id"]] = r
+    again: dict[tuple, int] = {}
+    for block in blocks:
+        if "badge_n" not in block:
+            continue
+        row = rows.get(block["prediction_id"])
+        what = (f"the badge on question {block['prediction_id']} "
+                f"({block.get('market')}, {block.get('forecaster')})")
+        if not carded:
+            if block.get("badge_card") is not None:
+                raise calibration.PooledCardCount(
+                    f"{law}: {what} names card {block['badge_card']!r} in "
+                    f"{sport}, which declares no cards.")
+            continue
+        card = row["event_tier"] if row is not None else None
+        if block.get("badge_card", "absent") != card:
+            raise calibration.PooledCardCount(
+                f"{law}: {what} names card {block.get('badge_card', 'none')!r} "
+                f"where its question's bout is on {card!r}: a UFC badge is its "
+                f"own card's count.")
+        if card is None:
+            want = 0
+        else:
+            key = (row["market_type"], row["prop_type"], block.get("forecaster"),
+                   card)
+            if key not in again:
+                again[key] = len(recount.settled_standing(
+                    conn, sport=sport, predictor=block.get("forecaster"),
+                    market_type=row["market_type"], prop_type=row["prop_type"],
+                    event_tier=card))
+            want = again[key]
+        if block["badge_n"] != want:
+            raise calibration.PooledCardCount(
+                f"{law}: {what} says {block['badge_n']} settled where the "
+                f"recount made without its door finds {want} on its own card "
+                f"({card!r}): {sport}'s cards are counted side by side, never "
+                f"summed.")
 
 
 def _badge(n: int) -> dict:
@@ -1164,18 +1250,32 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
         conn, [c["prediction_id"] for c in cards]
         + [c["prediction_id"] for rows in others.values() for c in rows])}
 
+    card_cache: dict = {}
+    carded = bool(config.event_tiers(sport))
+
     def block_for(card: dict, forecaster: str) -> dict:
         entry = index.get(card["prediction_id"])
         state = _state_of(card)
-        n = _settled_n(conn, settled_cache, sport=sport,
-                       market_type=card["market_type"],
-                       prop_type=card.get("prop_type"), predictor=forecaster)
+        # ITS OWN CARD'S COUNT FOR UFC (operator question 34, 2026-10-08); a
+        # bout on a card of no declared kind is in no card's count.
+        tier = _card_of(conn, card_cache, sport, card["game_id"])
+        n = (0 if carded and tier is None else
+             _settled_n(conn, settled_cache, sport=sport,
+                        market_type=card["market_type"],
+                        prop_type=card.get("prop_type"), predictor=forecaster,
+                        event_tier=tier))
         block = _question_block(
             card, entry, state=state, taken=card["prediction_id"] in already,
             forecaster=forecaster, n_settled=n, hours=hours,
             unit_dollars=unit_dollars,
             past_its_start=card["prediction_id"] in past_its_start)
         block["_line"] = card.get("line_asked")
+        if carded:
+            # WHICH CARD THE BADGE COUNTS, and its tooltip naming it.
+            block["badge_card"] = tier
+            block["tips"]["badge"] = language.badge_tip(
+                n, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+                language.card_badge_words(language.market_label(card), tier))
         return block
 
     games = []
@@ -1408,6 +1508,11 @@ def build(conn: sqlite3.Connection, *, sport: str, season: int, wk: int | None,
     # merge, never recounted. `audit.board_count_faults` holds every one to a
     # finished block of the page's forecaster.
     settled_ids = [c["prediction_id"] for c in ((today or {}).get("settled") or [])]
+    # EVERY BADGE IS ITS OWN CARD'S COUNT FOR UFC (operator question 34,
+    # 2026-10-08), held here, before anything is served.
+    assert_each_badge_is_its_cards(
+        conn, sport, [b for g in games for b in g.get("questions") or []]
+        + list(tiles))
     return {
         "labels": labels,
         "games": games,

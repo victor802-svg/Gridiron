@@ -659,15 +659,31 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         shown = shown_prob(r)
         gap = None if implied is None else round(shown - implied, 4)
 
+        # THE CHIP'S BAND IS ITS OWN CARD'S FOR UFC (operator question 34,
+        # 2026-10-08): the tier table's door, asked for the card this fight
+        # is on, read off its own bout.
+        card = (r["event_tier"] if "event_tier" in r.keys()
+                and config.event_tiers(sport) else None)
+        # A BOUT ON A CARD OF NO DECLARED KIND IS IN NO CARD'S COUNT (the
+        # prover of operator question 34, 2026-10-08): its band counts
+        # nothing, as its badge does, where the door's refusal took UFC's
+        # whole slate down. Only where the row's own card was READ and is
+        # none -- a row read without its card still asks the door, which
+        # refuses it.
+        on_no_card = (bool(config.event_tiers(sport))
+                      and "event_tier" in r.keys() and r["event_tier"] is None)
         key = (
             r["market_type"], r["prop_type"], r["predictor"],
-            calibration.bucket_label(shown),
+            calibration.bucket_label(shown), card, on_no_card,
         )
         if key not in bucket_cache:
-            bucket_cache[key] = calibration.bucket_record(
-                conn, shown, sport=sport, market_type=r["market_type"],
-                prop_type=r["prop_type"], predictor=r["predictor"],
-            )
+            bucket_cache[key] = (
+                calibration.bucket_on_no_card(shown, sport=sport) if on_no_card
+                else calibration.bucket_record(
+                    conn, shown, sport=sport, market_type=r["market_type"],
+                    prop_type=r["prop_type"], predictor=r["predictor"],
+                    event_tier=card,
+                ))
         cards.append(
             {
                 "prediction_id": r["id"],
@@ -947,6 +963,11 @@ def week(conn: sqlite3.Connection, sport: str, season: int | None = None,
         # venue was never recorded, and the subline simply has one fewer part.
         cards[-1]["venue"] = venues.get(r["home"])
         cards[-1]["side_word"] = language.side_word_or_side(r["model_side"])
+
+    # EVERY CHIP'S BAND IS ITS OWN CARD'S FOR UFC, held here before anything
+    # is served (the prover of operator question 34, 2026-10-08).
+    calibration.assert_each_band_is_its_cards(
+        conn, sport, [(c["prediction_id"], c["bucket"]) for c in cards])
 
     # Sorted by disagreement size, because that is where anything interesting
     # lives. Cards with no market comparison sort last rather than first.
@@ -3667,14 +3688,18 @@ def _glance(conn: sqlite3.Connection, sport: str, cards: list[dict]) -> dict:
         # unproven tiers -- so a sport with a proven spread would still report
         # "no tier proven yet", drowned by its own phantoms.
         is_prop = market in config.SPORT_PROP_MARKETS.get(sport, ())
-        table = calibration.tier_table(
-            conn, sport=sport,
-            market_type="prop" if is_prop else market,
-            prop_type=market if is_prop else None)
-        for row in table["rows"]:
-            tiers += 1
-            proven += 1 if row["proven"] else 0
-            fullest = max(fullest, row["n"])
+        # ONE CARD'S TABLE AT A TIME FOR UFC (operator question 34,
+        # 2026-10-08): every band of every card counted as its own, never
+        # one band over the three cards.
+        for card in (config.event_tiers(sport) or (None,)):
+            table = calibration.tier_table(
+                conn, sport=sport,
+                market_type="prop" if is_prop else market,
+                prop_type=market if is_prop else None, event_tier=card)
+            for row in table["rows"]:
+                tiers += 1
+                proven += 1 if row["proven"] else 0
+                fullest = max(fullest, row["n"])
 
     # WHAT STATE THE SLATE IS IN (R3). Counted from the games this slate's
     # cards belong to, so it cannot disagree with the tiles about how many
@@ -3876,8 +3901,10 @@ def _card_order(card: dict) -> tuple:
 
 
 def tier_table_for(conn: sqlite3.Connection, sport: str, *,
-                   market: str | None, forecaster: str | None) -> dict:
-    """The tier table for ONE market and ONE forecaster of one sport.
+                   market: str | None, forecaster: str | None,
+                   card: str | None = None) -> dict:
+    """The tier table for ONE market and ONE forecaster of one sport -- and
+    ONE CARD of a sport that splits by card.
 
     THE SELECT ABOVE THE TABLE DID NOTHING (UI audit finding 6, 2026-09-05):
     it was filled with the sport's markets and never wired, and the forecaster
@@ -3885,17 +3912,27 @@ def tier_table_for(conn: sqlite3.Connection, sport: str, *,
     table -- the headline market, the statistical forecaster -- and this is
     the door for every other combination, through the same `tier_table` the
     chips on the cards use, so the two cannot drift.
+
+    THE CARD (operator question 34, ruled 2026-09-30; built 2026-10-08): for
+    UFC the card chosen, or the first declared card when none is named --
+    the card the scorecard's own table is -- and a card the sport does not
+    declare is refused (KeyError, as an unknown market is). A sport that
+    does not split by card ignores the choice.
     """
     calibration.require_sport(sport, "views.tier_table_for")
     markets = list(config.SPORT_MARKETS.get(sport, ()))
     if market not in markets:
         raise KeyError(market)
+    tiers = config.event_tiers(sport)
+    if tiers and card not in (None, "") and card not in tiers:
+        raise KeyError(card)
+    tier = (card or tiers[0]) if tiers else None
     predictor = forecaster if forecaster in ("statistical", "llm") else "statistical"
     table = calibration.tier_table(
         conn, sport=sport,
         market_type=calibration.market_type_of(sport, market),
         prop_type=calibration.prop_type_of(sport, market),
-        predictor=predictor)
+        predictor=predictor, event_tier=tier)
     table["market"] = market
     return table
 
@@ -4326,7 +4363,11 @@ def history(
         f" JOIN games g ON g.id = p.game_id WHERE {clause}", params
     ).fetchone()[0]
     rows = conn.execute(
-        f"SELECT p.*, g.season, g.week, g.home, g.away, g.status, g.league_date"
+        f"SELECT p.*, g.season, g.week, g.home, g.away, g.status, g.league_date,"
+        # THE CARD A FIGHT WAS ON, for its tier chip's band (operator
+        # question 34, 2026-10-08); NULL for every sport that does not split.
+        f" (SELECT e.event_tier FROM ufc_bouts b JOIN ufc_events e"
+        f"    ON e.id = b.event_id WHERE b.id = p.game_id) AS event_tier"
         f" FROM predictions p JOIN games g ON g.id = p.game_id WHERE {clause}"
         f" ORDER BY p.id DESC LIMIT ? OFFSET ?",
         params + [min(limit, 500), offset],
@@ -4338,8 +4379,26 @@ def history(
     team_names = teams.names(conn, sport)
 
     items = []
+    # EACH ROW'S CHIP BAND, ITS OWN CARD'S FOR UFC, held below before the
+    # page is served (the prover of operator question 34, 2026-10-08).
+    bands: list[tuple[int, dict]] = []
+    carded = bool(config.event_tiers(sport))
     for r in rows:
         snap = snapshots.get(r["id"]) or {}
+        # A BOUT ON A CARD OF NO DECLARED KIND IS IN NO CARD'S COUNT (the
+        # prover, 2026-10-08): one such forecast made the door refuse and the
+        # whole of UFC's Results answer 500; its band counts nothing, as its
+        # badge does (`calibration.bucket_on_no_card`).
+        band = (calibration.bucket_on_no_card(r["model_prob"], sport=sport)
+                if carded and r["event_tier"] is None
+                else calibration.bucket_record(
+                    conn, r["model_prob"], sport=sport,
+                    market_type=r["market_type"], prop_type=r["prop_type"],
+                    predictor=r["predictor"],
+                    # ITS OWN CARD'S BAND FOR UFC (operator question 34,
+                    # 2026-10-08).
+                    event_tier=r["event_tier"] if carded else None))
+        bands.append((r["id"], band))
         item = {
                 # THE SPORT, SO THE WORDS ARE THIS SPORT'S (2026-09-08).
                 # Without it `language.phrase` takes the generic branch
@@ -4397,13 +4456,7 @@ def history(
                 # grades the tiers, so a reader looking at a settled pick should
                 # be able to see which tier it was claimed at without opening it.
                 # Derived from the same bucket the chip and the table use.
-                "tier": calibration.tier_from_bucket(
-                    calibration.bucket_record(
-                        conn, r["model_prob"], sport=sport,
-                        market_type=r["market_type"], prop_type=r["prop_type"],
-                        predictor=r["predictor"],
-                    )
-                ),
+                "tier": calibration.tier_from_bucket(band),
         }
         # PLAIN WORDS, built once on the server. The same sentence appears on a
         # card, in this table and in the digest; three copies of the humanising
@@ -4418,6 +4471,7 @@ def history(
         item["market_label"] = language.market_label(item)
         item["player"] = language.strip_market_suffix(item["subject"], item["market"])
         items.append(item)
+    calibration.assert_each_band_is_its_cards(conn, sport, bands)
     return {"n": total, "returned": len(items), "offset": offset, "items": items,
             # WHAT THIS LIST IS, in words, composed here like every other
             # visible string. The renderer used to glue " on " onto a date.
@@ -4601,17 +4655,27 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     # passing yards both ways on one panel. Asked as the ordering's record
     # asks them (`market_type_of`, `prop_type_of`), each market is one entry.
     taken_markets = []
+    # ONE CARD'S EACH FOR UFC (operator question 34, ruled 2026-09-30:
+    # "every UFC count is per card tier: tier table, ranker, taken record,
+    # ..."; built 2026-10-08): a market's taken record asked once per card,
+    # each named "moneyline, Fight Night, statistical" -- until this date
+    # once per market over the three cards together.
     for market in config.SPORT_MARKETS.get(sport, ()):
-        taken_markets.append(calibration.taken_comparison(
-            conn, sport=sport, market_type=calibration.market_type_of(sport, market),
-            prop_type=calibration.prop_type_of(sport, market)))
+        for tier in (config.event_tiers(sport) or (None,)):
+            taken_markets.append(calibration.taken_comparison(
+                conn, sport=sport,
+                market_type=calibration.market_type_of(sport, market),
+                prop_type=calibration.prop_type_of(sport, market),
+                event_tier=tier))
     for entry in taken_markets:
         # WHOSE CURVES, IN THE LABEL (the board merge, 2026-09-29; operator
         # question 22's rule that every count names its forecaster). The
         # comparison is the statistical model's questions alone, each once on
         # question 17's key; the heading says so, as the closing line's does.
         entry["market_label"] = language.closing_line_label(
-            language.market_words(sport, entry["market"]), entry["predictor"])
+            language.card_market_label(sport, entry["market"],
+                                       entry.get("event_tier")),
+            entry["predictor"])
         for group in ("taken", "not_taken", "all"):
             entry[group]["gate_words"] = language.chart_gate_words(entry[group]["n"], entry["gate"])
     # A MARKET WITH NOTHING SETTLED gets one sentence, not three empty
@@ -4619,8 +4683,9 @@ def scorecard(conn: sqlite3.Connection, sport: str) -> dict:
     # less than the market's name in a list.
     # SAID ONCE, AND WHOSE ONCE (the board merge, 2026-09-29): the markets in
     # plain words, the forecaster named in the sentence, not after each one.
-    silent = [language.market_words(sport, e["market"]) for e in taken_markets
-              if not e["n"]]
+    # A UFC MARKET ON ONE CARD is named with its card (2026-10-08).
+    silent = [language.card_market_label(sport, e["market"], e.get("event_tier"))
+              for e in taken_markets if not e["n"]]
     # NO TOTAL ACROSS MARKETS (the board merge, 2026-09-29). The board put
     # the sum of every market's N at the head of the panel; nothing read it,
     # and a count pooled over markets is the figure questions 14 and 22 took

@@ -5427,13 +5427,28 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
         return [f"horizon.py does not parse: {exc}"]
     sql: dict[str, str] = {}
     keys: dict[str, set] = {}
-    names = ("slates_remaining", "_written_so_far", "standing_questions")
+    calls: dict[str, set] = {}
+    # THE SLATES ARE `slates_to_come`'s FROM 2026-10-08 (operator question
+    # 33): `slates_remaining` counts that one rule's list, so the unit is
+    # read where the slates are chosen.
+    names = ("slates_to_come", "slates_remaining", "_written_so_far",
+             "standing_questions")
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name in names:
+            # NOT THE DOCSTRING (2026-10-08): a docstring naming a column is
+            # not a query naming it.
+            doc = (node.body[0].value if node.body
+                   and isinstance(node.body[0], ast.Expr)
+                   and isinstance(node.body[0].value, ast.Constant) else None)
             found = [c.value for c in ast.walk(node)
-                     if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+                     if isinstance(c, ast.Constant) and isinstance(c.value, str)
+                     and c is not doc]
             sql[node.name] = " ".join(found)
             keys[node.name] = set(found)
+            calls[node.name] = {
+                c.func.attr if isinstance(c.func, ast.Attribute)
+                else getattr(c.func, "id", None)
+                for c in ast.walk(node) if isinstance(c, ast.Call)}
     faults = []
     for name in names:
         if name not in sql:
@@ -5441,17 +5456,34 @@ def horizon_unit_faults(source: str | None = None) -> list[str]:
                           "what it was built to see.")
     if faults:
         return faults
-    remaining = sql["slates_remaining"]
+    remaining = sql["slates_to_come"]
     if "DISTINCT week" not in remaining:
-        faults.append("`slates_remaining` does not count `DISTINCT week`, the "
+        faults.append("`slates_to_come` does not choose `DISTINCT week`, the "
                       "slate key the rate is measured by.")
     for column in ("league_date", "kickoff_utc"):
         if column in remaining:
             faults.append(
-                f"`slates_remaining` reads `{column}`: a calendar day is not "
+                f"`slates_to_come` reads `{column}`: a calendar day is not "
                 f"a slate for a weekly sport, and the rate it multiplies is "
                 f"per slate. The outlook would overstate a football gate by "
                 f"the days in a week.")
+    # A SLATE IS STILL TO COME ONLY BEFORE ITS START (operator question 33,
+    # ruled 2026-09-30; built 2026-10-08): the one SQL spelling of question
+    # 38 (A)'s start, `live.before_the_start`, asked against the clock; and
+    # `slates_remaining` counts that list and nothing of its own.
+    if "before_the_start" not in calls["slates_to_come"]:
+        faults.append(
+            "`slates_to_come` does not ask a game's start "
+            "(`live.before_the_start`): a slate whose every game has started "
+            "-- a card fought whose source never marked a bout over -- is "
+            "counted as still to come, and the outlook multiplies its pace "
+            "by it (operator question 33).")
+    if ("slates_to_come" not in calls["slates_remaining"]
+            or "SELECT" in sql["slates_remaining"].upper()):
+        faults.append(
+            "`slates_remaining` counts slates of its own rather than "
+            "`slates_to_come`'s list, so two rules for a slate still to come "
+            "stand (operator question 33).")
     if "g.week" not in sql["standing_questions"]:
         faults.append("`standing_questions` no longer reads `g.week`, so the "
                       "rate's slates are in a unit the multiplier does not "
@@ -9990,6 +10022,157 @@ def check_a_ufc_void_count_is_its_cards(conn) -> None:
             "tier\"): the void count and the void rate beside each card's "
             "curve count that card's withdrawn forecasts, the card the curve "
             "counts:" + _NL2 + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
+# EVERY UFC COUNT IS PER CARD TIER (operator question 34, ruled 2026-09-30:
+# "every UFC count is per card tier: tier table, ranker, taken record, edge
+# figure, board badge. Planting each."; built 2026-10-08)
+# ---------------------------------------------------------------------------
+#
+# Each count's guard runs inside its builder (`calibration.
+# assert_no_pooled_tier_table`, `assert_no_pooled_ranker`,
+# `assert_no_pooled_taken_record`, `assert_no_pooled_edge`,
+# `board.assert_each_badge_is_its_cards`); these build each carded sport's
+# counts on the record's copy, card by card, and turn a refusal into a
+# failure of its own -- one check per count, as the ruling asks a planting
+# per count.
+
+
+def _card_refusals():
+    from . import bet, calibration, horizon
+
+    return (calibration.MergedCurve, calibration.MergedRecord,
+            config.CrossSportAggregation, horizon.PooledCount, bet.NotABet)
+
+
+def _carded_cells(sport: str):
+    """Every (market, card, forecaster) a carded sport's counts are asked
+    of: each declared market, each declared card, both forecasters."""
+    from . import calibration
+
+    for market in config.SPORT_MARKETS.get(sport, ()):
+        for tier in config.event_tiers(sport):
+            for predictor in ("statistical", "llm"):
+                yield (calibration.market_type_of(sport, market),
+                       calibration.prop_type_of(sport, market), tier, predictor)
+
+
+def _per_card_check(conn, heading: str, build) -> None:
+    faults = []
+    for sport in config.SPORTS:
+        if not config.event_tiers(sport):
+            continue
+        try:
+            build(conn, sport)
+        except _card_refusals() as exc:
+            faults.append(f"{sport}: {exc}")
+    if faults:
+        raise LawViolation(heading + _NL2 + _NL2.join(faults))
+
+
+def check_a_ufc_tier_table_is_its_cards(conn) -> None:
+    """Refuse a tier table of a sport that splits by card whose bands count
+    another card's rows, or every card's, or that the recount made without
+    the door does not make -- every market, card and forecaster, through
+    the builder's guard (operator question 34, the tier table). AND THE
+    TIER CHIP ON EVERY RESULTS ROW (its prover, 2026-10-08): the latest 500
+    Results rows, through `views.history`'s band guard
+    (`calibration.assert_each_band_is_its_cards`), a question on a card of
+    no declared kind counting nothing; the slate's chips are held by the
+    board's check, which builds the slate."""
+    from . import calibration, views
+
+    def build(conn, sport):
+        for market_type, prop_type, tier, predictor in _carded_cells(sport):
+            calibration.tier_table(conn, sport=sport, market_type=market_type,
+                                   prop_type=prop_type, predictor=predictor,
+                                   event_tier=tier)
+        views.history(conn, sport=sport, limit=500)
+
+    _per_card_check(conn, (
+        "A UFC TIER TABLE IS NOT ITS CARD'S (operator question 34, ruled "
+        "2026-09-30: \"every UFC count is per card tier: tier table, ...\"): "
+        "each band counts one card's settled questions, the card the table "
+        "names:"), build)
+
+
+def check_a_ufc_ranker_count_is_its_cards(conn) -> None:
+    """Refuse a ranker comparison of a sport that splits by card counting
+    another card's rows, or every card's, or what the recount does not
+    make -- the Record page's ranker panel, through its builder's guard
+    (operator question 34, the ranker)."""
+    from . import calibration
+
+    def build(conn, sport):
+        calibration.ranker_scorecard(conn, sport=sport)
+
+    _per_card_check(conn, (
+        "A UFC RANKER COUNT IS NOT ITS CARD'S (operator question 34, ruled "
+        "2026-09-30: \"every UFC count is per card tier: ..., ranker, ...\"): "
+        "what led each card's slates against what it outranked, one card's "
+        "settled questions on each side:"), build)
+
+
+def check_a_ufc_taken_record_is_its_cards(conn) -> None:
+    """Refuse a taken record of a sport that splits by card counting
+    another card's rows, or every card's, or what the recount does not
+    make -- every market and card, through its builder's guard (operator
+    question 34, the taken record)."""
+    from . import calibration
+
+    def build(conn, sport):
+        for market_type, prop_type, tier, predictor in _carded_cells(sport):
+            if predictor != "statistical":
+                continue
+            calibration.taken_comparison(
+                conn, sport=sport, market_type=market_type,
+                prop_type=prop_type, predictor=predictor, event_tier=tier)
+
+    _per_card_check(conn, (
+        "A UFC TAKEN RECORD IS NOT ITS CARD'S (operator question 34, ruled "
+        "2026-09-30: \"every UFC count is per card tier: ..., taken record, "
+        "...\"): taken, passed over and every forecast, one card's "
+        "questions:"), build)
+
+
+def check_a_ufc_edge_figure_is_its_cards(conn) -> None:
+    """Refuse an edge figure of a sport that splits by card counting
+    another card's rows, or every card's, or what the recount does not
+    make -- the headline market on each card, as the Record page asks it,
+    through its builder's guard (operator question 34, the edge figure)."""
+    from . import calibration
+
+    def build(conn, sport):
+        market = config.SPORT_MARKETS[sport][0]
+        for tier in config.event_tiers(sport):
+            calibration.edge(conn, sport=sport,
+                             market_type=calibration.market_type_of(sport, market),
+                             prop_type=calibration.prop_type_of(sport, market),
+                             predictor="statistical", event_tier=tier)
+
+    _per_card_check(conn, (
+        "A UFC EDGE FIGURE IS NOT ITS CARD'S (operator question 34, ruled "
+        "2026-09-30: \"every UFC count is per card tier: ..., edge figure, "
+        "...\"): the disagreements one card's settled questions hold:"), build)
+
+
+def check_a_ufc_board_badge_is_its_cards(conn) -> None:
+    """Refuse a badge on a board row or tile of a sport that splits by card
+    that counts another card's settled questions, or every card's, or what
+    the recount does not make -- the current slate, both forecasters,
+    through the board's own guard (operator question 34, the board badge)."""
+    from . import views
+
+    def build(conn, sport):
+        for forecaster in ("statistical", "llm"):
+            views.week(conn, sport, None, None, forecaster=forecaster)
+
+    _per_card_check(conn, (
+        "A UFC BADGE IS NOT ITS CARD'S (operator question 34, ruled "
+        "2026-09-30: \"every UFC count is per card tier: ..., board badge\"): "
+        "the badge beside a fight counts its own card's settled questions:"),
+        build)
 
 
 # ---------------------------------------------------------------------------

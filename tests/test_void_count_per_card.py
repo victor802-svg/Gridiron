@@ -171,10 +171,14 @@ def test_the_record_page_states_each_cards_own(tmp_path):
     withdrawn = {(c["market"], c["event_tier"], c["filters"]["predictor"]):
                  c["voided"] for c in payload["categories"] if c["voided"]}
     assert withdrawn == {(m, "fight_night", "statistical"): 6 for m in MARKETS}
-    # The headline curve is every card's own, with every card's voids: the
-    # same population on both sides (drawn only when no category matches).
-    assert payload["headline"]["voided"] == 6
-    assert payload["headline"]["void_tiers_counted"] == ["fight_night"]
+    # THE HEADLINE CURVE IS NOT MADE FOR UFC FROM 2026-10-08 (operator
+    # question 34, ruled 2026-09-30: "every UFC count is per card tier"): it
+    # was every card's moneyline as one population, with every card's 6
+    # voids, drawn only where no category matched -- never for UFC, whose
+    # every market, card and forecaster is a category. Until that date this
+    # test held the pooled curve's 6 here, as the void row of CLAUDE.md
+    # named it: question 34's ground.
+    assert payload["headline"] is None
     conn.close()
 
 

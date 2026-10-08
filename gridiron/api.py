@@ -455,15 +455,20 @@ def scorecard(sport: str | None = None) -> dict:
 
 @app.get("/api/tier-table")
 def tier_table(sport: str | None = None, market: str | None = None,
-               forecaster: str | None = None) -> dict:
-    """One market, one forecaster: the table the Record's select and picker name."""
+               forecaster: str | None = None, card: str | None = None) -> dict:
+    """One market, one forecaster -- and for UFC one card (operator question
+    34, 2026-10-08): the table the Record's select and picker name."""
     chosen = _sport(sport)
     try:
-        return views.tier_table_for(get_conn(), chosen, market=market, forecaster=forecaster)
+        return views.tier_table_for(get_conn(), chosen, market=market,
+                                    forecaster=forecaster, card=card)
     except KeyError as exc:
         raise HTTPException(status_code=404,
-                            detail=f"{chosen} asks no market called {market!r}") from exc
-    except calibration.MissingSampleSize as exc:
+                            detail=f"{chosen} asks no market or card called "
+                                   f"{exc.args[0]!r}") from exc
+    except (calibration.MissingSampleSize, calibration.MergedCurve) as exc:
+        # A TABLE COUNTING ANOTHER CARD'S BANDS IS REFUSED, NOT SERVED
+        # (operator question 34, 2026-10-08).
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -501,11 +506,15 @@ def week(request: Request, sport: str | None = None, season: int | None = None,
     # A.2, 2026-10-05): the builder's guard refuses it by name.
     from . import subjects
 
+    # AND A UFC COUNT OF ANOTHER CARD THAN ITS OWN (operator question 34,
+    # 2026-10-08): the board's badge and the tier chip's band are refused by
+    # name, as one card's or not at all.
     try:
         payload = views.week(get_conn(), _sport(sport), season, week, forecaster,
                              early_view=early_view)
     except (subjects.UnplaceableSide, language.LineNotNamed,
-            calibration.ComparedAcrossTwoContracts) as exc:
+            calibration.ComparedAcrossTwoContracts,
+            calibration.PooledCount, calibration.PooledCardCount) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     # THE FORM TOKEN TRAVELS WITH THE SLATE (T2, 2026-09-07), because the one
     # write this page can make -- marking a pick as taken -- lives on it. It
@@ -663,18 +672,23 @@ def history(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    return views.history(
-        get_conn(),
-        sport=_sport(sport),
-        query=q,
-        market_type=market_type,
-        prop_type=prop_type,
-        predictor=predictor,
-        outcome=outcome,
-        day=day,
-        limit=limit,
-        offset=offset,
-    )
+    # A UFC CHIP COUNTING ANOTHER CARD'S BAND IS REFUSED BY NAME, NOT SERVED
+    # (the prover of operator question 34, 2026-10-08).
+    try:
+        return views.history(
+            get_conn(),
+            sport=_sport(sport),
+            query=q,
+            market_type=market_type,
+            prop_type=prop_type,
+            predictor=predictor,
+            outcome=outcome,
+            day=day,
+            limit=limit,
+            offset=offset,
+        )
+    except (calibration.PooledCount, calibration.PooledCardCount) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/prediction/{prediction_id}")

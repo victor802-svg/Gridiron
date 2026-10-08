@@ -1672,8 +1672,10 @@ table.grid td.wide { min-width: 22rem; color: var(--chrome); }
 
 /* The tier table's own controls sit tight under its headline; the generic
    .controls rule spaces them for a page header and left a dead band between
-   the sentence and the filter. */
-.panel .controls { margin: 6px 0 4px; }
+   the sentence and the filter. And from 2026-10-08 (operator question 34)
+   the UFC tier table's card choice sits beside its market choice: spread
+   to the panel's two edges, the render read "Card" as belonging to nothing. */
+.panel .controls { margin: 6px 0 4px; justify-content: flex-start; }
 
 /* The Factors page is the one page allowed to be dense. The plain name leads
    and the code sits under it, small, for anyone matching a row against the

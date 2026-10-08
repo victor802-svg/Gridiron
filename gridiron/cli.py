@@ -385,10 +385,23 @@ def cmd_scorecard(args: argparse.Namespace) -> int:
             print(f"    {c['largest_gap']}")
             print()
 
-    e = calibration.edge(conn, sport=args.sport)
-    print("=== edge question")
-    print(f"    {e['message'] if not e.get('renderable') else e['model_more_confident']}")
-    print(f"    {e['standing_note']}")
+    # ONE CARD AT A TIME FOR UFC (operator question 34, 2026-10-08): the
+    # edge question is asked of the headline market's statistical record on
+    # each card, as the Record page asks it; never over every card.
+    tiers = config.event_tiers(args.sport)
+    if tiers:
+        head = config.SPORT_MARKETS[args.sport][0]
+        asked = [(t, calibration.edge(
+            conn, sport=args.sport,
+            market_type=calibration.market_type_of(args.sport, head),
+            prop_type=calibration.prop_type_of(args.sport, head),
+            predictor="statistical", event_tier=t)) for t in tiers]
+    else:
+        asked = [(None, calibration.edge(conn, sport=args.sport))]
+    for tier, e in asked:
+        print("=== edge question" + (f", {tier}" if tier else ""))
+        print(f"    {e['message'] if not e.get('renderable') else e['model_more_confident']}")
+        print(f"    {e['standing_note']}")
     conn.close()
     return 0
 

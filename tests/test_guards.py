@@ -628,6 +628,23 @@ def test_every_new_guard_is_in_the_planted_harness():
         # of operator question 34's counts, built ahead of it because
         # question 35's voids made this one false).
         "plant_a_pooled_void_count",
+        # OPERATOR QUESTION 33 (ruled 2026-09-30; built 2026-10-08): the
+        # outlook counts only slates still to come and says the most the
+        # count can reach -- never a card already fought.
+        "plant_an_outlook_counting_a_fought_card",
+        # OPERATOR QUESTION 34 (ruled 2026-09-30: "every UFC count is per
+        # card tier: tier table, ranker, taken record, edge figure, board
+        # badge. Planting each."; built 2026-10-08).
+        "plant_a_pooled_ufc_tier_table",
+        "plant_a_pooled_ufc_ranker_count",
+        "plant_a_pooled_ufc_taken_record",
+        "plant_a_pooled_ufc_edge_figure",
+        "plant_a_pooled_ufc_board_badge",
+        # ITS PROVER (2026-10-08): the tier chip of a bout on a card of no
+        # declared kind is in no card's band -- the change as handed took
+        # UFC's slate and Results down for one -- and every chip is held to
+        # its own card's band.
+        "plant_a_bout_on_no_declared_card_counted_in_a_cards_band",
         # OPERATOR QUESTION 17 (ruled 2026-09-27; question 21, ruled
         # 2026-09-28): one function defines a distinct bet -- the forecaster
         # and the venue's question, the rung asked included. A door keyed

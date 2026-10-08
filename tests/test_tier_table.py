@@ -161,30 +161,44 @@ def test_the_table_numbers_equal_the_chip_numbers_to_the_decimal():
     conn = db.read_the_live_record(
         "the tier table in the record, to the decimal")
     try:
+        # ONE CARD AT A TIME FOR UFC (operator question 34, ruled 2026-09-30:
+        # "every UFC count is per card tier"; built 2026-10-08): the table
+        # and the chip both require the card for a sport that splits by
+        # card, where until that date both counted every card's rows.
         for sport in config.SPORTS:
             for market in config.SPORT_MARKETS.get(sport, ()):
                 mt = C.market_type_of(sport, market)
                 pt = C.prop_type_of(sport, market)
-                table = C.tier_table(conn, sport=sport, market_type=mt, prop_type=pt)
-                for row in table["rows"]:
-                    lo, hi = next((lo, hi) for lo, hi, name in C.BUCKETS
-                                  if name == row["band"])
-                    chip = C.bucket_record(
-                        conn, (lo + min(hi, 1.0)) / 2.0, sport=sport,
-                        market_type=mt, prop_type=pt, predictor="statistical",
-                    )
-                    assert row["n"] == chip["n"], f"{sport}/{market}/{row['band']}"
-                    if row["proven"]:
-                        assert row["actual"] == chip["actual"]
-                        assert row["claimed"] == chip["claimed"]
-                    # ...and the tier label agrees with the chip's own mapping
-                    tier = C.tier_from_bucket(chip)
-                    assert row["tier"] == tier["tier"], (
-                        f"{sport}/{market}/{row['band']}: table says "
-                        f"{row['tier']}, chip says {tier['tier']}"
-                    )
+                for card in (config.event_tiers(sport) or (None,)):
+                    table = C.tier_table(conn, sport=sport, market_type=mt,
+                                         prop_type=pt, event_tier=card)
+                    _the_rows_are_the_chips(conn, sport, market, mt, pt, card,
+                                            table)
     finally:
         conn.close()
+
+
+def _the_rows_are_the_chips(conn, sport, market, mt, pt, card, table):
+    """Each band of one table equals the chip's count for that band, card and
+    market, to the decimal."""
+    for row in table["rows"]:
+        lo, hi = next((lo, hi) for lo, hi, name in C.BUCKETS
+                      if name == row["band"])
+        chip = C.bucket_record(
+            conn, (lo + min(hi, 1.0)) / 2.0, sport=sport,
+            market_type=mt, prop_type=pt, predictor="statistical",
+            event_tier=card,
+        )
+        assert row["n"] == chip["n"], f"{sport}/{market}/{card}/{row['band']}"
+        if row["proven"]:
+            assert row["actual"] == chip["actual"]
+            assert row["claimed"] == chip["claimed"]
+        # ...and the tier label agrees with the chip's own mapping
+        tier = C.tier_from_bucket(chip)
+        assert row["tier"] == tier["tier"], (
+            f"{sport}/{market}/{row['band']}: table says "
+            f"{row['tier']}, chip says {tier['tier']}"
+        )
 
 
 def test_the_scorecard_carries_the_table_and_passes_its_validators():

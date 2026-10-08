@@ -326,7 +326,11 @@ def test_a_weekly_sport_counts_its_slates_in_weeks(tmp_path):
             " home, away, status, league_date) VALUES (?,'nfl',2026,1,'REG',?,"
             " 'HOM','AWY','scheduled',?)", (gid, kickoff, day))
     conn.commit()
-    assert horizon.slates_remaining(conn, "nfl", 2026) == 1
+    # ASKED BEFORE THE WEEK'S FIRST GAME (operator question 33, 2026-10-08:
+    # a slate is still to come only before its games' starts; at the real
+    # clock this September week is past).
+    assert horizon.slates_remaining(conn, "nfl", 2026,
+                                    now="2026-09-10T00:00:00Z") == 1
     conn.close()
 
 
@@ -337,9 +341,12 @@ def test_the_guard_sees_a_horizon_counting_days():
 
     source = (Path(config.PACKAGE_ROOT) / "horizon.py").read_text(encoding="utf-8")
     assert audit.horizon_unit_faults(source) == []
+    # THE SLATE KEY IS `slates_to_come`'s "SELECT DISTINCT week" FROM
+    # 2026-10-08 (operator question 33), where `slates_remaining` counted
+    # "COUNT(DISTINCT week)" of its own.
     broken = source.replace(
-        "COUNT(DISTINCT week)",
-        "COUNT(DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10)))", 1)
+        "SELECT DISTINCT week",
+        "SELECT DISTINCT COALESCE(league_date, substr(kickoff_utc, 1, 10))", 1)
     assert broken != source
     faults = audit.horizon_unit_faults(broken)
     assert faults and any("league_date" in f for f in faults)

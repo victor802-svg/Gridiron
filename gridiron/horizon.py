@@ -25,9 +25,72 @@ import sqlite3
 from . import config
 
 
+def slates_to_come(conn: sqlite3.Connection, sport: str, season: int,
+                   event_tier: str | None = None, *,
+                   now: str | None = None) -> list[int]:
+    """THE ONE RULE FOR A SLATE STILL TO COME: every slate of this sport's
+    season -- one card's for UFC -- that holds a game still to come at the
+    clock the page is asked at (`now`, the clock by default), in order.
+
+    OPERATOR QUESTION 33, ruled 2026-09-30 (`docs/briefs/2026-09-30-
+    rulings.md`; built 2026-10-08): "the outlook counts only cards still to
+    come; say the real maximum reachable this season." A GAME IS STILL TO
+    COME while the record lists it 'scheduled' AND the clock is strictly
+    before its start as operator question 38 (A) defines a start -- the
+    earlier of its listed start and the first poll that saw it truly under
+    way, both read as instants (`live.before_the_start`, the one SQL
+    spelling of `live.start_of`; `recommend.not_still_upcoming` is the same
+    rule in Python). A slate is still to come while ONE of its games is;
+    a slate whose every game has started, or is past its listed start, is
+    not, whatever a game on it is still marked. A game with no start time
+    yet is still to come; a listed start nobody can read is not (item 1's
+    rule: never guessed).
+
+    THE DEFECT (the re-read of 29 September, finding G1): this counted every
+    week holding a game still marked 'scheduled', whatever its date. Two
+    Fight Night cards already fought -- Noche UFC on 12 September and UFC
+    Fight Night on 26 September -- each kept one bout the source never
+    marked over (401913546, 401923433), so the outlook multiplied Fight
+    Night's pace by six cards to come where four were, and said "39 of 100
+    · ~121 expected" of a gate the four could take only to ~94. On the copy
+    of 8 October the same rule counted seven Fight Night cards where five
+    are still to come, five Numbered cards where three are, two Contender
+    Series cards where one is, one baseball day where none is (the regular
+    season ended 27 September) and one college day whose every game had
+    started (FOLLOWUPS, "The outlook counts only slates still to come").
+
+    A SLATE IS WHAT THE SPORT WRITES BY: `games.week`, the unit
+    `_written_so_far` divides by (a week for football and basketball, a day
+    for baseball and college football, a card for the fights). Every
+    outlook that multiplies a pace by slates to come reads this one rule
+    (`slates_remaining`, the blind outlook and the at-the-line outlook), and
+    `gridiron.recount.slates_to_come` works it out again from the stored
+    rows, without it, for the guard (`calibration.assert_no_pooled_outlooks`).
+    """
+    from . import db, live
+
+    at = now or db.utcnow()
+    # THE CLOCK AS A COLUMN, so the start is compared by the one SQL
+    # spelling of it -- `julianday()` on both sides (operator question 35).
+    sql = ("SELECT DISTINCT week"
+           " FROM games g, (SELECT ? AS now_utc) AS clock"
+           " WHERE g.sport = ? AND g.season = ? AND g.status = 'scheduled'"
+           f"   AND {live.before_the_start('clock.now_utc', 'g', conn)}")
+    params: list = [at, sport, season]
+    if event_tier is not None:
+        # THE CARD, reached through the bout as every UFC count reaches it.
+        sql += (" AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
+                "               ON e.id = b.event_id"
+                "              WHERE b.id = g.id AND e.event_tier = ?)")
+        params.append(event_tier)
+    return sorted(int(r[0]) for r in conn.execute(sql, params))
+
+
 def slates_remaining(conn: sqlite3.Connection, sport: str, season: int,
-                     event_tier: str | None = None) -> int:
-    """Distinct future slates still on the calendar for this sport's season.
+                     event_tier: str | None = None, *,
+                     now: str | None = None) -> int:
+    """How many slates of this sport's season are still to come: the one
+    rule, `slates_to_come`, counted (operator question 33, 2026-10-08).
 
     A SLATE IS WHAT THE SPORT WRITES BY: `games.week`, which is a week for
     football and basketball, a day for baseball and college football, a card
@@ -46,20 +109,11 @@ def slates_remaining(conn: sqlite3.Connection, sport: str, season: int,
     still to come: a Contender Series rate times every card left on the
     calendar -- 3 of the 14 on 27 September -- would be the unit mismatch
     this function's history is about, one level down. `event_tier` is None
-    for a sport that does not split below the market, and for the
-    at-the-line outlook, which does not pass one (FOLLOWUPS).
+    for a sport that does not split below the market. The at-the-line
+    outlook passes its card too from 2026-10-08 (operator question 34,
+    "every UFC count is per card tier"; it passed none until then).
     """
-    sql = ("SELECT COUNT(DISTINCT week)"
-           " FROM games WHERE sport = ? AND season = ? AND status = 'scheduled'")
-    params: list = [sport, season]
-    if event_tier is not None:
-        # THE CARD, reached through the bout as every UFC count reaches it.
-        sql += (" AND EXISTS (SELECT 1 FROM ufc_bouts b JOIN ufc_events e"
-                "               ON e.id = b.event_id"
-                "              WHERE b.id = games.id AND e.event_tier = ?)")
-        params.append(event_tier)
-    row = conn.execute(sql, params).fetchone()
-    return int(row[0] or 0)
+    return len(slates_to_come(conn, sport, season, event_tier, now=now))
 
 
 def season_ends(conn: sqlite3.Connection, sport: str, season: int) -> str | None:
@@ -212,13 +266,18 @@ def _written_so_far(rows: list, season: int) -> tuple[int, int, int]:
 
 
 def _asked(conn: sqlite3.Connection, sport: str, market: str, predictor: str,
-           event_tier, season: int) -> tuple[list, dict]:
+           event_tier, season: int, now: str | None = None) -> tuple[list, dict]:
     """One forecaster's standing questions through the door, and the same
     cell recounted without it by the one key (`gridiron.recount`, operator
-    question 17, 2026-09-28) -- in one read, so the two see the same rows."""
+    question 17, 2026-09-28) -- in one read, so the two see the same rows.
+
+    AND THE SLATES STILL TO COME, by the one rule and again without it
+    (operator question 33, 2026-10-08), in the same read and at the same
+    clock."""
     from . import db, recount
     from .calibration import market_type_of, prop_type_of
 
+    at = now or db.utcnow()
     with db.one_instant(conn):
         rows = standing_questions(conn, sport=sport, market=market,
                                   predictor=predictor, event_tier=event_tier)
@@ -228,7 +287,61 @@ def _asked(conn: sqlite3.Connection, sport: str, market: str, predictor: str,
                                 predictor=predictor, event_tier=event_tier,
                                 season=season)
         ends = season_ends(conn, sport, season)
-    return rows, dict(again, season_ends=ends)
+        ahead = slates_to_come(conn, sport, season, event_tier, now=at)
+        ahead_again = recount.slates_to_come(conn, sport=sport, season=season,
+                                             event_tier=event_tier, now=at)
+    return rows, dict(again, season_ends=ends, slates_to_come=ahead,
+                      slates_to_come_recounted=ahead_again, now=at)
+
+
+def _on_the_slates_to_come(rows: list, season: int,
+                           slates: list) -> tuple[list[dict], int]:
+    """Each slate still to come with the standing questions already written
+    on it -- how many have settled and how many are waiting -- and how many
+    questions are waiting on no slate still to come (written for a slate
+    already under way or over, or in an earlier season, and not settled).
+
+    READ OFF THE DOOR'S ROWS (operator question 33, 2026-10-08), as the
+    pace is: the arithmetic of the most the count can reach is worked out
+    from these and nothing else (`most_reachable`)."""
+    on = {week: {"slate": week, "settled": 0, "waiting": 0} for week in slates}
+    elsewhere = 0
+    for r in rows:
+        mine = on.get(r["week"]) if r["season"] == season else None
+        if r["settled"]:
+            if mine is not None:
+                mine["settled"] += 1
+            continue
+        if mine is not None:
+            mine["waiting"] += 1
+        else:
+            elsewhere += 1
+    return [on[week] for week in slates], elsewhere
+
+
+def most_reachable(resolved: int, waiting_elsewhere: int, to_come: list,
+                   pace: float) -> tuple[float, float]:
+    """THE MOST THE COUNT CAN REACH THIS SEASON (operator question 33, ruled
+    2026-09-30: "say the real maximum reachable this season"; built
+    2026-10-08), and the part of it on the slates still to come.
+
+    The count now; every question already written and not yet settled on a
+    slate that is no longer to come -- a card fought whose results are not
+    in, or a bout the source never marked over -- because each can still
+    settle; and on each slate still to come, the questions already written
+    for it or this season's pace, WHICHEVER IS MORE (less what has settled
+    on it, which the count already holds). WHY BOTH: the questions written
+    are not an estimate, but they are not the whole of a slate either -- a
+    later pass adds questions (measured on the copy of 8 October: 11 of 88
+    UFC moneyline questions this season were first written more than an
+    hour after their card's first write, on 4 of 9 cards; 43 of 90 NBA
+    spread questions on its one slate); the pace is what a slate has held
+    this season, and a slate already written beyond it holds what it holds.
+    So the figure is never under what is written and never under the pace
+    for a slate still to come: the most, as the ruling asks, and an
+    extrapolation, which the words say ("~")."""
+    on = sum(max(e["waiting"], pace - e["settled"]) for e in to_come)
+    return resolved + waiting_elsewhere + on, on
 
 
 def _counted(sport: str, market: str, predictor: str, event_tier,
@@ -264,6 +377,15 @@ def _counted(sport: str, market: str, predictor: str, event_tier,
         "forecasters_counted": sorted({r["predictor"] for r in rows}),
         "tiers_counted": sorted({r["event_tier"] for r in rows
                                  if r["event_tier"] is not None}),
+        # THE SLATES STILL TO COME AT THE CLOCK IT WAS ASKED AT, by the one
+        # rule and again without it (operator question 33, 2026-10-08), and
+        # the recount's questions on each of this season's slates -- what
+        # the guard holds the outlook's own arithmetic to.
+        "asked_at": again["now"],
+        "slates_to_come": list(again["slates_to_come"]),
+        "slates_to_come_recounted": list(again["slates_to_come_recounted"]),
+        "recounted_waiting": again["waiting"],
+        "recounted_by_slate": again["by_slate"],
     }
 
 
@@ -278,14 +400,21 @@ def outlook_words(out: dict) -> str:
     if out.get("routed_off"):
         return language.llm_routed_off_line(
             out["resolved"], out["gate"], out["routed_off"]["since"])
+    # THE MOST IT CAN REACH, AND OF WHAT (operator question 33, 2026-10-08):
+    # the questions waiting on slates no longer to come, and the questions
+    # the slates still to come hold, each said with its count.
     return language.market_outlook_line(
         out["resolved"], out["gate"], out.get("expected"), out.get("season_ends"),
-        written_before=bool(out.get("written_before")))
+        written_before=bool(out.get("written_before")),
+        waiting=out.get("waiting_elsewhere") or 0,
+        to_come=len(out.get("to_come") or []),
+        on_to_come=out.get("on_slates_to_come"),
+        sport=out.get("sport"))
 
 
 def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
                    predictor: str, event_tier: str | None = None,
-                   season: int | None = None) -> dict:
+                   season: int | None = None, now: str | None = None) -> dict:
     """Whether ONE forecaster's 100-resolution gate in this market -- on one
     card, for UFC -- can clear before the season ends.
 
@@ -299,10 +428,23 @@ def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
     (`standing_questions`): `resolved` is the curve's n, the pace is this
     season's standing questions over the slates they were written on, and
     the multiplier is the card's own slates still to come.
+
+    ONLY SLATES STILL TO COME, AND THE MOST IT CAN REACH (operator question
+    33, ruled 2026-09-30: "the outlook counts only cards still to come; say
+    the real maximum reachable this season"; built 2026-10-08). The slates
+    are the one rule's at the clock it is asked at (`slates_to_come`:
+    'scheduled' and the clock before the start as question 38 (A) defines
+    it), and `expected` is no longer the pace times every slate holding a
+    game still marked 'scheduled' but THE MOST THE COUNT CAN REACH THIS
+    SEASON (`most_reachable`): the count now, the questions written and
+    waiting on slates no longer to come, and each slate still to come at
+    what is written for it or the pace, whichever is more. `reachable` is
+    that figure against the gate, so "THIS GATE CANNOT CLEAR THIS SEASON" is
+    said only where even that is under it.
     """
     season = config.SPORT_CURRENT_SEASON.get(sport, config.CURRENT_SEASON) \
         if season is None else season
-    rows, again = _asked(conn, sport, market, predictor, event_tier, season)
+    rows, again = _asked(conn, sport, market, predictor, event_tier, season, now)
     out = _counted(sport, market, predictor, event_tier, rows, season, again)
     resolved, gate = out["resolved"], out["gate"]
 
@@ -311,20 +453,26 @@ def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
     retired = config.retired_market(sport, market)
     if retired:
         out.update({
-            "slates_remaining": 0, "per_slate": None, "expected": resolved,
+            "slates_remaining": 0, "to_come": [], "waiting_elsewhere": None,
+            "on_slates_to_come": None, "per_slate": None, "expected": resolved,
             "expected_is_an_extrapolation": False, "retired": retired,
             "reachable": resolved >= gate,
         })
         out["message"] = outlook_words(out)
         return out
 
-    remaining = slates_remaining(conn, sport, season, event_tier)
+    to_come, elsewhere = _on_the_slates_to_come(rows, season,
+                                                out["slates_to_come"])
     per_slate = (out["written"] / out["slates_used"]) if out["slates_used"] else None
-    expected = None
+    expected = on = None
     if per_slate is not None:
-        expected = int(round(resolved + per_slate * remaining))
+        most, on = most_reachable(resolved, elsewhere, to_come, per_slate)
+        expected = int(round(most))
     out.update({
-        "slates_remaining": remaining,
+        "slates_remaining": len(to_come),
+        "to_come": to_come,
+        "waiting_elsewhere": elsewhere,
+        "on_slates_to_come": None if on is None else round(on, 2),
         "per_slate": round(per_slate, 2) if per_slate is not None else None,
         "expected": expected,
         "expected_is_an_extrapolation": True,
@@ -339,14 +487,36 @@ def market_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
 
 def expected_from(out: dict) -> int | None:
     """What an outlook's own counts project, worked out again from them --
-    the arithmetic `market_outlook` states, for the guard to compare."""
+    the arithmetic `market_outlook` states, for the guard to compare.
+
+    FROM 2026-10-08 (operator question 33) THE MOST IT CAN REACH: the count,
+    the questions waiting on slates no longer to come, and each slate still
+    to come at what is written for it or the pace, whichever is more
+    (`most_reachable`, from the outlook's own `to_come` and counts)."""
     if out.get("retired") or out.get("routed_off"):
         return out.get("resolved")
-    written, slates = out.get("written"), out.get("slates_used")
-    if not slates:
+    on = on_slates_to_come_from(out, rounded=False)
+    if on is None:
         return None
-    return int(round(out["resolved"]
-                     + written / slates * (out.get("slates_remaining") or 0)))
+    return int(round(out["resolved"] + (out.get("waiting_elsewhere") or 0) + on))
+
+
+def on_slates_to_come_from(out: dict, *, rounded: bool = True) -> float | None:
+    """The part of the most an outlook can reach that lies on the slates
+    still to come, worked out again from its own counts (2026-10-08).
+
+    THE GUARD'S OWN SPELLING, never `most_reachable`'s: each slate still to
+    come at the larger of its questions written and still waiting and the
+    pace less what has settled on it -- so a builder whose arithmetic was put
+    back (the pace times the slates, waiting questions forgotten) is seen."""
+    written, slates = out.get("written"), out.get("slates_used")
+    if out.get("retired") or out.get("routed_off") or not slates:
+        return None
+    pace = written / slates
+    on = 0.0
+    for entry in out.get("to_come") or []:
+        on += max(entry["waiting"], pace - entry["settled"])
+    return round(on, 2) if rounded else on
 
 
 def zero_write_line(market: str, asked: int, floor: float) -> str:
@@ -386,8 +556,9 @@ def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
     rows, again = _asked(conn, sport, market, "llm", event_tier, season)
     out = _counted(sport, market, "llm", event_tier, rows, season, again)
     out.update({
-        "slates_remaining": 0, "per_slate": None, "expected": out["resolved"],
-        "expected_is_an_extrapolation": False,
+        "slates_remaining": 0, "to_come": [], "waiting_elsewhere": None,
+        "on_slates_to_come": None, "per_slate": None,
+        "expected": out["resolved"], "expected_is_an_extrapolation": False,
         "routed_off": {"since": config.LLM_ROUTING_DECLARED},
         "reachable": out["resolved"] >= out["gate"],
     })
@@ -398,7 +569,8 @@ def llm_routed_off_outlook(conn: sqlite3.Connection, sport: str, market: str,
 def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
                         predictor: str, bets: list,
                         event_tier: str | None = None,
-                        season: int | None = None) -> dict:
+                        season: int | None = None,
+                        now: str | None = None) -> dict:
     """When the at-the-line gate opens, at the rate claims are actually being
     written (E4, 2026-09-06).
 
@@ -427,7 +599,18 @@ def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
     written = len(this_season)
     slates_used = len({b["week"] for b in this_season})
     resolved = len(at_the_line.settled(bets))
-    remaining = slates_remaining(conn, sport, season)
+    # THE ONE RULE FOR A SLATE STILL TO COME, ONE CARD'S FOR UFC (operator
+    # questions 33 and 34, 2026-10-08): this outlook multiplied its pace by
+    # every slate holding a game still marked 'scheduled', and for UFC by
+    # every card's -- it passed no card (FOLLOWUPS). It reads the rule at
+    # one clock and carries the recount of it, for the guard. Its own
+    # arithmetic and words are as they were (the ruling's "real maximum"
+    # is the blind outlook's line; FOLLOWUPS).
+    from . import db, recount
+
+    at = now or db.utcnow()
+    ahead = slates_to_come(conn, sport, season, event_tier, now=at)
+    remaining = len(ahead)
     gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
     per_slate = (written / slates_used) if slates_used else None
     expected = int(round(resolved + per_slate * remaining)) if per_slate else None
@@ -439,6 +622,9 @@ def at_the_line_outlook(conn: sqlite3.Connection, sport: str, market: str, *,
         "per_slate": round(per_slate, 2) if per_slate is not None else None,
         "expected": expected, "expected_is_an_extrapolation": True,
         "record": "at_the_line",
+        "asked_at": at, "slates_to_come": ahead,
+        "slates_to_come_recounted": recount.slates_to_come(
+            conn, sport=sport, season=season, event_tier=event_tier, now=at),
     }
     if per_slate is None:
         out["reachable"] = None
