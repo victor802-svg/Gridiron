@@ -488,6 +488,24 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q25 WITH Q29 AND Q26 RELEASED as d264f1f + cfcf273 (2026-10-08
+  17:19Z; serving cfcf27350e73)** -- ported from q25-held and q26-held
+  onto the current repair, re-measured and re-proved (the held branches
+  left as they were): the gate refuses code that switches the rules off
+  or shadows a built-in they call, or rewrites their marks (Q25, Q29;
+  the scan made to read each file once, proven fault for fault, so
+  plant.py whole stays at 413 s of its 600); factor_scores, llm_calls,
+  injury_reports, lineup_captures and weather_observed gained their
+  no-update, no-delete and never-replaced rules through db.init (20
+  rules; the record 283 -> 303 objects, read back after the release);
+  mlb_people's words say what its loader does (already in the upsert
+  register). THE GATE: the first run failed step 1 on
+  test_prompt_disclosure.py::test_results_shows_each_reasoning_row_the_
+  prompt_it_carries[390-844] -- the Results redraw race FOLLOWUPS holds
+  for Q5 (it failed Q38's first gate the same way), steps 2-4 passed,
+  460/460; its one as-is rerun: 4/4, 460/460 (17:19:15Z). **Next: Q5
+  (scratchpad wf_q5.js; it fixes that race on the render signal), then
+  Q10.**
   **Q46 RELEASED as e09447f (2026-10-08 12:48Z; gate 4/4 on its first
   run, 448/448; serving e09447fa049b)** -- the band line above every
   slate is one category's fullest band (one market, the page's
