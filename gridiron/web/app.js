@@ -481,6 +481,13 @@ const Gridiron = (function () {
   async function renderRecord() {
     const asked = renderAsked();
     const seq = sportSeq;
+    // THE LATEST ASKED (operator question 47, 2026-10-09): the chart's two
+    // selects draw the page again, and its weekly strip -- a part asked on
+    // its own, below -- drew whichever answer came back last: the point
+    // spread's "8 resolved across 2 weeks" under a chart of receptions'
+    // three (measured on 451ab3d). A page a later one superseded says
+    // nothing, and its strip draws nothing.
+    askedLatest('record', asked);
     const parts = [];
     const sc = state.scorecard;
     // THE TIER TABLE LEADS. Rendered first and unconditionally: the charts
@@ -571,21 +578,25 @@ const Gridiron = (function () {
     renderTakenRecord(sc);
     renderEdges(sc);
     document.getElementById('separation-note').textContent = sc.separation_note;
-    parts.push(renderOverTime(market, predictor).catch(showError));
+    parts.push(renderOverTime(market, predictor, asked).catch(showError));
     await Promise.all(parts);
     // LANDED (operator question 5, 2026-10-08): every part above has drawn --
     // unless the sport changed meanwhile, when this page is not the one on
-    // screen and says nothing.
-    if (!stale(seq)) rendered(asked, 'record', 'view-record');
+    // screen and says nothing; nor, from question 47 (2026-10-09), when a
+    // later render of the page was asked since.
+    if (stale(seq) || superseded('record', asked)) return;
+    rendered(asked, 'record', 'view-record');
   }
 
-  async function renderOverTime(market, predictor) {
+  //: `asked` is the count of the page's render this strip draws for: it
+  //: draws only while that render is the latest asked (question 47).
+  async function renderOverTime(market, predictor, asked) {
     const params = new URLSearchParams({ predictor: predictor });
     if (market === 'spread') params.set('market_type', 'spread');
     else { params.set('market_type', 'prop'); params.set('prop_type', market); }
     const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/over-time?' + params.toString()));
-    if (stale(seq)) return;
+    if (stale(seq) || superseded('record', asked)) return;
     document.getElementById('overtime-caption').textContent =
       DASH + ' ' + int(data.n) + ' resolved across ' + int(data.points.length) + ' weeks';
     document.getElementById('overtime-note').textContent = data.note;
@@ -1706,6 +1717,15 @@ const Gridiron = (function () {
     // stay on screen, dimmed and untouchable, under an "updating" label, and
     // the new ones swap in when the answer arrives. Offline keeps its rule:
     // the bar says so, and a failed fetch leaves the last rows as they were.
+    // MY DAY IS ONE PART OF TWO PAGES (question 47's prover, 2026-10-09): the
+    // slate and the Props page each draw it, under the header on every page,
+    // and `weekSeq` tells a slate only from a later slate, the Props page's
+    // count a Props page only from a later one. Measured on the change as
+    // handed: the Props page opened for a week holding a taken pick, its
+    // answer held; Games opened and another week chosen on its picker; the
+    // Props page's late answer drew its week's "1 taken" over that week's
+    // "Nothing taken on this slate yet.". The latest asked draws it.
+    askedLatest('my-day', asked);
     updating(rows, 'games-updating', true);
     let data;
     try {
@@ -1814,7 +1834,8 @@ const Gridiron = (function () {
       row.style.setProperty('--i', String(Math.min(i, 8)));
       rows.appendChild(row);
     });
-    renderMyDay(board);
+    // ONLY IF NO LATER PAGE ASKED FOR MY DAY SINCE (question 47's prover).
+    if (!superseded('my-day', asked)) renderMyDay(board);
 
     const today = data.today || null;
     const combos = document.getElementById('combos-panel');
@@ -2210,7 +2231,10 @@ const Gridiron = (function () {
     filled: false, offered: null, confirmed: false,
     promo: { kind: 'none', payout: { multiplier: '', table: {} },
              percent: '', cap: '', units: '' },
-    result: null, changed: false,
+    // HOW MANY CHANGES HE HAS MADE TO THE ENTRY (operator question 47,
+    // 2026-10-09): an answer is about the entry as it was asked, and is put
+    // aside if it has changed since.
+    result: null, changed: false, edits: 0,
   };
   let entryPanel = null;
 
@@ -2231,8 +2255,17 @@ const Gridiron = (function () {
   // and one the operator typed stays his. THE SAME OFFER AGAIN KEEPS HIS TICK
   // (2026-10-07, resumed build): a redraw of the page offers the row already
   // in the fields, and the box he ticked for it stays as he left it; any
-  // other row is offered unticked.
+  // other row is offered unticked. A FILL IS A CHANGE TO THE ENTRY (question
+  // 47's prover, 2026-10-09): a redraw of the Props page fills a payout the
+  // page put there again from a newer row kept for its app, type and size --
+  // typed on another device or in another tab -- and unticks the box;
+  // uncounted, the answer worked out from the payout as it was stood beside
+  // the new one as if about it (measured on the change as handed: the 3x
+  // verdict beside a 5x so kept). So where the fill changes the payout, the
+  // offer or the tick, it counts as a change (`was`, read as it starts), and
+  // that answer is put aside as any other is.
   function fillEntryPayout(ec) {
+    const was = JSON.stringify([entry.payout, entry.offered, entry.confirmed]);
     if (!entryPayoutEmpty() && !entry.filled) return;
     const got = (ec.remembered || []).find(r => r.app === entry.app
       && r.entry_type === entry.type && r.legs === entry.legs.length);
@@ -2244,6 +2277,7 @@ const Gridiron = (function () {
     entry.filled = !!got;
     entry.offered = got || null;
     entry.confirmed = false;
+    if (JSON.stringify([entry.payout, entry.offered, entry.confirmed]) !== was) entryChanged(false);
   }
 
   // ANY CHANGE TO THE ENTRY puts the last answer aside -- numbers about
@@ -2251,6 +2285,7 @@ const Gridiron = (function () {
   // type or size asks for the payout to be confirmed again: the payout is
   // the one the app shows for THIS entry.
   function entryChanged(sized) {
+    entry.edits += 1;
     if (sized) { entry.confirmed = false; if (entryPanel) fillEntryPayout(entryPanel); }
     if (entry.result) entry.changed = true;
   }
@@ -2490,18 +2525,29 @@ const Gridiron = (function () {
     const seq = sportSeq;
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
     const asked = renderAsked();
+    // THE LATEST ASKED, ABOUT THE ENTRY AS ASKED (operator question 47,
+    // 2026-10-09). Checked at 3x and again at 5x with the first answer held,
+    // the page drew the 3x verdict -- "Costs at coin flips", 57.74% a leg --
+    // under the form's 5x; and an answer that came back after a leg's line
+    // was changed was drawn beside the new line as if about it (measured on
+    // 451ab3d). An answer a later check superseded draws nothing, and one
+    // about an entry changed since it was asked is put aside, as an earlier
+    // answer is.
+    askedLatest('entry-check', asked);
+    const edits = entry.edits;
+    const form = JSON.stringify(entryBody());
     if (button) button.disabled = true;
     try {
       const res = await fetch('/api/entry-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json',
                    'X-Gridiron-Form': csrfToken || '' },
-        body: JSON.stringify(entryBody()),
+        body: form,
       });
       const answer = await res.json();
-      if (stale(seq)) return;
+      if (stale(seq) || superseded('entry-check', asked)) return;
       entry.result = res.ok ? answer : { refused_words: answer.detail || '' };
-      entry.changed = false;
+      entry.changed = entry.edits !== edits;
       // THE PAYOUTS LAST TYPED, as the check left them: the next fill reads
       // these.
       if (res.ok && answer.remembered) ec.remembered = answer.remembered;
@@ -2617,7 +2663,9 @@ const Gridiron = (function () {
     payout: { multiplier: '', table: {} },
     filled: false, offered: null, confirmed: false,
     bonus: '', playthrough: '',
-    result: null, changed: false,
+    // HOW MANY CHANGES HE HAS MADE TO THE OFFER (operator question 47,
+    // 2026-10-09), as the entry's.
+    result: null, changed: false, edits: 0,
   };
 
   function depositPayoutEmpty() {
@@ -2627,8 +2675,16 @@ const Gridiron = (function () {
 
   // STEP 1'S LAST PAYOUT TYPED FOR THIS APP, ENTRY TYPE AND SIZE, offered
   // filled in only once he chooses the app (reading (a)), and never confirmed
-  // by the page; a payout he typed himself stays his.
+  // by the page; a payout he typed himself stays his. A FILL IS A CHANGE TO
+  // THE OFFER (question 47's prover, 2026-10-09), as the entry's. Measured on
+  // the change as handed, in one page: the offer worked out at the 3x step 1
+  // last kept; 5x typed and checked in step 1 above it; the page drawn again
+  // -- the payout here filled again as 5x, unticked, and the 3x answer
+  // ("-0.25 per unit of bonus") drawn beside it as if about it. Where the
+  // fill changes the payout, the offer or the tick, it counts as a change
+  // (`was`, read as it starts), and that answer is put aside.
   function fillDepositPayout(ec) {
+    const was = JSON.stringify([deposit.payout, deposit.offered, deposit.confirmed]);
     if (!depositPayoutEmpty() && !deposit.filled) return;
     const got = deposit.app ? (ec.remembered || []).find(r => r.app === deposit.app
       && r.entry_type === deposit.type && r.legs === Number(deposit.legs)) : null;
@@ -2640,11 +2696,13 @@ const Gridiron = (function () {
     deposit.filled = !!got;
     deposit.offered = got || null;
     deposit.confirmed = false;
+    if (JSON.stringify([deposit.payout, deposit.offered, deposit.confirmed]) !== was) depositChanged(false);
   }
 
   // ANY CHANGE puts the last answer aside, and a change of app, type or size
   // asks for the payout to be confirmed again.
   function depositChanged(sized) {
+    deposit.edits += 1;
     if (sized) { deposit.confirmed = false; if (entryPanel) fillDepositPayout(entryPanel); }
     if (deposit.result) deposit.changed = true;
   }
@@ -2736,18 +2794,25 @@ const Gridiron = (function () {
     const seq = sportSeq;
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
     const asked = renderAsked();
+    // THE LATEST ASKED, ABOUT THE OFFER AS ASKED (operator question 47,
+    // 2026-10-09), as the entry check's: a 5x playthrough's late answer --
+    // "5 units per unit of bonus", "-0.25 per unit of bonus" -- was drawn
+    // under the form's 9x (measured on 451ab3d).
+    askedLatest('deposit-match', asked);
+    const edits = deposit.edits;
+    const offer = JSON.stringify(depositBody());
     if (button) button.disabled = true;
     try {
       const res = await fetch('/api/deposit-match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json',
                    'X-Gridiron-Form': csrfToken || '' },
-        body: JSON.stringify(depositBody()),
+        body: offer,
       });
       const answer = await res.json();
-      if (stale(seq)) return;
+      if (stale(seq) || superseded('deposit-match', asked)) return;
       deposit.result = res.ok ? answer : { refused_words: answer.detail || '' };
-      deposit.changed = false;
+      deposit.changed = deposit.edits !== edits;
       paintDepositResult();
       // THE ANSWER LANDED (operator question 5, 2026-10-08).
       rendered(asked, 'props', 'deposit-lines');
@@ -2818,15 +2883,31 @@ const Gridiron = (function () {
     const seq = sportSeq;
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
     const asked = renderAsked();
+    // THE LATEST ASKED, AND WHAT IT ASKED (operator question 47, 2026-10-09).
+    // Two weeks asked, the earlier answer held: it drew week 8's eight tiles,
+    // headed "Week 8, 2025", under the picker's week 18 (measured on
+    // 451ab3d). A render a later one superseded draws nothing; and its chip
+    // and its order are the ones chosen when it asked, never when its answer
+    // lands.
+    askedLatest('props', asked);
+    // AND MY DAY, WHICH THE SLATE DRAWS TOO (question 47's prover,
+    // 2026-10-09): `renderGames` says why.
+    askedLatest('my-day', asked);
+    let active = state.propFamily || '';
+    // BY EDGE OR BY START, NEVER BY CHANCE (ruling C with B.1, 2026-10-05):
+    // a choice kept from before -- "cushion", "the model's chance" -- falls
+    // back to the edge.
+    let sortBy = prefGet('props.sort', 'edge');
+    if (sortBy !== 'edge' && sortBy !== 'time') sortBy = 'edge';
     updating(host, 'props-updating', true);   // the same rule as the rows
     let data;
     try {
       data = await fetchJSON(withSport('/api/week' + qs));
     } catch (err) {
-      if (!stale(seq)) updating(host, 'props-updating', false);
+      if (!stale(seq) && !superseded('props', asked)) updating(host, 'props-updating', false);
       throw err;
     }
-    if (stale(seq)) return;
+    if (stale(seq) || superseded('props', asked)) return;
     updating(host, 'props-updating', false);
     clearError();
     csrfToken = data.csrf || csrfToken;
@@ -2843,7 +2924,6 @@ const Gridiron = (function () {
     renderPayouts(props, labels);
 
     chips.innerHTML = '';
-    let active = state.propFamily || '';
     if (active && !(props.chips || []).some(c => (c.key || '') === active)) active = '';
     (props.chips || []).forEach(c => {
       const b = el('button', 'chip-btn');
@@ -2862,11 +2942,7 @@ const Gridiron = (function () {
     const propsLoading = document.getElementById('props-loading');
     if (propsLoading) propsLoading.hidden = true;
     const sortSel = document.getElementById('props-sort');
-    // BY EDGE OR BY START, NEVER BY CHANCE (ruling C with B.1, 2026-10-05):
-    // a choice kept from before -- "cushion", "the model's chance" -- falls
-    // back to the edge.
-    let sortBy = prefGet('props.sort', 'edge');
-    if (sortBy !== 'edge' && sortBy !== 'time') sortBy = 'edge';
+    // THE ORDER IT ASKED WITH (read before it asked: question 47).
     fillSelect(sortSel, [['edge', labels.sort_edge], ['time', labels.sort_time]], sortBy);
     const sortLabel = document.getElementById('props-sort-label');
     if (sortLabel) sortLabel.textContent = labels.sort || '';
@@ -2884,7 +2960,7 @@ const Gridiron = (function () {
       unread.textContent = active === 'ladder' ? '' : (props.ladders_words || '');
       unread.hidden = active === 'ladder' || !props.ladders_words;
     }
-    renderMyDay(board);
+    if (!superseded('my-day', asked)) renderMyDay(board);
     arrive(host);
     if (active === 'ladder') {
       const ladder = props.ladder || { rows: [] };
@@ -3236,8 +3312,14 @@ const Gridiron = (function () {
     const seq = sportSeq;
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
     const asked = renderAsked();
+    // THE LATEST ASKED (operator question 47, 2026-10-09): two markets, cards
+    // or forecasters chosen in quick succession drew whichever table came
+    // back last -- the moneyline's table, captioned the moneyline's, under a
+    // select reading "total"; the reasoning pass's under the model's button
+    // (measured on 451ab3d). The caption already named what its numbers are.
+    askedLatest('tier-table', asked);
     const t = await fetchJSON(withSport('/api/tier-table', ask));
-    if (stale(seq)) return;
+    if (stale(seq) || superseded('tier-table', asked)) return;
     renderTierTable(t);
     rendered(asked, 'record', 'tier-table');
   }
@@ -3766,6 +3848,33 @@ const Gridiron = (function () {
     return rendersAsked;
   }
 
+  // THE LATEST ASKED, PART BY PART (operator question 47, found by question
+  // 5's prover; built 2026-10-09 without a new ruling: step A's and question
+  // 37's rule that a number is drawn under the words of what it is). A part
+  // of the page asked twice -- a search typed, then the reasoning pass
+  // chosen -- drew whichever answer came back LAST, so an earlier, slower
+  // answer stood under the later choice: Results drew 51 rows, 50 of them the
+  // statistical model's chances, under "reasoning pass" with no Forecaster
+  // column, captioned "51 predictions" (measured on 451ab3d, the answer held
+  // and released). A render now says it is the latest asked for the part it
+  // draws -- by its count, the order the page asked (question 5) -- before it
+  // asks, and draws its answer only if nothing later was asked there since:
+  // one a later render superseded draws nothing and says nothing (question
+  // 5's reading (a): never a superseded render). The slate has held to this
+  // by `weekSeq` since 2026-09-05; a sport switch is `sportSeq`'s.
+  // `audit.latest_answer_faults` reads every render for it.
+  const latestAsked = new Map();
+
+  //: The render numbered `count` is now the latest asked for `part`.
+  function askedLatest(part, count) {
+    latestAsked.set(part, count);
+  }
+
+  //: Was a later render asked for `part` since the one numbered `count`?
+  function superseded(part, count) {
+    return latestAsked.get(part) !== count;
+  }
+
   //: The render numbered `count` has written its DOM: say so once what it
   //: drew -- `node`, an element or its id -- has finished arriving. `name`
   //: names a part that has no id of its own.
@@ -4246,7 +4355,10 @@ const Gridiron = (function () {
   // A DAY WITH NO RESULT IS A HAIRLINE SQUARE, not a gap: "nothing settled
   // here" and "nothing is known here" look identical as empty space, and
   // only one of them is true.
-  async function renderCalendar() {
+  //: `asked` is the Results table's count, which this draws for, and `day`
+  //: the day that table asked for (question 47: its own request's, never the
+  //: choice when the answer lands).
+  async function renderCalendar(asked, day) {
     const panel = document.getElementById('calendar-panel');
     const grid = document.getElementById('calendar-grid');
     const months = document.getElementById('calendar-months');
@@ -4256,7 +4368,7 @@ const Gridiron = (function () {
 
     const seq = sportSeq;
     const data = await fetchJSON(withSport('/api/calendar'));
-    if (stale(seq)) return;
+    if (stale(seq) || superseded('results', asked)) return;
     const days = data.days || [];
     grid.innerHTML = '';
     months.innerHTML = '';
@@ -4286,7 +4398,8 @@ const Gridiron = (function () {
         cell.classList.add('empty');
       }
       if (d.day === today) cell.classList.add('today');
-      if (d.day === state.calendarDay) cell.classList.add('sel');
+      // THE DAY ITS TABLE ASKED FOR (question 47), never the choice now.
+      if (d.day === day) cell.classList.add('sel');
       cell.title = d.words || '';
       if (d.void) {
         const dot = el('span', 'voids');
@@ -4295,7 +4408,7 @@ const Gridiron = (function () {
       }
       if (d.settled) {
         cell.addEventListener('click', () => {
-          state.calendarDay = (state.calendarDay === d.day) ? null : d.day;
+          state.calendarDay = (day === d.day) ? null : d.day;
           state.historyOffset = 0;
           renderResults().catch(showError);
         });
@@ -4310,7 +4423,7 @@ const Gridiron = (function () {
       caption.textContent = '';
       caption.appendChild(document.createTextNode(
         int(data.n) + ' settled over ' + days.length + ' days'));
-      if (state.calendarDay) {
+      if (day) {
         const clear = el('button', 'cal-clear', 'show the whole season');
         clear.type = 'button';
         clear.addEventListener('click', () => {
@@ -4338,10 +4451,36 @@ const Gridiron = (function () {
   // exist cannot be created by editing this file.
   let csrfToken = null;
 
+  // ONE SETTINGS REQUEST AT A TIME (operator question 47, 2026-10-09). The
+  // page draws only the latest answer asked for a part (`superseded`), and
+  // for a save "the latest asked" must be the latest WRITTEN: a value saved
+  // twice whose first request reached the appliance last would leave the
+  // appliance holding the first and the page the second. So the page's
+  // settings requests -- its read and each save -- go one after another,
+  // each sent once the one asked before it has been answered: the order
+  // asked is the order written and the order answered.
+  let settingsTurn = Promise.resolve();
+
+  //: `ask` sent once every settings request asked before it has its answer.
+  function inTurn(ask) {
+    const mine = settingsTurn.then(ask, ask);
+    settingsTurn = mine.then(() => null, () => null);
+    return mine;
+  }
+
+  //: The row the page draws for the setting `name` now, if it draws one.
+  function settingRowOf(name) {
+    return [...document.querySelectorAll('#settings-sections .set')]
+      .find(r => r.dataset.setting === name) || null;
+  }
+
   async function renderSettings() {
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08).
     const asked = renderAsked();
-    const data = await fetchJSON('/api/settings');
+    // THE LATEST ASKED, IN TURN (operator question 47, 2026-10-09).
+    askedLatest('settings', asked);
+    const data = await inTurn(() => fetchJSON('/api/settings'));
+    if (superseded('settings', asked)) return;
     csrfToken = data.csrf || csrfToken;
     document.getElementById('settings-caption').textContent =
       int(data.n) + ' settings you can change';
@@ -4365,6 +4504,9 @@ const Gridiron = (function () {
 
   function settingRow(s) {
     const row = el('div', 'set');
+    // WHICH SETTING IT IS, so a save finds the row as drawn when its answer
+    // lands (question 47). An attribute, never visible text.
+    row.dataset.setting = s.name;
     const key = el('div', 'set-k');
     key.appendChild(el('b', '', s.label));
     key.appendChild(el('small', '', s.why || ''));
@@ -4403,42 +4545,63 @@ const Gridiron = (function () {
     // row's line and face, redrawn from the save's answer, say when they
     // have landed -- whichever answer it was.
     const asked = renderAsked();
-    let said = row.querySelector('.set-said');
-    if (!said) { said = el('div', 'set-said'); row.appendChild(said); }
-    said.textContent = 'saving...';
+    // THE LATEST ASKED FOR ITS SETTING, SENT IN TURN, DRAWN ON ITS ROW AS IT
+    // STANDS (operator question 47, 2026-10-09). Saved twice with the first
+    // answer held, the row read "21" and "changed from 23 to 21" while the
+    // appliance held 22; and saved on the rows of an earlier visit while the
+    // page's own read was in flight, the read drew the row back to 23 over a
+    // saved 21 (measured on 451ab3d). Each save is sent in turn, a save a
+    // later one of its setting superseded draws nothing, and the answer is
+    // drawn on the row the page draws for its setting now.
+    askedLatest('setting ' + name, asked);
+    // A ROW'S LINE, on whichever row it is handed (the one tapped, or the one
+    // drawn for this setting when the answer lands).
+    const lineOf = (row) => {
+      let said = row.querySelector('.set-said');
+      if (!said) { said = el('div', 'set-said'); row.appendChild(said); }
+      return said;
+    };
+    lineOf(row).textContent = 'saving...';
+    let res = null;
+    let body = null;
     try {
-      const res = await fetch('/api/settings', {
+      res = await inTurn(() => fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json',
                    'X-Gridiron-Form': csrfToken || '' },
         body: JSON.stringify({ name: name, value: value }),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        // THE SERVER'S OWN WORDS. It refuses a model constant and says why;
-        // inventing a friendlier message here would hide which rule stopped
-        // it, and the reason is the whole point of the fence.
-        said.textContent = body.detail || 'that change was not recorded';
-      } else {
-        said.textContent = body.line || 'saved';
-        // THE FACE FOLLOWS THE SAVE (UI audit finding 5, 2026-09-05). The
-        // line said "changed from 1 to 0" while the switch still read "on";
-        // a second click said "is already 0" and it still read "on".
-        const control = row.querySelector('.set-switch, input.inp');
-        const saved = (body.value === undefined || body.value === null) ? String(value) : String(body.value);
-        if (control && control.classList.contains('set-switch')) {
-          const on = saved === '1';
-          control.textContent = on ? 'on' : 'off';
-          control.setAttribute('aria-pressed', String(on));
-        } else if (control) {
-          control.value = saved;
-        }
-        renderRecentChanges(body.recent);
-      }
+      }));
+      body = await res.json();
     } catch (err) {
-      said.textContent = 'the change did not reach the appliance';
+      res = null;
     }
-    rendered(asked, 'settings', row, 'settings-row');
+    if (superseded('setting ' + name, asked)) return;
+    const shown = settingRowOf(name) || row;
+    const said = lineOf(shown);
+    if (!res) {
+      said.textContent = 'the change did not reach the appliance';
+    } else if (!res.ok) {
+      // THE SERVER'S OWN WORDS. It refuses a model constant and says why;
+      // inventing a friendlier message here would hide which rule stopped
+      // it, and the reason is the whole point of the fence.
+      said.textContent = body.detail || 'that change was not recorded';
+    } else {
+      said.textContent = body.line || 'saved';
+      // THE FACE FOLLOWS THE SAVE (UI audit finding 5, 2026-09-05). The
+      // line said "changed from 1 to 0" while the switch still read "on";
+      // a second click said "is already 0" and it still read "on".
+      const control = shown.querySelector('.set-switch, input.inp');
+      const saved = (body.value === undefined || body.value === null) ? String(value) : String(body.value);
+      if (control && control.classList.contains('set-switch')) {
+        const on = saved === '1';
+        control.textContent = on ? 'on' : 'off';
+        control.setAttribute('aria-pressed', String(on));
+      } else if (control) {
+        control.value = saved;
+      }
+      renderRecentChanges(body.recent);
+    }
+    rendered(asked, 'settings', shown, 'settings-row');
   }
 
   function renderAccess(access) {
@@ -4651,13 +4814,14 @@ const Gridiron = (function () {
   // table, because a card is a card and a table row is a row.
   // THE SETTLED CARDS ON RESULTS (S3): the same question tile the board
   // uses, in its third state -- filled with its verdict, the score beside it.
-  async function renderSettledCards() {
+  async function renderSettledCards(asked) {
     const host = document.getElementById('results-settled');
     const headingRow = document.getElementById('settled-heading-row');
     const heading = document.getElementById('settled-heading');
     if (!host) return;
     host.innerHTML = '';
     let data = null;
+    const seq = sportSeq;
     try {
       const picked = document.getElementById('week-picker');
       const chosen = picked && picked.value ? JSON.parse(picked.value) : null;
@@ -4665,10 +4829,15 @@ const Gridiron = (function () {
         ? '?season=' + chosen.season + '&week=' + chosen.week : '';
       data = await fetchJSON(withSport('/api/week' + qs));
     } catch (err) {
+      // A TABLE A LATER ONE SUPERSEDED DRAWS NOTHING HERE EITHER (operator
+      // question 47, 2026-10-09): not even its failure, over the later
+      // table's tiles.
+      if (stale(seq) || superseded('results', asked)) return;
       host.hidden = true;
       if (headingRow) headingRow.hidden = true;
       return;
     }
+    if (stale(seq) || superseded('results', asked)) return;
     const today = (data && data.today) || {};
     const board = (data && data.board) || {};
     const labels = board.labels || {};
@@ -4706,21 +4875,35 @@ const Gridiron = (function () {
     // ITS COUNT, TAKEN BEFORE IT ASKS (operator question 5, 2026-10-08): a
     // filter's table is told from the one asked before it by this alone.
     const asked = renderAsked();
-    const data = await fetchJSON(withSport('/api/history?' + historyQuery()));
-    if (stale(seq)) return;
+    // THE LATEST ASKED, AND WHAT IT ASKED (operator question 47, 2026-10-09).
+    // A table draws only if no later one was asked since: a search typed,
+    // then the reasoning pass chosen, drew the search's late answer -- 51
+    // rows, 50 of them the model's chances -- under "reasoning pass". And
+    // what the table says about itself is read from its own request, never
+    // from a control when its answer lands: the Forecaster column was drawn
+    // by the select's value then, so one forecaster's rows could stand with
+    // it, or both forecasters' without it (measured on 451ab3d).
+    askedLatest('results', asked);
+    const query = historyQuery();
+    const own = new URLSearchParams(query);
+    const offset = Number(own.get('offset')) || 0;
+    const data = await fetchJSON(withSport('/api/history?' + query));
+    if (stale(seq) || superseded('results', asked)) return;
     requireN(data, 'history');
+    await renderSettledCards(asked);
+    if (stale(seq) || superseded('results', asked)) return;
+    await renderCalendar(asked, own.get('day'));
+    if (stale(seq) || superseded('results', asked)) return;
     state.historyTotal = data.n;
     // PLACED, NOT COMPOSED. This glued " on " onto a date, which is the
     // renderer writing a sentence -- the thing `check_js_composes_no_prose`
     // exists to refuse. The server says which day it filtered to.
     document.getElementById('history-caption').textContent = data.caption || '';
-    await renderSettledCards();
-    await renderCalendar();
 
     // The forecaster column appears ONLY when both are being shown. A column
-    // that always says "statistical" is a column of noise.
-    const predictorFilter = document.getElementById('history-predictor').value;
-    const showForecaster = !predictorFilter;
+    // that always says "statistical" is a column of noise. BOTH, AS THIS
+    // TABLE ASKED (question 47): its own request named no one forecaster.
+    const showForecaster = !own.get('predictor');
 
     const columns = [{ label: 'Prediction', cls: 'wide' }, { label: 'Date' },
                      { label: 'Week' }, { label: 'Model' },
@@ -4755,12 +4938,13 @@ const Gridiron = (function () {
         return row;
       }));
 
-    const from = data.n ? state.historyOffset + 1 : 0;
+    // ITS OWN PAGE OF ROWS (question 47): the offset it asked for.
+    const from = data.n ? offset + 1 : 0;
     document.getElementById('history-range').textContent =
-      from + '–' + (state.historyOffset + data.returned) + ' of ' + int(data.n);
-    document.getElementById('history-prev').disabled = state.historyOffset === 0;
+      from + '–' + (offset + data.returned) + ' of ' + int(data.n);
+    document.getElementById('history-prev').disabled = offset === 0;
     document.getElementById('history-next').disabled =
-      state.historyOffset + data.returned >= data.n;
+      offset + data.returned >= data.n;
     // LANDED (operator question 5, 2026-10-08): the table, its settled tiles
     // and its calendar drawn.
     rendered(asked, 'results', 'history-table');

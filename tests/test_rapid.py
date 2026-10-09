@@ -173,10 +173,21 @@ def test_two_chips_in_quick_succession_leave_the_second_one(page):
     # inside the page, the second chip's let go first and read, then the
     # first chip's: the late answer always lands last, the case this is
     # about.
+    #
+    # ONE RENDER LANDS, THE LATER CHIP'S (operator question 47, 2026-10-09):
+    # a render a later one superseded draws nothing and says nothing, so the
+    # first chip's late answer is dropped where it was drawn and said landed
+    # until then (this waited for two renders). The tiles are counted as they
+    # are drawn, inside the page: each render writes them in one task, so a
+    # drawing is one batch of the panel's mutations, read before the late
+    # answer counts as read.
     watch_the_answers(page)
     page.evaluate(_HOLD_THE_SLATE, full)
+    page.evaluate("""() => { window.__tilesDrawn = 0;
+        new MutationObserver(() => { window.__tilesDrawn += 1; })
+            .observe(document.getElementById('props-tiles'), { childList: true }); }""")
     try:
-        with wait_for_the_redraw_it_starts(page, "props-tiles", count=2):
+        with wait_for_the_redraw_it_starts(page, "props-tiles"):
             page.click(f"#props-chips .chip-btn[data-key='{first}']")
             page.click(f"#props-chips .chip-btn[data-key='{second}']")
             page.wait_for_function("window.__heldSlates.length === 2", timeout=REDRAW_LIMIT_MS)
@@ -186,6 +197,8 @@ def test_two_chips_in_quick_succession_leave_the_second_one(page):
             wait_until_read(page, "/api/week?", f"sport={full}", count=2)
     finally:
         page.evaluate("() => { if (window.__unholdSlates) window.__unholdSlates(); }")
+    assert page.evaluate("window.__tilesDrawn") == 1, (
+        "the first chip's late answer, superseded by the second chip, was drawn too")
     assert page.evaluate("(document.querySelector('#props-chips .chip-btn[aria-pressed=\"true\"]') || {dataset: {}}).dataset.key") == second
     by_id = _tiles_by_id(page, full)
     shown = page.evaluate("[...document.querySelectorAll('#props-tiles .prop')].map(c => c.dataset.id)")
@@ -203,9 +216,14 @@ def test_a_double_clicked_chip_renders_each_tile_once(page):
     keys = page.evaluate("[...document.querySelectorAll('#props-chips .chip-btn')].map(b => b.dataset.key)")
     family = next(k for k in keys if k and k != "ladder")
     # BOTH RENDERS A DOUBLE CLICK ASKS FOR, SEEN TO LAND (the board merge,
-    # 2026-09-29): this waited 1.5s; the helper waits for two arrivals.
-    with wait_for_the_redraw_it_starts(page, "props-tiles", count=2):
+    # 2026-09-29): this waited 1.5s; the helper waits for two arrivals. FROM
+    # QUESTION 47 (2026-10-09) the first, superseded by the second before its
+    # answer came, draws nothing and says nothing: the wait is for the render
+    # that lands, and then for both answers to have been read.
+    watch_the_answers(page)
+    with wait_for_the_redraw_it_starts(page, "props-tiles"):
         page.dblclick(f"#props-chips .chip-btn[data-key='{family}']")
+    wait_until_read(page, "/api/week", count=2)
     ids = page.evaluate("[...document.querySelectorAll('#props-tiles .prop')].map(c => c.dataset.id)")
     assert len(ids) == len(set(ids)), "a tile is on the page twice"
     with wait_for_the_redraw_it_starts(page, "props-tiles"):

@@ -14918,8 +14918,8 @@ def plant_a_deposit_or_bonus_stored() -> Result:
                             "    return entry_check.deposit_match(body)")],
                 by_reach, ("opens a handle on the record",))
         planted("the page keeping the offer in the browser's storage", "web/app.js",
-                [("      deposit.changed = false;\n      paintDepositResult();",
-                  "      deposit.changed = false;\n"
+                [("      deposit.changed = deposit.edits !== edits;\n      paintDepositResult();",
+                  "      deposit.changed = deposit.edits !== edits;\n"
                   "      localStorage.setItem('gridiron-offer', JSON.stringify(depositBody()));\n"
                   "      paintDepositResult();")], by_reach, ("browser's storage",))
         planted("the arithmetic importing the record's driver and writing the bonus",
@@ -14966,13 +14966,13 @@ def plant_a_deposit_or_bonus_stored() -> Result:
                  ('    return {\n        "heading": "A deposit match",',
                   '    _note("deposit")\n    return {\n        "heading": "A deposit match",')],
                 by_reach, ("calls into `gridiron.tasks`",))
-        answered = "      deposit.changed = false;\n      paintDepositResult();"
+        answered = "      deposit.changed = deposit.edits !== edits;\n      paintDepositResult();"
         planted("the page keeping the offer through a helper of its own", "web/app.js",
                 [("  async function checkDeposit(ec) {",
                   "  function keepOffer(body) {\n    try { localStorage.setItem('gridiron.offer',"
                   " JSON.stringify(body)); } catch (e) { }\n  }\n\n"
                   "  async function checkDeposit(ec) {"),
-                 (answered, "      deposit.changed = false;\n      keepOffer(depositBody());\n"
+                 (answered, "      deposit.changed = deposit.edits !== edits;\n      keepOffer(depositBody());\n"
                             "      paintDepositResult();")],
                 by_reach, ("`keepOffer`, which `checkDeposit` names, keeps something in the "
                            "browser's storage",))
@@ -14989,17 +14989,21 @@ def plant_a_deposit_or_bonus_stored() -> Result:
                 [("  function prefGet(key, fallback) {",
                   "  const keepIt = (b) => { try { sessionStorage.setItem('o', b); } catch (e) "
                   "{ } };\n\n  function prefGet(key, fallback) {"),
-                 (answered, "      deposit.changed = false;\n      keepIt(`${deposit.bonus}`);\n"
+                 (answered, "      deposit.changed = deposit.edits !== edits;\n      keepIt(`${deposit.bonus}`);\n"
                             "      paintDepositResult();")],
                 by_reach, ("`keepIt`, which `checkDeposit` names, keeps something",))
         planted("a helper handed on as a value, keeping the answer", "web/app.js",
                 [("  async function checkDeposit(ec) {",
                   "  function keepAnswer(a) { try { localStorage.setItem('a', JSON.stringify(a));"
                   " } catch (e) { } return a; }\n\n  async function checkDeposit(ec) {"),
-                 ("      const answer = await res.json();\n      if (stale(seq)) return;\n"
+                 # RE-POINTED (operator question 47, 2026-10-09): the answer's
+                 # check asks whether a later check superseded it, too.
+                 ("      const answer = await res.json();\n"
+                  "      if (stale(seq) || superseded('deposit-match', asked)) return;\n"
                   "      deposit.result",
                   "      const answer = await res.json().then(keepAnswer);\n"
-                  "      if (stale(seq)) return;\n      deposit.result")],
+                  "      if (stale(seq) || superseded('deposit-match', asked)) return;\n"
+                  "      deposit.result")],
                 by_reach, ("`keepAnswer`, which `checkDeposit` names, keeps something",))
         planted("another function of the page keeping the typed bonus", "web/app.js",
                 [("    let sortBy = prefGet('props.sort', 'edge');",
@@ -16469,6 +16473,209 @@ def plant_a_signal_before_its_render_lands() -> Result:
     }
     return _render_signal_forms_caught("a signal said before its render lands",
                                        forms, "dispatched at once")
+
+
+LAW_LATEST_ANSWER = ("A PART OF THE PAGE DRAWS ONLY THE ANSWER TO THE LATEST THING ASKED "
+                     "OF IT, UNDER WHAT IT WAS ASKED FOR (operator question 47)")
+
+
+def plant_a_late_answer_drawn_under_a_later_choice() -> Result:
+    """THE LATE ANSWER DRAWN UNDER THE LATER CHOICE (operator question 47,
+    found by question 5's prover; built 2026-10-09 without a new ruling:
+    step A's and question 37's rule that a number is drawn under the words of
+    what it is). On d7a16c2 (451ab3d's code), measured with the earlier answer
+    held inside the page and released after the later one had landed, Results
+    drew a search's 51 rows, 50 of them the statistical model's chances, under
+    "reasoning pass" with no Forecaster column, captioned "51 predictions";
+    and the tier table, the Record page's weekly strip, the Props page, the
+    entry check, the deposit match and Settings each drew the earlier answer
+    under the later choice. Each form below is one part of the page as it
+    stood there, or one rule of the fix taken out: drawing an answer a later
+    one superseded, never saying it is the latest asked, reading what an
+    answer is from a control when it lands (the Forecaster column, the page of
+    rows, the calendar's day, the chip), a part handed no count, a failure
+    drawn over a later answer, an answer about a form changed since it was
+    asked, a setting sent out of turn, and a new render of a choice in no
+    register -- each named by `audit.latest_answer_faults`; the gate's own
+    call refuses the first on a copy of the package, and its step 2 makes the
+    call. `tests/test_the_latest_answer.py` holds the page to the same in
+    Chromium, each case held and released in the adverse order. ON d7a16c2
+    ALL ESCAPE: nothing read which answer a part of the page drew. AND FROM
+    ITS PROVER (2026-10-09), four forms escaping on the change as handed too:
+    My day, which the slate and the Props page both draw, drawn by a slate a
+    later page superseded or never said latest asked on the Props page; and
+    the page's own fill of the deposit match's or the entry's payout, not
+    counted as a change."""
+    import ast as _ast
+
+    violation = "a late answer drawn under a later choice"
+    guard = "audit.latest_answer_faults"
+    scan = getattr(audit, "latest_answer_faults", None)
+    if scan is None:
+        return Result(LAW_LATEST_ANSWER, violation, guard, False,
+                      "NOT CAUGHT - nothing reads which answer a part of the page draws: a "
+                      "search's late answer drew 51 rows, 50 of them the statistical model's "
+                      "chances, under \"reasoning pass\" with no Forecaster column")
+    routes = "  const ROUTES = {\n"
+    about = ("  async function renderAbout() {\n"
+             "    const data = await fetchJSON(withSport('/api/about?' + historyQuery()));\n"
+             "    document.getElementById('view-about').textContent = data.colophon || '';\n"
+             "  }\n\n")
+    forms = {
+        "Results drawing a superseded answer": (
+            "    if (stale(seq) || superseded('results', asked)) return;\n"
+            "    requireN(data, 'history');",
+            "    if (stale(seq)) return;\n    requireN(data, 'history');",
+            ("`renderResults` draws an answer without first asking",)),
+        "Results never the latest asked": (
+            "    askedLatest('results', asked);\n", "",
+            ("`renderResults` never says it is the latest asked",)),
+        "the Forecaster column read from the select when the answer lands": (
+            "    const showForecaster = !own.get('predictor');\n",
+            "    const showForecaster = !document.getElementById('history-predictor').value;\n",
+            ("`renderResults` reads a control -- "
+             "`getElementById('history-predictor').value`",)),
+        "the page of rows read from the choice when the answer lands": (
+            "    const from = data.n ? offset + 1 : 0;\n",
+            "    const from = data.n ? state.historyOffset + 1 : 0;\n",
+            ("`renderResults` reads a control -- `state.historyOffset`",)),
+        "the calendar's day read from the choice when its answer lands": (
+            "      if (d.day === day) cell.classList.add('sel');\n",
+            "      if (d.day === state.calendarDay) cell.classList.add('sel');\n",
+            ("`renderCalendar` reads a control -- `state.calendarDay`",)),
+        "the tier table drawing a superseded answer": (
+            "    if (stale(seq) || superseded('tier-table', asked)) return;\n",
+            "    if (stale(seq)) return;\n",
+            ("`refreshTierTable` draws an answer without first asking",)),
+        "the tier table never the latest asked": (
+            "    askedLatest('tier-table', asked);\n", "",
+            ("`refreshTierTable` never says it is the latest asked",)),
+        "the weekly strip drawing a superseded answer": (
+            "    if (stale(seq) || superseded('record', asked)) return;\n"
+            "    document.getElementById('overtime-caption')",
+            "    if (stale(seq)) return;\n    document.getElementById('overtime-caption')",
+            ("`renderOverTime` draws an answer without first asking",)),
+        "the weekly strip handed no count": (
+            "    parts.push(renderOverTime(market, predictor, asked).catch(showError));\n",
+            "    parts.push(renderOverTime(market, predictor).catch(showError));\n",
+            ("`renderRecord` draws `renderOverTime` without handing it its count",)),
+        "the Record page saying it landed when a later one was asked": (
+            "    if (stale(seq) || superseded('record', asked)) return;\n"
+            "    rendered(asked, 'record', 'view-record');\n",
+            "    if (stale(seq)) return;\n    rendered(asked, 'record', 'view-record');\n",
+            ("`renderRecord` draws an answer without first asking",)),
+        "the Props page reading its chip when its answer lands": (
+            "    if (stale(seq) || superseded('props', asked)) return;\n"
+            "    updating(host, 'props-updating', false);\n",
+            "    if (stale(seq) || superseded('props', asked)) return;\n"
+            "    active = state.propFamily || '';\n    updating(host, 'props-updating', false);\n",
+            ("`renderProps` reads a control -- `state.propFamily`",)),
+        "the Props page's failure drawn over a later answer": (
+            "      if (!stale(seq) && !superseded('props', asked)) "
+            "updating(host, 'props-updating', false);\n",
+            "      if (!stale(seq)) updating(host, 'props-updating', false);\n",
+            ("`renderProps` draws its failure",)),
+        "the entry check drawing a superseded answer": (
+            "      if (stale(seq) || superseded('entry-check', asked)) return;\n",
+            "      if (stale(seq)) return;\n",
+            ("`checkEntry` draws an answer without first asking",)),
+        "the entry check's answer drawn about an entry changed since": (
+            "      entry.changed = entry.edits !== edits;\n", "      entry.changed = false;\n",
+            ("`checkEntry` draws its answer without putting it aside",)),
+        "a change of the entry not counted": (
+            "    entry.edits += 1;\n", "",
+            ("`entryChanged` does not count a change made to the entry",)),
+        "the deposit match drawing a superseded answer": (
+            "      if (stale(seq) || superseded('deposit-match', asked)) return;\n",
+            "      if (stale(seq)) return;\n",
+            ("`checkDeposit` draws an answer without first asking",)),
+        "the deposit match's answer drawn about an offer changed since": (
+            "      deposit.changed = deposit.edits !== edits;\n", "      deposit.changed = false;\n",
+            ("`checkDeposit` draws its answer without putting it aside",)),
+        "the settings read drawing a superseded answer": (
+            "    if (superseded('settings', asked)) return;\n", "",
+            ("`renderSettings` draws an answer without first asking",)),
+        "the settings read out of turn": (
+            "    const data = await inTurn(() => fetchJSON('/api/settings'));\n",
+            "    const data = await fetchJSON('/api/settings');\n",
+            ("`renderSettings` sends 1 settings request(s) out of turn",)),
+        "a setting saved out of turn": (
+            "      res = await inTurn(() => fetch('/api/settings', {\n",
+            "      res = await Promise.resolve().then(() => fetch('/api/settings', {\n",
+            ("`saveSetting` sends 1 settings request(s) out of turn",)),
+        "a setting's superseded save drawn": (
+            "    if (superseded('setting ' + name, asked)) return;\n", "",
+            ("`saveSetting` draws an answer without first asking",)),
+        # ITS PROVER'S FORMS (2026-10-09), each escaping on the change as
+        # handed, whose scan read neither: My day, which the slate and the
+        # Props page both draw -- the Props page's late answer drew its week's
+        # "1 taken" under the week chosen on Games after it -- and the page's
+        # own fill of a form's payout, uncounted -- the deposit match's 3x
+        # answer beside the 5x filled in, in one page.
+        "My day drawn by a slate a later page superseded": (
+            "    if (!superseded('my-day', asked)) renderMyDay(board);\n\n"
+            "    const today = data.today || null;",
+            "    renderMyDay(board);\n\n    const today = data.today || null;",
+            ("`renderGames` draws `renderMyDay` without asking",)),
+        "My day never the latest asked on the Props page": (
+            "    askedLatest('my-day', asked);\n    let active = state.propFamily || '';",
+            "    let active = state.propFamily || '';",
+            ("`renderProps` draws `renderMyDay`, a part another page draws too, without first",)),
+        "the deposit match's payout filled in again, uncounted": (
+            "    if (JSON.stringify([deposit.payout, deposit.offered, deposit.confirmed]) !== was)"
+            " depositChanged(false);\n", "",
+            ("`fillDepositPayout` fills the deposit's payout in again without counting",)),
+        "the entry's payout filled in again, uncounted": (
+            "    if (JSON.stringify([entry.payout, entry.offered, entry.confirmed]) !== was)"
+            " entryChanged(false);\n", "",
+            ("`fillEntryPayout` fills the entry's payout in again without counting",)),
+        "a new render of a choice in no register": (
+            routes, about + routes,
+            ("`renderAbout` asks for an answer and is in no register",)),
+    }
+    web = config.PACKAGE_ROOT / "web"
+    js = (web / "app.js").read_text(encoding="utf-8")
+    shipped = scan(js)
+    if shipped:
+        return Result(LAW_LATEST_ANSWER, violation, guard, False,
+                      "the shipped page already fails; fix that before trusting this "
+                      "planting: " + shipped[0])
+    missed, first = [], ""
+    for name, (anchor, planted, wanted) in forms.items():
+        if js.count(anchor) != 1:
+            missed.append(f"{name}: its anchor is not in app.js once; re-point it")
+            continue
+        faults = scan(js.replace(anchor, planted))
+        absent = [w for w in wanted if not any(w in f for f in faults)]
+        if absent:
+            missed.append(f"{name}: {absent} not named in {faults!r}")
+        first = first or next((f for f in faults if wanted[0] in f), "")
+    check = getattr(audit, "check_every_part_draws_its_latest_answer")
+    gate_form = "Results drawing a superseded answer"
+    anchor, planted, wanted = forms[gate_form]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = Path(tmp) / "gridiron"
+        shutil.copytree(web, root / "web", ignore=shutil.ignore_patterns("fonts"))
+        (root / "web" / "app.js").write_text(js.replace(anchor, planted), encoding="utf-8")
+        try:
+            check(root)
+            missed.append(f"the gate's own call passed {gate_form}")
+        except audit.LawViolation as refused:
+            if wanted[0] not in str(refused):
+                missed.append(f"the gate's own call refused {gate_form} without naming "
+                              f"it: {refused}")
+    gate = Path(audit.__file__).resolve().parents[1] / "tools" / "verify.py"
+    step = next((node for node in _ast.parse(gate.read_text(encoding="utf-8")).body
+                 if isinstance(node, _ast.FunctionDef) and node.name == "step_2_guards"), None)
+    if step is None or not any(
+            isinstance(node, _ast.Attribute) and node.attr == check.__name__
+            and isinstance(node.value, _ast.Name) and node.value.id == "audit"
+            for node in _ast.walk(step)):
+        missed.append(f"the gate's step 2 does not call `audit.{check.__name__}`")
+    if missed:
+        return Result(LAW_LATEST_ANSWER, violation, guard, False,
+                      "NOT CAUGHT - " + " | ".join(missed))
+    return Result(LAW_LATEST_ANSWER, violation, guard, True, first[:400])
 
 
 def plant_a_deleted_tap() -> Result:
@@ -31879,6 +32086,10 @@ def main() -> int:
     results.append(plant_a_fixed_wait_coming_back())
     results.append(plant_a_render_that_never_says_it_landed())
     results.append(plant_a_signal_before_its_render_lands())
+    # OPERATOR QUESTION 47 (found by question 5's prover; built 2026-10-09):
+    # a part of the page draws only the answer to the latest thing asked of
+    # it, under what that answer was asked for.
+    results.append(plant_a_late_answer_drawn_under_a_later_choice())
     results.append(plant_a_deleted_tap())
     # SCHEMA RULING 4 (2026-09-24): the eight missing snapshot ids were a
     # deletion by hand, and the table now refuses the statement that made

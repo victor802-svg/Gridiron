@@ -539,6 +539,10 @@ def test_every_new_guard_is_in_the_planted_harness():
         "plant_a_fixed_wait_coming_back",
         "plant_a_render_that_never_says_it_landed",
         "plant_a_signal_before_its_render_lands",
+        # OPERATOR QUESTION 47 (built 2026-10-09): a part of the page draws
+        # only the answer to the latest thing asked of it, under what that
+        # answer was asked for.
+        "plant_a_late_answer_drawn_under_a_later_choice",
         # SCHEMA RULINGS 1 AND 2 (built 2026-09-25): the schema matches the
         # release, the register cannot outlive what it records, and a
         # rebuild is verified or not done.

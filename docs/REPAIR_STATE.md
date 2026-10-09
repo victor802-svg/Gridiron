@@ -12,6 +12,97 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q47 BUILT (2026-10-09 ~00:00-01:15Z, on d7a16c2 -- Q5 released as
+  451ab3d; question 47 joined the queue FIRST, before Q10; UNCOMMITTED;
+  FOLLOWUPS "A part of the page draws only the answer to the latest thing
+  asked of it ..."; CLAUDE.md row THE LATEST ASKED; "Rulings taken in your
+  absence (2026-10-09, Q47)" below):** no new ruling -- step A's and question
+  37's rule that a number is drawn under the words of what it is. A PART OF
+  THE PAGE DRAWS ONLY THE ANSWER TO THE LATEST THING ASKED OF IT, UNDER WHAT
+  THAT ANSWER WAS ASKED FOR. MEASURED FIRST on d7a16c2, every part that
+  draws an answer to a filter or a choice, the earlier answer held inside the
+  page and released after the later one had landed (never a sleep): Results
+  drew the search's 51 rows (50 the model's) under "reasoning pass", and its
+  Forecaster column from the select when the answer landed; the tier table
+  the moneyline's under "total" and the reasoning pass's under the model's
+  button; the weekly strip the point spread's "8 resolved across 2 weeks"
+  under receptions' 3; the Props page week 8's 8 tiles under week 18; the
+  entry check a 3x verdict ("Costs at coin flips", 57.74%) under the form's
+  5x and an answer about a leg at 250.5 beside 300.5; the deposit match 5x
+  figures under 9x; Settings "21" while the appliance held 22, and a read
+  asked before a save drew the row back to 23 over a saved 21; the slate held
+  (`weekSeq`); the rest ask the same whatever is chosen. BUILT (app.js):
+  `askedLatest`/`superseded` -- each render of a choice marks itself the
+  latest asked for its part by question 5's count before it asks and draws
+  its answer only if nothing later was asked there (a superseded one draws
+  and says nothing); its words from its own request (Results' Forecaster
+  column, page of rows and calendar day; the Props chip and order); its parts
+  by the count it hands them; the entry check and deposit match put aside an
+  answer about a form changed since it was asked; Settings sends its requests
+  in turn (`inTurn`) and draws a save on the row as it stands. THE GATE:
+  `audit.check_every_part_draws_its_latest_answer` (step 2,
+  `latest_answer_faults`; 42 faults on d7a16c2's page, none here); the
+  planting `plant_a_late_answer_drawn_under_a_later_choice` (22 forms)
+  ESCAPES on d7a16c2 (`git archive`, this plant.py) and is CAUGHT here;
+  `test_the_latest_answer.py` (26, all failing on d7a16c2: 12 in Chromium on
+  held-and-released answers in the adverse order, 14 of the script) and the
+  rebuilt two-chip test (failing there: the tiles drawn twice). RENDERED
+  d7a16c2 against this tree on the browser tests' world (Games, a row open,
+  Props, the Kalshi ladder, Record, Results, Settings at 1300 and 390): 14
+  pairs, 0 pixels differ, the same words (one pair re-captured: an open
+  Games row's tab band at 390 differed by 32 pixels on the first capture and
+  0 on the next, its words the same) -- Results read at both widths. THE
+  SUITE (detached, its first run): 3,302 passed, 4 skipped, 0 failed, in
+  1,650 s; `plant.py` whole 464/464 caught in 448 s (the planting about 2 s;
+  inside the harness's 600 s, short of 480). One edit (three one-line
+  changes to `renderCalendar`) was made by a short script splice rather than
+  the Edit tool, before that was caught; read back, its bytes are the ones
+  intended (app.js's working copy is now LF, as the index is). No copy of
+  the record made (nothing reads it; no schema change). No
+  question put; nothing joins the queue (FOLLOWUPS, "FOUND, NOT BUILT").
+  **Next: its prover; then Q10, its own commit; one gate for both.**
+  **Q47 PROVED (2026-10-09 ~01:20-03:00Z, its prover, alone in the
+  worktree; COMMITTED LOCALLY on `repair` on d7a16c2 as one commit, not
+  pushed, for the gate with Q10; FOLLOWUPS "A part of the page draws only the
+  answer to the latest thing asked of it ...", THE PROVER; "Rulings taken in
+  your absence (2026-10-09, Q47's prover)" below):** TWO DEFECTS OF THE
+  CHANGE FOUND AND FIXED, each failing on the change as handed and on
+  d7a16c2 in Chromium (held-and-released answers, the adverse order, never a
+  sleep), tested and planted (escaping on d7a16c2 and on the change as
+  handed, caught here). (1) A FILL IS A CHANGE: the page's own refill of a
+  payout it filled in (`fillEntryPayout`, `fillDepositPayout`), on every
+  redraw of the Props page from a newer row kept for the app, type and size,
+  unticked the box and counted no change, so the answer already drawn stood
+  beside the new payout as if about it -- the build had left it to FOLLOWUPS
+  as "nothing is worked out from it", true of the next answer only. In ONE
+  page: the deposit match worked out at the 3x step 1 last kept, 5x typed and
+  checked in step 1 above it, the page drawn again -- "Costs at coin flips
+  ... -0.25 per unit of bonus", "(3x)", 57.74% beside a payout of 5,
+  unticked; the entry check's 3x verdict beside a 5x kept on another device.
+  Each fill now counts a change where it changes the payout, the offer or
+  the tick, and the answer is put aside (`audit.LATEST_ASKED_FILLS`). (2) MY
+  DAY HAS TWO PAGES: the slate and the Props page each draw it under the
+  header, `weekSeq` and the Props page's count each telling it only from
+  their own; the Props page opened for a week holding a taken pick, its
+  answer held, Games opened and a week with none chosen, the Props page's
+  late answer drew "1 taken" over "Nothing taken on this slate yet."; each
+  now says it is the latest asked for 'my-day' and draws it only if still
+  so (`audit.LATEST_ASKED_SHARED`). Tests: 7 more in
+  `test_the_latest_answer.py` (33; 8 fail on the change as handed, 33 on
+  d7a16c2); the planting 26 forms, its prover's four escaping on the change's
+  own scan, caught here in about 2 s. THE BROWSER MODULES CHANGED
+  (`test_the_latest_answer.py`, `test_rapid.py`, `test_deposit_match.py`) 5
+  of 5, twice (the second on the final code), all passing. `plant.py` whole
+  464/464 caught in 444 s (its first run named question 5's "the slate
+  before its answer" NOT CAUGHT: the first placing of My day's line split its
+  anchor; moved below the stale-rows comment, behaviour the same). THE SUITE
+  (detached): 3,309 passed, 4 skipped, 0 failed, in 1,659 s. RENDERED
+  d7a16c2 against this tree at 1300 and 390 (14 pairs, 0 pixels differ, the
+  same words; an open Games row at 390 re-captured, its 32-pixel tab-edge
+  noise seen on d7a16c2 against itself too) and Results read at both widths.
+  No copy of the record made. Nothing else of
+  the build changed; nothing joins the queue (FOLLOWUPS, "FOUND BY ITS
+  PROVER, NOT BUILT"). **Next: Q10, its own commit; one gate for both.**
   **Q5 PROVED (2026-10-08 ~20:40-23:15Z, its prover, alone in the worktree;
   COMMITTED LOCALLY on `repair` on 56d65a4 as one commit, not pushed, for
   the gate; FOLLOWUPS "The page says when a render has landed ...", THE
@@ -3573,7 +3664,77 @@ depend on the answer.
     the statistical model's chances, under "reasoning pass" with no
     Forecaster column. Building: a render draws only the answer to the
     latest thing asked for its view (Q5's render count), its words read
-    from its own request; every view measured for the same gap.
+    from its own request; every view measured for the same gap. **BUILT
+    2026-10-09 (Q47 BUILT, START HERE; readings under "Rulings taken in your
+    absence (2026-10-09, Q47)"), uncommitted: every part of the page that
+    draws an answer to a filter or a choice measured on d7a16c2 -- Results,
+    the tier table, the weekly strip, the Props page, the entry check, the
+    deposit match and Settings each drew the earlier answer under the later
+    choice; the slate held -- and each closed the same way.** **PROVED THE
+    SAME DAY (Q47 PROVED, START HERE): two defects of the change found and
+    fixed -- the page's own refill of a payout counted no change (the deposit
+    match's 3x answer beside the 5x filled in, in one page), and My day, which
+    the slate and the Props page both draw, was drawn by a late Props page
+    under the week chosen on Games after it; one local commit for its gate
+    with Q10.**
+
+## Rulings taken in your absence (2026-10-09, Q47's prover)
+
+Question 47's own rule and its build's readings, applied to what the build
+left; no new ruling, none touching a law, each reversible in a line
+(FOLLOWUPS, "A part of the page draws only the answer ...", THE PROVER).
+- **A FILL IS A CHANGE** (the build's reading (d), "an answer about a form
+  changed since it was asked is put aside"): the page's own refill of a
+  payout it filled in changes the form as much as a keystroke does -- the
+  payout, the offer and the tick are what the next check sends -- so where a
+  fill changes any of them it counts as a change and the answer drawn is put
+  aside. The build's "nothing is worked out from it" held for the next
+  answer, not the one already on screen. Reversal: the two `was` lines and
+  their `...Changed(false)` in `fillEntryPayout` and `fillDepositPayout`.
+- **"ITS VIEW" FOR A PART TWO PAGES DRAW** (the build's reading (a), part by
+  part): My day is one part whichever page draws it, so the latest asked for
+  it is the latest of either page's renders, and neither draws it after a
+  later one asked; the rest of each page is unchanged. Reversal: the two
+  `askedLatest('my-day', asked)` and the two guards on `renderMyDay`.
+- **QUEUED NOTHING**: both are this question's own finding in parts the build
+  measured (the entry check and the deposit match) or drew (My day, drawn by
+  the slate and the Props page), so they were fixed here, not queued; the
+  three found and not built go to FOLLOWUPS under the queue rule.
+
+## Rulings taken in your absence (2026-10-09, Q47)
+
+Question 47, built without a new ruling under step A's and question 37's
+rule that a number is drawn under the words of what it is, and question 5's
+readings; each reading below is the conservative one, reversible in a line,
+none touching a law (FOLLOWUPS, "A part of the page draws only the answer to
+the latest thing asked of it ...", READINGS TAKEN).
+- **"THE LATEST REQUEST IT ASKED FOR ITS VIEW" IS READ PART BY PART**: the
+  latest asked for the thing a render draws -- Results' table, the tier
+  table, the Record page, the Props page, the entry check's answer, the
+  deposit match's, Settings' read, one setting's save -- so two parts of one
+  view (the tier table and the weekly strip) never supersede each other.
+  Reversal: the part names handed to `askedLatest` and `superseded`.
+- **A SUPERSEDED RENDER DRAWS NOTHING AND SAYS NOTHING** (question 5's
+  reading (a): "never a superseded render"): a test that waited for two
+  renders of one part (`test_rapid.py`'s two chips, a double-clicked chip)
+  waits for the one that lands.
+- **"ITS OWN REQUEST"** covers what a render says about itself and what it
+  decides from a control: read before it asks (Results' Forecaster column,
+  its page of rows and its calendar's day; the Props page's chip and order).
+  The caption is the server's sentence about the answer, as it was.
+- **AN ANSWER ABOUT A FORM CHANGED SINCE IT WAS ASKED IS PUT ASIDE** (the
+  entry check, the deposit match), in the panel's own words ("Changed since
+  ..."), as an earlier answer already was when the form changed after it
+  landed; never drawn as about the form on screen.
+- **FOR A WRITE, THE LATEST ASKED MUST BE THE LATEST WRITTEN**: Settings'
+  read and saves are sent in turn, and a save is drawn on the row the page
+  draws for its setting when its answer lands. Drawing only the latest asked
+  without the turn would show the second of two saves while the appliance
+  held the first whenever the first reached it last. The Props page's payout
+  save is read back through `renderProps` (the latest asked) and left as it
+  is.
+- **THE SLATE KEEPS ITS OWN RULE** (`weekSeq`, 2026-09-05), held by
+  `render_guard_faults`, and is exempt by name in the new register.
 
 ## Rulings taken in your absence (2026-10-08, Q5's prover)
 

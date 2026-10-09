@@ -746,6 +746,12 @@ def step_2_guards() -> bool:
         # tests wait on that in place of a duration.
         ("every render says when it has landed (question 5)",
          audit.check_every_render_says_it_landed),
+        # OPERATOR QUESTION 47 (found by question 5's prover; built
+        # 2026-10-09): a part of the page draws only the answer to the latest
+        # thing asked of it, under what that answer was asked for -- Results
+        # drew a search's late 51 rows, 50 the model's, under "reasoning pass".
+        ("every part draws its latest answer (question 47)",
+         audit.check_every_part_draws_its_latest_answer),
         ("the health panel speaks in words",
          lambda: audit.check_health_speaks_plain(_record_conn())),
         ("the reasoning pass runs on game markets only",

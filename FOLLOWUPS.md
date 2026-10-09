@@ -17512,7 +17512,359 @@ signal and the payout's refusal draw nothing new. `plant.py` WHOLE
 and 1,620 s (3,269 as handed: the seven tests above).
 `audit.prose_reaching_the_raw_side()` []. No copy of the record was made:
 nothing here reads it, and no schema changes.
- *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
+
+## A part of the page draws only the answer to the latest thing asked of it, under what that answer was asked for -- built 2026-10-09 *(operator question 47, found by question 5's prover, 2026-10-08, docs/REPAIR_STATE.md question 47; it joined the queue FIRST, before Q10, under the queue rule as amended on 30 September -- "anything that could show the operator a wrong number on a pick ... joins the queue first"; built WITHOUT A NEW RULING, settled by step A's and question 37's rule that a number is drawn under the words of what it is; built on d7a16c2 -- Q5 released as 451ab3d; UNCOMMITTED; PROVED 2026-10-09 by its prover, two defects of the change fixed, and committed locally as one commit for the gate with Q10 -- THE PROVER, at the end of this section)*
+
+Q47 BUILT. A part of the page asked twice drew whichever answer came back
+last, and read what it said about itself from the controls when that answer
+landed. Each part that draws an answer to a filter or a choice now marks
+itself the latest asked for its part before it asks (question 5's count is
+the order), draws its answer only if nothing later was asked there since
+(one superseded draws nothing and says nothing), and reads its words from its
+own request; an answer about a form the operator types is put aside if the
+form changed since it was asked; and Settings sends its requests in turn, so
+the latest asked is the latest written.
+
+### MEASURED FIRST, ON d7a16c2 (451ab3d's code) *(scratchpad `q47q10\measure.py` -> `measure_head.json`, `measure_head_over_time_two_markets_settings_read_held_across_a_save.json`; the browser tests' own synthetic world, `q47q10\world.db`, copied for each run; the tree's app on a free loopback port, a dummy token, never 8848, never the record)*
+
+Every part that draws an answer to a filter or a choice, asked twice, the
+EARLIER answer held inside the page (its own `fetch`, wrapped: before it is
+sent, or for a write after the appliance has answered) and released only
+after the later one had landed -- never a sleep:
+- **Results, the finding**: a search ("a") typed, its answer held; the
+  reasoning pass chosen, its table landed (1 row, "1 prediction", no
+  Forecaster column); the search's answer released: **51 rows** (the server's
+  q=a answer, both forecasters, 50 of them the statistical model's), "51
+  predictions", "1-51 of 51", under the select's "reasoning pass", no
+  Forecaster column.
+- **Results, the Forecaster column**: the reasoning pass's table asked and
+  held; the select set back to both forecasters without asking (no event);
+  released: the Forecaster column drawn over the reasoning pass's one row --
+  read from the select when the answer landed, not from the table's request.
+- **The tier table, a market**: the moneyline's table held, the total's
+  landed, the moneyline's released: "-- moneyline, statistical · 7 settled"
+  and its bands under the select's "total". **A forecaster**: the reasoning
+  pass's held, the model's landed, the reasoning pass's released: "-- point
+  spread, LLM · 0 settled" under the model's pressed button. The caption named
+  what its numbers were; the controls named another choice.
+- **The Record page's weekly strip**: from the total, the point spread chosen
+  (its strip held), then receptions (landed: "3 resolved across 2 weeks"
+  under "receptions, statistical · 3 resolved"); the spread's released: **"8
+  resolved across 2 weeks"** under the chart of receptions -- the strip's own
+  caption names no market.
+- **The Props page, a week**: week 8 asked and held, week 18 asked and landed
+  (3 tiles, "Week 18, 2025"), week 8's released: its **8 tiles**, headed
+  "Week 8, 2025", under the picker's week 18. (Two chips ask the same slate
+  and each drew the chip chosen when it landed: no number moved there, as
+  question 5's prover found.)
+- **The entry check, an entry changed since it was asked**: a 2-leg entry at
+  3x checked, the answer held, leg 1's line changed from 250.5 to 300.5,
+  released: the verdict "Costs at coin flips ..." with its legs read "SEA
+  Quarterback over 250.5 passing yards" beside a form reading 300.5, nothing
+  put aside. **Two in flight**: checked at 3x (held), the app chosen again
+  (the form drawn again, its button with it), 5x confirmed and checked
+  ("Clears the bar at coin flips ...", 44.72% a leg), the first released: the
+  **3x verdict -- "Costs at coin flips", 57.74% a leg, -0.25 per unit** --
+  under the form's 5x.
+- **The deposit match**: worked out at a 5x playthrough (held), the
+  playthrough typed as 9, released: "5 units per unit of bonus", "1.25 per
+  unit of bonus", "-0.25 per unit of bonus" under the form's 9; and two in
+  flight (5x held, 9x landed: "9 units", "2.25", "-1.25"), the 5x released:
+  the 5x figures under the form's 9x.
+- **Settings, a value saved twice**: "Quiet hours start" (23) saved as 21, its
+  answer held after the appliance wrote it, saved as 22 (landed: "22",
+  "changed from 21 to 22"), the first released: **the row read "21" and
+  "Quiet hours start changed from 23 to 21." while the appliance held 22.**
+  **A read asked before a save**: Settings drawn, left, opened again with its
+  read's answer held (the appliance read before the save), 21 saved on the
+  rows still drawn (landed), the read released: the row drawn back to **23**,
+  the appliance holding 21.
+- **Held already**: the Games slate -- two weeks, the earlier held and
+  released after the later: the later stays (`weekSeq`, since 2026-09-05).
+  **No choice to hold**: the greeting (the sport's digest), the Record page's
+  prompt list (the reasoning pass's newest twenty whichever forecaster is
+  chosen; the choice only shows or hides it), its factors, versions and
+  learning panel, the worked example, a prompt opened, a tap, a combo taken,
+  a payout saved (the Props page reads the stored value back through its own
+  render) -- each asks the same thing whatever is chosen, or once.
+
+### BUILT
+
+- **`app.js`**: `latestAsked`, `askedLatest(part, count)`, `superseded(part,
+  count)`. Each render of a choice marks itself the latest asked for its part
+  with the count it took (question 5's `renderAsked`) before it asks, and
+  after every answer it waits for returns if a later render of its part was
+  asked since: `renderResults` ('results'), `refreshTierTable`
+  ('tier-table'), `renderRecord` ('record'; it says it landed only if still
+  the latest), `renderProps` ('props'), `checkEntry` ('entry-check'),
+  `checkDeposit` ('deposit-match'), `renderSettings` ('settings'),
+  `saveSetting` ('setting ' + its name). Parts drawn inside a render ask by
+  the count it hands them: `renderSettledCards(asked)` and
+  `renderCalendar(asked, day)` (Results'), `renderOverTime(market, predictor,
+  asked)` (the Record page's); a superseded table's settled tiles draw not
+  even their failure.
+- **Its own request's words**: `renderResults` reads its request once
+  (`historyQuery`, before it asks) and draws its Forecaster column from it
+  (`!own.get('predictor')`), its page of rows from its own offset, and hands
+  the calendar the day it asked for (the selected square and "show the whole
+  season" from it, a click deciding from the day drawn); `renderProps` reads
+  its chip and its order before it asks. The caption is the server's own
+  sentence about the answer (`data.caption`), as it was.
+- **An answer about a form**: `entry.edits` and `deposit.edits` count every
+  change (`entryChanged`, `depositChanged`); a check keeps the count as it
+  asks and its answer is put aside -- "Changed since the last check. Check it
+  again." / "Changed since it was last worked out. Work it out again." -- if
+  the form changed since, as an earlier answer already was.
+- **Settings, in turn**: `inTurn(ask)` sends the page's settings requests --
+  its read and each save -- one after another, each once the one asked before
+  it has its answer, so the latest asked is the latest written (drawing only
+  the latest asked would otherwise show a value the appliance does not hold
+  whenever the first of two saves reached it last); a save's answer is drawn
+  on the row the page draws for its setting when it lands (`settingRowOf`,
+  each row carrying its setting as `data-setting`, an attribute, never
+  visible text).
+- **`audit`**: `latest_answer_faults`, `check_every_part_draws_its_latest_
+  answer` (gate step 2), `LATEST_ASKED_RENDERS`, `LATEST_ASKED_PARTS`,
+  `LATEST_ASKED_FORMS`, `LATEST_ASKED_IN_TURN`, `LATEST_ASKED_EXEMPT` (twenty,
+  each dated); `tools/verify.py` step 2 calls it. Reading app.js: each render
+  of a choice marks itself the latest before it asks; after every answer it
+  waits for (the body read with it, and a failure's catch, passed over) the
+  next thing it does is return if superseded, and nothing in a catch draws
+  before asking; after its first answer it reads no control (a select's or
+  box's value, the search, the offset, the calendar's day, the chip, the
+  forecaster, a kept preference, the page's view choice); a part asks by the
+  count its render hands it; a form's answer is put aside if the form
+  changed; the settings go in turn; every function that asks for an answer is
+  registered. This tree's scan on d7a16c2's page names 42 faults.
+- **Tests changed**: `test_rapid.py`'s two chips -- a superseded render says
+  nothing now, so the wait is for the one render that lands, and the tiles
+  are counted as drawn inside the page (a MutationObserver: drawn once here,
+  twice on d7a16c2, where the first chip's late answer drew them again); a
+  double-clicked chip waits for the render that lands and both answers read.
+  `test_deposit_match.py` and `plant.py`'s deposit forms re-pointed at the
+  answer's new lines.
+
+### READINGS TAKEN *(no new ruling: the rule that a number is drawn under the words of what it is, step A's and question 37's precedent, and question 5's readings; each recorded in docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-09, Q47)")*
+
+(a) "THE LATEST REQUEST IT ASKED FOR ITS VIEW" is read part by part: the
+latest asked for the thing it draws (Results' table, the tier table, the
+Record page, the Props page, the entry check's answer, the deposit match's,
+Settings' read, one setting's save), so the tier table and the weekly strip,
+two parts of one view, never supersede each other. (b) A SUPERSEDED RENDER
+DRAWS NOTHING AND SAYS NOTHING (question 5's reading (a), "never a superseded
+render"), so a test that waited for two renders of one part waits for the one
+that lands. (c) "ITS OWN REQUEST" covers what the render says about itself and
+what it decides to draw from a control: read before it asks (the Forecaster
+column, the page of rows, the calendar's day, the chip and the order); the
+server's caption is the answer's own. (d) AN ANSWER ABOUT A FORM CHANGED
+SINCE IT WAS ASKED is put aside as an earlier answer is (the panel's own
+"Changed since ..."), never drawn as about the form on screen. (e) FOR A WRITE
+THE LATEST ASKED MUST BE THE LATEST WRITTEN: Settings' requests are sent in
+turn; a save is drawn on the row as it stands. The Props page's payout save is
+read back through `renderProps` and is left as it is.
+
+### THE PROOFS *(scratchpad `q47q10\`)*
+
+- **The tests on d7a16c2** (`head_t`: its `git archive`, this tree's
+  `test_the_latest_answer.py` and `test_rapid.py`; `new_tests_on_head.txt`):
+  all 26 of the new module fail -- the browser tests for the behaviour
+  measured (51 rows under "reasoning pass"; the Forecaster column over the
+  reasoning pass's row; the moneyline's caption under "total"; "LLM" under the
+  model's button; "8 resolved across 2 weeks" under receptions; "Week 8, 2025"
+  under week 18; the 5x figures under 9x, twice; the verdict beside 300.5; the
+  3x verdict under 5x; "21" while the appliance holds 22; "23" while it holds
+  21) and the script's tests on the scan d7a16c2 lacks -- and so does the
+  rebuilt two-chip test (the tiles drawn twice); the rest of `test_rapid.py`
+  passes there.
+- **The planting** (`escape_head.txt`): `plant_a_late_answer_drawn_under_a_
+  later_choice`, this plant.py on d7a16c2's `git archive`, ESCAPES ("nothing
+  reads which answer a part of the page draws"); here CAUGHT, 22 forms, the
+  gate's own call and step 2, in about 2 s. This tree's scan on d7a16c2's
+  page names 42 faults (`scan_on_head.txt`), on this tree's none.
+- **The same probe on this tree** (`measure_tree.json`): every late answer
+  released after the later one draws nothing -- Results stays the reasoning
+  pass's 1 row, "1 prediction", no Forecaster column (and none when the
+  select moved without asking); the tier table stays the total's and the
+  model's; the strip "3 resolved across 2 weeks"; the Props page "Week 18,
+  2025" and its 3 tiles; the entry check and the deposit match say "Changed
+  since ..." of an answer about a form changed since, and keep the later
+  answer of two in flight (5x "Clears the bar ...", 44.72%; 9x "-1.25 per unit
+  of bonus"); Settings shows 22 with "changed from 21 to 22" where the
+  appliance holds 22, and 21 after a read held across a save of 21.
+
+### THE SUITE AND plant.py WHOLE *(detached, `q47q10\run_detached.ps1` -- the shape of `c\prover\run_detached.ps1` -- a dummy non-secret token, TMP/TEMP at their defaults)*
+
+The full suite, its first run: **3,302 passed, 4 skipped, 0 failed, in 1,650
+s** (3,276 before: the 26 of `test_the_latest_answer.py`). `plant.py` whole:
+**464/464 caught in 448 s** (463 in 434 s on 451ab3d's release; this
+planting takes about 2 s), inside the harness's 600 s and short of 480, the
+limit not widened. No copy of the record was made: nothing here reads it,
+and no schema changes.
+
+### THE RENDERS *(the browser tests' own synthetic world, `q47q10\world.db`, copied for each tree; served the test server's way on a free loopback port with each tree's app and a dummy token, never 8848; Chromium at 1300 and 390, one device pixel to one, each view captured once the page had no request in flight and nothing arriving, dimmed or moving for 30 frames; `q47q10\render.py`, `compare.py` -> `compare.txt`, `render\head_*`, `render\tree_*`)*
+
+Games, a row open, Props, the Kalshi ladder, Record, Results and Settings, at
+1300 and 390, d7a16c2 against this tree: 14 pairs, 0 pixels differ, every
+page's words, width and height the same -- nothing drawn moves in the
+ordinary order. (On the first capture an open Games row at 390 differed by 32
+pixels in the page tabs' band, its words the same; captured again, 0 -- the
+Games code is untouched.) READ (`crops\`): Results at 1300 -- "Results 51
+predictions", the three filters reading "all markets", "both forecasters",
+"any status", the Forecaster column between Week and Model ("llm" on the
+reasoning pass's row, "statistical" on the rest), "1-51 of 51" with Previous
+and Next both disabled; at 390 the filters stacked full width, the table's
+first column with each prediction in words, the same range and footer. The
+late answers themselves are read by the tests, which name each one drawn.
+
+### FOUND, NOT BUILT *(the queue rule: none breaks LAW 1 or LAW 3, makes a gate count false, or could show the operator a wrong number on a pick)*
+
+- **A superseded render's failure still shows the error box.** `renderGames`
+  and `renderProps` throw for a request a later one superseded, as they did
+  for a stale one; the box shows a failure of an answer nothing waits for. No
+  number moves.
+- **A payout the page fills in again on a redraw is not counted as a change.**
+  `fillEntryPayout` and `fillDepositPayout` refill a payout the page filled
+  in, unconfirmed, when a redraw offers a newer remembered row for the app,
+  type and size; the last answer then stands beside a payout it was not asked
+  about until the next change. Reachable only where a newer row appeared
+  since (another check confirming another payout for the same app and size).
+  The box is unticked, so nothing is worked out from it. **BUILT BY ITS
+  PROVER (THE PROVER, below): the box being unticked stops the NEXT answer,
+  not the one already drawn, which stood beside the new payout as if about
+  it -- and for the deposit match it is reachable in one page (step 1's
+  check above it keeps the newer row): "-0.25 per unit of bonus", "(3x)",
+  beside a payout of 5.**
+- **The remembered payouts of a superseded check are not taken.** The latest
+  check's answer carries the list as the record held it when it was answered;
+  one written by an earlier check that reached the appliance later is offered
+  from the next answer on.
+- **FOLLOWUPS itself**: question 5's section swallowed the heading of the
+  next one ("## The rules stay on, and their marks stay put -- built
+  2026-09-29", as 56d65a4 had it); put back below.
+
+### THE PROVER *(2026-10-09, alone in the worktree, on the uncommitted change; scratchpad `q47q10\prover\`: `handed\` is the change exactly as handed, `head\` d7a16c2's `git archive`, `handed_guard\` this tree with the change's own `audit.py`; held-and-released answers in the adverse order, never a sleep)*
+
+Every part of the page that draws an answer was read again in the code,
+adversarially, for a part still drawing an answer about something other than
+what is on screen, or reading its words from a control, and driven in
+Chromium wherever a gap could be built: Results (its settled tiles read the week picker
+when its answer lands -- the picker sits on the Games page, and any change
+of it there asks a new slate, so no answer can be drawn under another week;
+left), the tier table against the Record page's own synchronous draw of the
+scorecard's table (it draws the default table and, where the controls name
+another, asks for it at once: transient, never the last thing drawn), the
+weekly strip, the Props page (its week, chip and order), the prompt list
+(the same list whichever forecaster), the Games slate (its filters are the
+page's own, applied to the answer when drawn), Settings (a read and saves in
+turn; a switch tapped twice before its answer saves the same side twice, the
+row then showing what the appliance holds -- as on d7a16c2), the Props
+page's payout save (read back through the latest Props page), the entry
+check and the deposit match. TWO DEFECTS OF THE CHANGE FOUND, each failing
+on it and on d7a16c2, each fixed with a test and planting forms:
+
+1. **A FILL IS A CHANGE, AND THE DEPOSIT MATCH'S ONE IS REACHABLE IN ONE
+   PAGE.** The build left the page's own refill of a payout it filled in
+   uncounted, as "the box is unticked, so nothing is worked out from it" --
+   true of the next answer, not of the one already drawn. Measured on the
+   change as handed (`new_on_handed.txt`), on a copy of the browser world:
+   the deposit match worked out at the 3x step 1 last kept for Chalkboard's
+   2-pick power, filled in and ticked; 5x then typed, confirmed and checked
+   in step 1 above it, which keeps it; the Props page drawn again (its order
+   chosen). The deposit match's payout is filled in again as 5, unticked, and
+   its answer stood as the answer: "Costs at coin flips ... comes to -0.25 per
+   unit of bonus", "staked in 2-pick power entries (3x)", "Break-even per leg
+   of the entry 57.74%" -- beside 5. The entry check's own fill is the same
+   (its 3x verdict, 57.74% a leg, beside a 5x kept on another device; in one
+   page its payout is the operator's own once he types, and the fill leaves
+   that alone). FIXED: each fill reads the payout, the offer and the tick as
+   it starts and, where it changes any, counts a change (`entryChanged(false)`,
+   `depositChanged(false)`), so the answer is put aside ("Changed since ...")
+   as any other is; `audit.LATEST_ASKED_FILLS` holds each fill to it.
+2. **MY DAY HAS TWO PAGES.** My day sits under the header on every page and
+   both the slate (`renderGames`) and the Props page draw it; the build held
+   the slate to `weekSeq` (a slate against a later slate) and the Props page
+   to its own count (a Props page against a later one), so neither told its
+   My day from the other's. Measured on the change as handed, the order an
+   operator can make: the Props page opened for a week holding a taken pick,
+   its answer held; Games opened (that week's slate landed) and a week holding
+   none chosen on its picker (landed: "Nothing taken on this slate yet."); the
+   Props page's answer released -- My day read "1 taken", its chip "BUF -7.5
+   · upcoming · 8/100", under the Games picker's other week. FIXED: each says
+   it is the latest asked for 'my-day' before it asks and draws My day only
+   `if (!superseded('my-day', asked))`; `audit.LATEST_ASKED_SHARED` holds
+   every function that draws it to that.
+
+THE PROOFS:
+- **Tests** (`tests/test_the_latest_answer.py`, 33 now): its prover's three
+  in Chromium on the copy -- `::test_a_deposit_match_is_put_aside_when_the_
+  page_fills_its_payout_again`, `::test_an_entry_check_is_put_aside_when_the_
+  page_fills_its_payout_again`, `::test_a_late_props_page_does_not_draw_my_
+  day_under_a_later_week` -- and four forms the scan names, each failing on
+  the change as handed and on d7a16c2 (`module_on_handed.txt`: 8 fail, these
+  seven and the register test, which now plants a stale entry in each new
+  register; `module_on_head.txt`: 33 of 33 fail); all 33 pass here.
+- **The planting** (`escape_*.txt`): `plant_a_late_answer_drawn_under_a_
+  later_choice` gains the four forms (26): on `handed_guard` -- the change's
+  own scan reading this tree's page with each form planted -- the four are
+  named by nothing, NOT CAUGHT; on d7a16c2 NOT CAUGHT ("nothing reads which
+  answer a part of the page draws"); here CAUGHT, in 2.1 s.
+- **Nothing drawn moves in the ordinary order** (`q47q10\prover\render.py`,
+  the build's script and world, `compare.txt`): Games, a row open, Props, the
+  Kalshi ladder, Record, Results and Settings at 1300 and 390, d7a16c2
+  against this tree -- 14 pairs, 0 pixels differ, every page's words, width
+  and height the same. (Captured again on the final code, the open Games row
+  at 390 differed by 32 pixels, one or two colour levels on the edge of the
+  GAMES tab, its words the same; d7a16c2 captured again differed from its own
+  first capture by the same 32 and from this tree by 0 -- the build saw the
+  same: capture noise, `where.py`.) READ: Results at 1300 -- "Results 51 predictions",
+  "all markets", "both forecasters", "any status", the Forecaster column
+  between Week and Model ("llm" on the reasoning pass's row with "The prompt
+  it was sent", "statistical" on the rest), "1-51 of 51" with Previous and
+  Next disabled, My day under the header "Nothing taken on this slate yet.";
+  at 390 the filters stacked full width, each row's prediction in words, the
+  same range and footer.
+- **The browser modules changed, 5 of 5** (detached, `five.txt`):
+  `test_the_latest_answer.py`, `test_rapid.py` and `test_deposit_match.py`,
+  15 runs, all passing (about 37, 26 and 36 s a run), and again on the
+  final code (My day's line moved, below): 15 runs, all passing
+  (`five.txt`; two runs of `test_rapid.py` took 144 and 67 s where the rest
+  took 26-30, passing -- the output keeps no durations, so where is not
+  read; run twice more with durations: 13-18 s building the world in setup,
+  every call under 3.3 s).
+- **`plant.py` whole** (detached, `plant.txt`): 464/464 caught in 444 s,
+  inside the harness's 600 s and short of 480, the limit not widened (the
+  planting 2.1 s, about 0.1 s more for its four forms). Its first run named
+  one planting NOT CAUGHT -- question 5's "the slate before its answer",
+  whose anchor (`renderAsked()` followed by the stale-rows comment) the
+  first placing of My day's `askedLatest` in `renderGames` split
+  (`plant_first.txt`); the line moved below that comment, behaviour the
+  same, and `test_the_render_signal.py` holds the same anchor.
+- **The suite** (detached, `suite.txt`): 3,309 passed, 4 skipped, 0 failed,
+  in 1,659 s (3,302 before: its prover's seven).
+
+FOUND BY ITS PROVER, NOT BUILT *(the queue rule: none breaks LAW 1 or LAW 3,
+makes a gate count false, or could show the operator a wrong number on a
+pick)*:
+- **A late slate clears another page's failure.** `renderGames` calls
+  `clearError()` when its answer lands, whichever page is on screen; a slate
+  asked on Games and landing after the Props page's own request failed hides
+  that failure's box, leaving the Props page's last tiles -- headed by their
+  own week's words -- with nothing saying the later request failed. The
+  reverse of the build's "a superseded render's failure still shows the
+  error box". No number is drawn under another's words.
+- **Two payouts kept in one second are one offer to the fill.** A fill
+  tells the offer it made from a newer one by app, type, size and the
+  instant typed (`typed_utc`, to the second), never the row's number, so a
+  second payout kept for one app, type and size in the same second as the
+  first is not offered until a later one is kept; what is offered is drawn
+  with its own words and day.
+- **The Props page's payout save is not sent in turn.** Two saves of one
+  payout reaching the appliance in the other order leave the first typed
+  stored; the page reads the stored value back through its latest render and
+  draws what the appliance holds (the build's reading (e)); the operator's
+  last typing is then not what is kept.
+
+## The rules stay on, and their marks stay put -- built 2026-09-29 *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
 
 "Q25: yes. The scan also refuses any code that turns the rules off by
 connection setting or registers a function under a built-in's name." "Q29:

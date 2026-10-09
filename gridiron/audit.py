@@ -6663,6 +6663,506 @@ def check_every_render_says_it_landed(root: Path | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# A PART OF THE PAGE DRAWS ONLY THE ANSWER TO THE LATEST THING ASKED OF IT,
+# UNDER WHAT THAT ANSWER WAS ASKED FOR (operator question 47, found by question
+# 5's prover; built 2026-10-09 without a new ruling: step A's and question
+# 37's rule that a number is drawn under the words of what it is)
+# ---------------------------------------------------------------------------
+#
+# A part of the page asked twice -- a filter, then another -- drew whichever
+# answer came back LAST, and read what it said about itself from the controls
+# when that answer landed. MEASURED on d7a16c2 (451ab3d's code), the earlier
+# answer held inside the page and released after the later one had landed,
+# never a sleep: Results drew a search's 51 rows, 50 of them the statistical
+# model's chances, under "reasoning pass" with no Forecaster column, captioned
+# "51 predictions" (the finding); and drew the Forecaster column over the
+# reasoning pass's one row when the select had moved without asking; the tier
+# table drew the moneyline's table under a select reading "total", and the
+# reasoning pass's under the model's button (its caption named what its
+# numbers were); the Record page's weekly strip drew the point spread's "8
+# resolved across 2 weeks" under a chart of receptions' 3; the Props page drew
+# week 8's eight tiles, headed "Week 8, 2025", under the picker's week 18; the
+# entry check drew a 3x verdict -- "Costs at coin flips", 57.74% a leg --
+# under the form's 5x, and an answer about a line since changed beside the new
+# line; the deposit match drew a 5x playthrough's figures under the form's 9x;
+# and Settings drew "21" and "changed from 23 to 21" while the appliance held
+# 22, and a read asked before a save drew the row back over the save. The
+# slate held (`weekSeq`, since 2026-09-05).
+#
+# WHAT IT READS, function by function: a render of an answer to a choice
+# made on the page says it is the latest asked for its part (`askedLatest`,
+# with the count it took) before it asks; after every answer it waits for --
+# the body of a response read with it, and a failure's catch passed over --
+# the next thing it does is ask whether a later render was asked for its part
+# since (`superseded`) and return if so, and nothing in a catch draws before
+# asking it; after its first answer it reads no control (a select's value,
+# the search, the page offset, the calendar's day, the chip, the forecaster,
+# a kept preference): what it says about itself is its own request's; a part
+# it draws inside asks the same of the count the render hands it; an answer
+# about a form the operator types is put aside if the form changed since it
+# was asked, and from its prover (2026-10-09) the page's own fill of a form's
+# payout counts as a change; the page's settings requests are sent in turn,
+# so the latest asked is the latest written; a part more than one page draws
+# (My day: the slate's and the Props page's) is drawn only by the latest
+# asked for it (its prover); and every function that asks for an answer is
+# one of these, or exempt with a dated reason. WHAT IT CANNOT READ: the order
+# answers come back in, a part drawn on a node a redraw has replaced, and a
+# control read through a name it does not know -- the browser tests drive
+# those (`tests/test_the_latest_answer.py`).
+
+#: EVERY RENDER OF AN ANSWER TO A FILTER OR A CHOICE MADE ON THE PAGE, by its
+#: function in app.js, and the part of the page it draws -- the expression the
+#: page hands `askedLatest` and `superseded`.
+LATEST_ASKED_RENDERS: dict[str, str] = {
+    "renderResults": "'results'",
+    "refreshTierTable": "'tier-table'",
+    "renderRecord": "'record'",
+    "renderProps": "'props'",
+    "checkEntry": "'entry-check'",
+    "checkDeposit": "'deposit-match'",
+    "renderSettings": "'settings'",
+    "saveSetting": "'setting ' + name",
+}
+
+#: DRAWN INSIDE ONE OF THEM, from the count it hands on: the part, and the
+#: render it draws for.
+LATEST_ASKED_PARTS: dict[str, str] = {
+    "renderSettledCards": "renderResults",
+    "renderCalendar": "renderResults",
+    "renderOverTime": "renderRecord",
+}
+
+#: AN ANSWER ABOUT A FORM THE OPERATOR TYPES: the render, the form's state in
+#: the page, and the function every change of the form goes through.
+LATEST_ASKED_FORMS: dict[str, tuple[str, str]] = {
+    "checkEntry": ("entry", "entryChanged"),
+    "checkDeposit": ("deposit", "depositChanged"),
+}
+
+#: SENT IN TURN (`inTurn`): the page's settings requests, its read and each
+#: save, one after another -- for a save the latest asked must be the latest
+#: written.
+LATEST_ASKED_IN_TURN = ("renderSettings", "saveSetting")
+
+#: ONE PART DRAWN BY MORE THAN ONE PAGE'S RENDER (question 47's prover,
+#: 2026-10-09): the function that draws it, and the part's name. My day sits
+#: under the header on every page and is drawn by the slate (`renderGames`,
+#: held to `weekSeq`, which tells a slate only from a later slate) and by the
+#: Props page (its count tells it only from a later Props page); measured on
+#: the change as handed, the Props page's late answer drew its week's "1
+#: taken" over "Nothing taken on this slate yet." of the week chosen on Games
+#: after it was asked. Every function that draws it says it is the latest asked
+#: for it (`askedLatest`, with a count it took) before it asks, and draws it
+#: only `if (!superseded(<part>, <that count>))`.
+LATEST_ASKED_SHARED: dict[str, str] = {
+    "renderMyDay": "'my-day'",
+}
+
+#: A FILL IS A CHANGE (question 47's prover, 2026-10-09): the function that
+#: fills a form's payout in again from the payouts kept, the form, and the
+#: function every change of it goes through. A redraw of the Props page fills
+#: a payout the page put there again from a newer row and unticks the box;
+#: measured on the change as handed, uncounted, the deposit match's 3x answer
+#: ("-0.25 per unit of bonus") stood beside the 5x it filled in, in one page,
+#: and the entry check's 3x verdict beside a 5x kept on another device. Its
+#: last write to the form is followed by a call of the change function with
+#: `false` (a change, never a size: `true` would fill again).
+LATEST_ASKED_FILLS: dict[str, tuple[str, str]] = {
+    "fillEntryPayout": ("entry", "entryChanged"),
+    "fillDepositPayout": ("deposit", "depositChanged"),
+}
+
+#: ASK FOR AN ANSWER AND DRAW NONE TO A CHOICE MADE ON THE PAGE, OR HOLD TO
+#: THE LATEST ASKED BY A RULE OF THEIR OWN -- each with its dated reason.
+LATEST_ASKED_EXEMPT: dict[str, str] = {
+    "renderGames": "2026-10-09: the slate's own rule since 2026-09-05, `weekSeq`, moved on "
+                   "every render and checked after its answer (`render_guard_faults`); "
+                   "measured on d7a16c2: two weeks asked, the earlier held and released "
+                   "after the later, the later stays",
+    "startLivePolling": "2026-10-09: the live tick, held to the slate's `weekSeq`",
+    "fetchJSON": "2026-10-09: the door every answer comes through; the render that asked "
+                 "draws it",
+    "renderPromptRecord": "2026-10-09: asks the same list -- the reasoning pass's newest "
+                          "twenty -- whichever forecaster is chosen; the choice shows or "
+                          "hides it the moment it is made",
+    "renderLearning": "2026-10-09: asks the sport's learning panel, the same whatever is "
+                      "chosen on the page",
+    "renderFactors": "2026-10-09: asks the sport's factors, the same whatever is chosen; "
+                     "the search filters them in the keystroke's own task",
+    "renderVersions": "2026-10-09: asks the sport's factor sets, the same whatever is chosen",
+    "renderWorkedExample": "2026-10-09: asks the sport's current slate, the same whatever "
+                           "is chosen",
+    "renderGreeting": "2026-10-09: asks the sport's digest, the same whatever is chosen on "
+                      "the page; a sport switch is `sportSeq`'s",
+    "promptDisclosure": "2026-10-09: asks one forecast's prompt by its number, the same "
+                        "whatever is chosen, once",
+    "takeButton": "2026-10-09: a tap written; the view is drawn again by its own render, "
+                  "which draws the latest asked",
+    "takePackage": "2026-10-09: a combo taken, its own button's answer, once",
+    "renderPayouts": "2026-10-09: a payout saved is read back by `renderProps`, the latest "
+                     "asked, which draws the stored value whatever order the saves were "
+                     "written in; a refusal is drawn on its own row's line",
+    "renderAccess": "2026-10-09: signing out everywhere, and the page leaves",
+    "refreshPulse": "2026-10-09: nothing on the page calls it (FOLLOWUPS)",
+    "loadSports": "2026-10-09: the sport tabs at boot, asked once",
+    "loadWeekPicker": "2026-10-09: a step of a sport switch, held to `sportSeq`",
+    "loadMarkets": "2026-10-09: a step of a sport switch, held to `sportSeq`",
+    "selectSport": "2026-10-09: a sport switch, held to `sportSeq`",
+    "boot": "2026-10-09: the first load, asked once",
+}
+
+#: A CONTROL READ: the page's own choices, which a render reads before it
+#: asks and never after its first answer lands (an assignment is a choice
+#: made, not read).
+_JS_A_CONTROL_READ = re.compile(
+    r"(?<![\w$.])(?:historyQuery|prefGet|currentView)\s*\(|"
+    r"getElementById\(\s*'[^']*'\s*\)\.(?:value|checked)\b(?!\s*=(?!=))|"
+    r"(?<![\w$.])state\.(?:historyOffset|calendarDay|propFamily|market)\b(?!\s*=(?!=))|"
+    r"(?<![\w$.])forecasterChoice\b(?!\s*=(?!=))")
+
+#: WHAT DRAWS: writing the page from an answer.
+_JS_DRAWS = re.compile(
+    r"\.textContent\b|\.innerHTML\b|appendChild\s*\(|\.hidden\s*=(?!=)|\.classList\b|"
+    r"setAttribute\s*\(|\.(?:result|changed)\s*=(?!=)|"
+    r"(?<![\w$.])(?:table|rendered|updating|arrive|paint\w*|draw\w*|render\w*)\s*\(")
+
+#: A STATEMENT READING THE BODY OF A RESPONSE JUST AWAITED.
+_JS_BODY_OF_AN_ANSWER = re.compile(
+    r"\s*(?:(?:const|let|var)\s+)?[A-Za-z_$][\w$]*\s*=\s*await\s+[A-Za-z_$][\w$]*\.json\(\s*\)\s*;")
+
+
+def _js_statement_end(code: str, at: int) -> int:
+    """Just past the `;` ending the statement that holds `at` (brackets
+    counted from `at`), or where the block holding it closes."""
+    depth = 0
+    for i in range(at, len(code)):
+        c = code[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth < 0:
+                return i
+        elif c == ";" and depth == 0:
+            return i + 1
+    return len(code)
+
+
+def _js_closing(code: str, open_at: int) -> int:
+    """The index of the bracket closing the one at `open_at`."""
+    depth = 0
+    for i in range(open_at, len(code)):
+        if code[i] in "([{":
+            depth += 1
+        elif code[i] in ")]}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(code)
+
+
+def _js_asks_if_superseded(text: str, part: str, count: str) -> bool:
+    """`superseded(part, count)` asked, not negated, in `text`."""
+    return bool(re.search(r"(?<![!\w$.])superseded\(\s*%s\s*,\s*%s\s*\)"
+                          % (re.escape(part), re.escape(count)), text))
+
+
+def _js_after_an_answer(body: str, code: str, at: int, part: str, count: str,
+                        name: str, line: int) -> list[str]:
+    """What follows the `await` at `at`: the body of a response read with it
+    passed over, and a failure's catch, the next thing done must be to return
+    if a later render of the part was asked since -- and nothing in the catch
+    may draw before asking it."""
+    faults = []
+    end = _js_statement_end(code, at)
+    while True:
+        read = _JS_BODY_OF_AN_ANSWER.match(code, end)
+        if not read:
+            break
+        end = read.end()
+    rest = code[end:]
+    skip = len(rest) - len(rest.lstrip())
+    at_next = end + skip
+    if code.startswith("}", at_next):
+        catch = re.compile(r"\}\s*catch\s*(?:\([^)]*\))?\s*\{").match(code, at_next)
+        if catch is None:
+            faults.append(f"app.js:{line} `{name}` leaves the block holding an answer without "
+                          f"asking whether a later render of its part was asked since")
+            return faults
+        close = _js_closing(code, catch.end() - 1)
+        guarded = False
+        for raw in body[catch.end():close].split(chr(10)):
+            if re.search(r"if\s*\(.*\)\s*return\s*;", raw) and \
+                    _js_asks_if_superseded(raw, part, count):
+                guarded = True
+            if guarded:
+                continue
+            if _JS_DRAWS.search(_js_blank_quoted(raw)) and not re.search(
+                    r"superseded\(\s*%s\s*,\s*%s\s*\)" % (re.escape(part), re.escape(count)),
+                    raw):
+                faults.append(f"app.js:{line} `{name}` draws its failure ({raw.strip()[:60]!r}) "
+                              f"without asking whether a later render of its part was asked "
+                              f"since: an earlier answer's failure over a later one's drawing")
+        rest = code[close + 1:]
+        at_next = close + 1 + len(rest) - len(rest.lstrip())
+    check = re.compile(r"if\s*\(").match(code, at_next)
+    if check is not None:
+        shut = _js_closing(code, check.end() - 1)
+        returns = re.compile(r"\s*return\s*;").match(code, shut + 1)
+        if returns and _js_asks_if_superseded(body[check.end():shut], part, count):
+            return faults
+    faults.append(f"app.js:{line} `{name}` draws an answer without first asking whether a "
+                  f"later render of its part ({part}) was asked since (`superseded({part}, "
+                  f"{count})`, returning if so): an earlier, slower answer stands under the "
+                  f"later choice -- Results drew 51 rows, 50 of them the model's, under "
+                  f"\"reasoning pass\"")
+    return faults
+
+
+def latest_answer_faults(script: str | None = None) -> list[str]:
+    """Every part of the page's script that can draw an answer a later choice
+    superseded, or read what an answer is from a control when it lands
+    (operator question 47, 2026-10-09)."""
+    if script is None:
+        script = (config.PACKAGE_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    defs = _js_top_level_definitions(script)
+    ruled = ("(operator question 47, 2026-10-09: a part of the page draws only the answer "
+             "to the latest thing asked of it, under what that answer was asked for -- step "
+             "A's and question 37's rule that a number is drawn under the words of what it is)")
+    faults: list[str] = []
+
+    # THE PAGE'S BOOKKEEPING.
+    marks = defs.get("askedLatest")
+    if marks is None or not re.search(r"latestAsked\.set\(\s*part\s*,\s*count\s*\)", marks[1]):
+        faults.append(f"app.js has no `askedLatest(part, count)` keeping the latest render "
+                      f"asked for each part {ruled}")
+    asks = defs.get("superseded")
+    if asks is None or not re.search(r"return\s+latestAsked\.get\(\s*part\s*\)\s*!==\s*count",
+                                     asks[1]):
+        faults.append(f"app.js has no `superseded(part, count)` saying whether a later render "
+                      f"of a part was asked since {ruled}")
+
+    def first_answer(code: str) -> int:
+        waits = ([m.start() for m in _JS_AWAIT.finditer(code)]
+                 + [m.start() for m in _JS_FETCHES.finditer(code)])
+        return min(waits) if waits else len(code)
+
+    def held(name: str, part: str, counts: set, line: int, body: str) -> None:
+        code = _js_blank_quoted(body)
+        head = code.find("{")
+        if not counts:
+            faults.append(f"app.js:{line} `{name}` has no count to ask about {ruled}")
+            return
+        # THE COUNT IT ASKS ABOUT: the one it hands `superseded`, if any.
+        asked_about = [c for c in sorted(counts) if _js_asks_if_superseded(body, part, c)]
+        count = (asked_about or sorted(counts))[0]
+        for m in _JS_AWAIT.finditer(code):
+            if m.start() < head:
+                continue
+            if _JS_BODY_OF_AN_ANSWER.match(code, code.rfind(chr(10), 0, m.start()) + 1):
+                continue
+            for f in _js_after_an_answer(body, code, m.start(), part, count, name, line):
+                faults.append(f + " " + ruled)
+        first = first_answer(code[head:]) + head
+        for m in _JS_A_CONTROL_READ.finditer(body, first):
+            faults.append(f"app.js:{line} `{name}` reads a control -- `{m.group(0).strip()}` "
+                          f"-- after its answer has landed: what an answer is, and the words "
+                          f"drawn about it, are its own request's, never the choice when it "
+                          f"lands (the Forecaster column was the select's then) {ruled}")
+
+    # EACH RENDER: the latest asked for its part, before it asks.
+    for name, part in LATEST_ASKED_RENDERS.items():
+        got = defs.get(name)
+        if got is None:
+            faults.append(f"`{name}` is in audit.LATEST_ASKED_RENDERS and gone from app.js: "
+                          f"the register names what draws an answer to a choice {ruled}")
+            continue
+        line, body = got
+        code = _js_blank_quoted(body)
+        counts = set(_JS_COUNT_NAMED.findall(code))
+        marked = [m for m in re.finditer(r"(?<![\w$.])askedLatest\(\s*%s\s*,\s*([A-Za-z_$][\w$]*)\s*\)"
+                                         % re.escape(part), body) if m.group(1) in counts]
+        head = code.find("{")
+        if not marked:
+            faults.append(f"app.js:{line} `{name}` never says it is the latest asked for its "
+                          f"part (`askedLatest({part}, <its count>)`), so nothing can tell its "
+                          f"answer from a later one's {ruled}")
+        elif marked[0].start() > first_answer(code[head:]) + head:
+            faults.append(f"app.js:{line} `{name}` says it is the latest asked only after it "
+                          f"has asked: a later render asked meanwhile is overtaken {ruled}")
+        held(name, part, counts, line, body)
+
+    # EACH PART: asked about by the count its render hands it.
+    for name, parent in LATEST_ASKED_PARTS.items():
+        got, owner = defs.get(name), defs.get(parent)
+        if got is None or owner is None or parent not in LATEST_ASKED_RENDERS:
+            faults.append(f"`{name}` or `{parent}` is in audit.LATEST_ASKED_PARTS and gone from "
+                          f"app.js or its register {ruled}")
+            continue
+        line, body = got
+        sig = re.search(r"function\s+%s\s*\(([^)]*)\)" % re.escape(name), body)
+        params = {p.strip() for p in (sig.group(1).split(",") if sig else []) if p.strip()}
+        held(name, LATEST_ASKED_RENDERS[parent], params, line, body)
+        owner_counts = set(_JS_COUNT_NAMED.findall(_js_blank_quoted(owner[1])))
+        handed = [m for m in re.finditer(r"(?<![\w$.])%s\s*\(" % re.escape(name), owner[1])
+                  if set(_js_call_arguments(owner[1], owner[1].index("(", m.start())))
+                  & owner_counts]
+        if not handed:
+            faults.append(f"app.js:{owner[0]} `{parent}` draws `{name}` without handing it its "
+                          f"count, so the part cannot ask whether it is still the latest "
+                          f"{ruled}")
+
+    # AN ANSWER ABOUT A FORM THE OPERATOR TYPES: put aside if the form changed
+    # since it was asked.
+    for name, (form, changes) in LATEST_ASKED_FORMS.items():
+        got, moved = defs.get(name), defs.get(changes)
+        if got is None or moved is None:
+            faults.append(f"`{name}` or `{changes}` is in audit.LATEST_ASKED_FORMS and gone "
+                          f"from app.js {ruled}")
+            continue
+        line, body = got
+        code = _js_blank_quoted(body)
+        first = first_answer(code[code.find("{"):]) + code.find("{")
+        took = re.search(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*%s\.edits\s*;"
+                         % re.escape(form), body)
+        if took is None or took.start() > first:
+            faults.append(f"app.js:{line} `{name}` keeps no count of the changes made to the "
+                          f"{form} as it asked ({form}.edits), so its answer is drawn as about "
+                          f"the {form} on screen though that changed since {ruled}")
+        elif not re.search(r"%s\.changed\s*=\s*%s\.edits\s*!==\s*%s\b"
+                           % (re.escape(form), re.escape(form), re.escape(took.group(1))),
+                           body[first:]):
+            faults.append(f"app.js:{line} `{name}` draws its answer without putting it aside "
+                          f"when the {form} has changed since it was asked ({form}.changed = "
+                          f"{form}.edits !== {took.group(1)}) {ruled}")
+        if not re.search(r"%s\.edits\s*(?:\+=\s*1|\+\+)|\+\+\s*%s\.edits"
+                         % (re.escape(form), re.escape(form)), moved[1]):
+            faults.append(f"app.js:{moved[0]} `{changes}` does not count a change made to the "
+                          f"{form} ({form}.edits), so nothing knows an answer is about the "
+                          f"{form} as it was before {ruled}")
+
+    # THE SETTINGS, IN TURN.
+    turn = defs.get("inTurn")
+    if turn is None or "settingsTurn.then(ask, ask)" not in turn[1] \
+            or not re.search(r"settingsTurn\s*=\s*mine\.then\(", turn[1]):
+        faults.append(f"app.js has no `inTurn` sending the page's settings requests one after "
+                      f"another: a value saved twice whose first request reached the appliance "
+                      f"last would be drawn as the second while the appliance holds the first "
+                      f"{ruled}")
+    for name in LATEST_ASKED_IN_TURN:
+        got = defs.get(name)
+        if got is None:
+            faults.append(f"`{name}` is in audit.LATEST_ASKED_IN_TURN and gone from app.js "
+                          f"{ruled}")
+            continue
+        line, body = got
+        code = _js_blank_quoted(body)
+        sent = len(_JS_FETCHES.findall(code))
+        in_turn = len(re.findall(r"(?<![\w$.])inTurn\(\s*\(\)\s*=>\s*fetch(?:JSON)?\s*\(", code))
+        if sent != in_turn:
+            faults.append(f"app.js:{line} `{name}` sends {sent - in_turn} settings request(s) "
+                          f"out of turn: the latest asked is then not the latest written "
+                          f"{ruled}")
+
+    # ONE PART DRAWN BY MORE THAN ONE PAGE (question 47's prover, 2026-10-09):
+    # every function that draws it says it is the latest asked for it before
+    # it asks, and draws it only if no later one was asked since.
+    for drawer, part in LATEST_ASKED_SHARED.items():
+        if drawer not in defs:
+            faults.append(f"`{drawer}` is in audit.LATEST_ASKED_SHARED and gone from app.js "
+                          f"{ruled}")
+            continue
+        for name, (line, body) in defs.items():
+            if name == drawer:
+                continue
+            calls = [m.start() for m in re.finditer(r"(?<![\w$.])%s\s*\(" % re.escape(drawer),
+                                                    body)]
+            if not calls:
+                continue
+            code = _js_blank_quoted(body)
+            head = code.find("{")
+            counts = set(_JS_COUNT_NAMED.findall(code))
+            marks = [m for m in re.finditer(
+                r"(?<![\w$.])askedLatest\(\s*%s\s*,\s*([A-Za-z_$][\w$]*)\s*\)" % re.escape(part),
+                body) if m.group(1) in counts]
+            if not marks or marks[0].start() > first_answer(code[head:]) + head:
+                faults.append(f"app.js:{line} `{name}` draws `{drawer}`, a part another page "
+                              f"draws too, without first saying it is the latest asked for it "
+                              f"(`askedLatest({part}, <its count>)` before it asks) {ruled}")
+                continue
+            count = marks[0].group(1)
+            guard = re.compile(r"if\s*\(\s*!\s*superseded\(\s*%s\s*,\s*%s\s*\)\s*\)$"
+                               % (re.escape(part), re.escape(count)))
+            for at in calls:
+                if not guard.search(body[:at].rstrip()):
+                    faults.append(f"app.js:{line} `{name}` draws `{drawer}` without asking "
+                                  f"whether a later page asked for it since (`if (!superseded("
+                                  f"{part}, {count})) {drawer}(...)`): the Props page's late "
+                                  f"answer drew its week's \"1 taken\" in My day under the week "
+                                  f"chosen on Games after it {ruled}")
+
+    # A FILL IS A CHANGE (question 47's prover, 2026-10-09): a fill of a
+    # form's payout from the payouts kept counts as a change after its last
+    # write to the form.
+    for fill, (form, changes) in LATEST_ASKED_FILLS.items():
+        got = defs.get(fill)
+        if got is None or changes not in defs:
+            faults.append(f"`{fill}` or `{changes}` is in audit.LATEST_ASKED_FILLS and gone "
+                          f"from app.js {ruled}")
+            continue
+        line, body = got
+        code = _js_blank_quoted(body)
+        writes = [m.end() for m in re.finditer(
+            r"(?<![\w$.])%s\.(?:payout|offered|confirmed|filled)\s*=(?!=)" % re.escape(form),
+            code)]
+        if not writes:
+            faults.append(f"app.js:{line} `{fill}` no longer fills the {form}'s payout: take it "
+                          f"out of audit.LATEST_ASKED_FILLS {ruled}")
+        elif not re.search(r"(?<![\w$.])%s\(\s*false\s*\)" % re.escape(changes),
+                           code[max(writes):]):
+            faults.append(f"app.js:{line} `{fill}` fills the {form}'s payout in again without "
+                          f"counting it as a change (`{changes}(false)` after its last write to "
+                          f"the {form}), so an answer worked out from the payout as it was is "
+                          f"drawn beside the one filled in as if about it -- the deposit "
+                          f"match's 3x \"-0.25 per unit of bonus\" beside 5x {ruled}")
+
+    # EVERY FUNCTION THAT ASKS FOR AN ANSWER IS IN A REGISTER.
+    known = set(LATEST_ASKED_RENDERS) | set(LATEST_ASKED_PARTS) | set(LATEST_ASKED_EXEMPT)
+    for name, (line, body) in defs.items():
+        if name in known:
+            continue
+        code = _js_blank_quoted(body)
+        head = code.find("{")
+        if _JS_FETCHES.search(code[head:] if head >= 0 else code):
+            faults.append(f"app.js:{line} `{name}` asks for an answer and is in no register: "
+                          f"it draws only the latest asked for its part "
+                          f"(audit.LATEST_ASKED_RENDERS or LATEST_ASKED_PARTS), or carries a "
+                          f"dated reason it draws no answer to a choice made on the page "
+                          f"(audit.LATEST_ASKED_EXEMPT) {ruled}")
+    for name, why in LATEST_ASKED_EXEMPT.items():
+        if name not in defs:
+            faults.append(f"`{name}` is exempt in audit.LATEST_ASKED_EXEMPT and gone from "
+                          f"app.js: remove the entry {ruled}")
+        elif not re.match(r"20\d\d-\d\d-\d\d: \S", why):
+            faults.append(f"`{name}`'s exemption in audit.LATEST_ASKED_EXEMPT carries no dated "
+                          f"reason {ruled}")
+    return faults
+
+
+def check_every_part_draws_its_latest_answer(root: Path | None = None) -> None:
+    """Raise unless every part of the page draws only the answer to the latest
+    thing asked of it, under what that answer was asked for (operator
+    question 47, 2026-10-09). `root` is a package."""
+    web = (config.PACKAGE_ROOT if root is None else Path(root)) / "web"
+    faults = latest_answer_faults((web / "app.js").read_text(encoding="utf-8"))
+    if faults:
+        raise LawViolation(
+            "A PART OF THE PAGE DRAWS AN ANSWER A LATER CHOICE SUPERSEDED, OR READS WHAT "
+            "IT IS FROM A CONTROL WHEN IT LANDS (operator question 47):" + _NL2
+            + _NL2.join(faults))
+
+
+# ---------------------------------------------------------------------------
 # THE HEALTH PANEL SPEAKS IN WORDS (UI audit finding 11, 2026-09-05)
 # ---------------------------------------------------------------------------
 #

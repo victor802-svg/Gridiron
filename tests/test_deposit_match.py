@@ -357,11 +357,11 @@ def test_the_reach_scan_reads_what_the_deposit_match_reaches_and_names_a_write(t
     (root / "entry_check.py").write_text(shipped, encoding="utf-8")
     js = (root / "web" / "app.js").read_text(encoding="utf-8")
     for put_back, want in (
-            (js.replace("      deposit.changed = false;\n      paintDepositResult();",
-                        "      deposit.changed = false;\n      sessionStorage.setItem('b', "
+            (js.replace("      deposit.changed = deposit.edits !== edits;\n      paintDepositResult();",
+                        "      deposit.changed = deposit.edits !== edits;\n      sessionStorage.setItem('b', "
                         "deposit.bonus);\n      paintDepositResult();"), "browser's storage"),
-            (js.replace("      deposit.changed = false;\n      paintDepositResult();",
-                        "      deposit.changed = false;\n      prefSet('bonus', deposit.bonus);"
+            (js.replace("      deposit.changed = deposit.edits !== edits;\n      paintDepositResult();",
+                        "      deposit.changed = deposit.edits !== edits;\n      prefSet('bonus', deposit.bonus);"
                         "\n      paintDepositResult();"), "browser's storage"),
             (js.replace("const res = await fetch('/api/deposit-match', {",
                         "const res = await fetch('/api/entry-check', {"), "fetches")):
@@ -398,7 +398,7 @@ def test_the_reach_scan_names_a_write_by_another_name_or_another_road(tmp_path):
     imports = "from . import config, db, entry_math, language, m4, picks\n"
     heading = '    return {\n        "heading": "A deposit match",'
     subjects = "from . import subjects as _subjects\n"
-    answered = "      deposit.changed = false;\n      paintDepositResult();"
+    answered = "      deposit.changed = deposit.edits !== edits;\n      paintDepositResult();"
     another = "a door to the record, a setting, a file or another machine by another name"
     forms = [
         ("entry_check.py", [(imports, imports + "from .db import open_db as h, set_meta as k\n"),
@@ -417,7 +417,7 @@ def test_the_reach_scan_names_a_write_by_another_name_or_another_road(tmp_path):
         ("web/app.js", [("  async function checkDeposit(ec) {",
                          "  function keepOffer(b) { localStorage.setItem('o', JSON.stringify(b)); }\n\n"
                          "  async function checkDeposit(ec) {"),
-                        (answered, "      deposit.changed = false;\n      keepOffer(depositBody());\n"
+                        (answered, "      deposit.changed = deposit.edits !== edits;\n      keepOffer(depositBody());\n"
                                    "      paintDepositResult();")],
          "`keepOffer`, which `checkDeposit` names, keeps something in the browser's storage"),
         ("web/app.js", [("  function depositBody() {",
@@ -430,16 +430,19 @@ def test_the_reach_scan_names_a_write_by_another_name_or_another_road(tmp_path):
         ("web/app.js", [("  function prefGet(key, fallback) {",
                          "  const keepIt = (b) => { sessionStorage.setItem('o', b); };\n\n"
                          "  function prefGet(key, fallback) {"),
-                        (answered, "      deposit.changed = false;\n      keepIt(`${deposit.bonus}`);\n"
+                        (answered, "      deposit.changed = deposit.edits !== edits;\n      keepIt(`${deposit.bonus}`);\n"
                                    "      paintDepositResult();")],
          "`keepIt`, which `checkDeposit` names, keeps something"),
         ("web/app.js", [("  async function checkDeposit(ec) {",
                          "  function keepAnswer(a) { localStorage.setItem('a', a); return a; }\n\n"
                          "  async function checkDeposit(ec) {"),
-                        ("      const answer = await res.json();\n      if (stale(seq)) return;\n"
+                        # RE-POINTED (operator question 47, 2026-10-09).
+                        ("      const answer = await res.json();\n"
+                         "      if (stale(seq) || superseded('deposit-match', asked)) return;\n"
                          "      deposit.result",
                          "      const answer = await res.json().then(keepAnswer);\n"
-                         "      if (stale(seq)) return;\n      deposit.result")],
+                         "      if (stale(seq) || superseded('deposit-match', asked)) return;\n"
+                         "      deposit.result")],
          "`keepAnswer`, which `checkDeposit` names, keeps something"),
         ("web/app.js", [("    let sortBy = prefGet('props.sort', 'edge');",
                          "    let sortBy = prefGet('props.sort', 'edge');\n"
