@@ -762,6 +762,11 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q47 AND Q10 RELEASED as 628880c + af469aa (2026-10-12 19:51Z; gate 4/4
+  on its first run, 465/465; serving af469aae5288). THE ORDERED QUEUE IS
+  EMPTY** -- close-out docs/closeouts/2026-10-12-the-october-queue.md.
+  Left: entry check step 3 BLOCKED on question 45; questions 39-45 open,
+  each with its default in force. Watch plant.py whole (~455 s of 600).
   **Q47 BUILT, PROVED AND COMMITTED (628880c, not yet gated); Q10 STOPPED
   MID-BUILD by the weekly limit (~2026-10-09; resumed 2026-10-12 16:40Z
   at the reset):** workflow wf_9858f6e1-cb0 (scratchpad wf_q47q10.js);
