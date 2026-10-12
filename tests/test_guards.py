@@ -582,6 +582,9 @@ def test_every_new_guard_is_in_the_planted_harness():
         # re-grade is true by its arithmetic and never rewritten.
         "plant_a_no_side_edge_divided_by_the_yes_price",
         "plant_a_regrade_that_is_false_or_rewritten",
+        # OPERATOR QUESTION 10 (ruled 2026-09-27, built 2026-10-12): the size
+        # uses the taken side's chance and cost, like the divisor.
+        "plant_a_no_side_size_on_the_yes_sides_numbers",
         # GRIDIRON_REPAIR item 5 (the operator's ruling of 2026-09-23, built
         # 2026-09-26): one recommendation per game and market, never both
         # sides -- recs 45 and 46, replayed.

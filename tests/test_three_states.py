@@ -393,8 +393,10 @@ def test_the_unit_and_the_denominator_agree():
     # one unit is one and a half per cent of the ring-fenced money
     assert 100.0 / config.BANKROLL_UNITS == pytest.approx(1.5)
     # and the declared ceiling resolves to exactly that ceiling
-    capped = recommend.size_for(model_prob=0.92, price=0.50, settled=200,
-                                measured_edge=True)
+    # the yes side's bet, named: the side has no default (operator question
+    # 10, 2026-10-12)
+    capped = recommend.size_for(model_prob=0.92, price=0.50, side="yes",
+                                settled=200, measured_edge=True)
     # NEVER OVER, and within one rounding step of the ceiling. `size_for`
     # rounds units to three decimals for display, so 1.333 units is 1.99950%
     # rather than 2.00000% -- the direction that matters is that rounding can

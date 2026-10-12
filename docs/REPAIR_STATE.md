@@ -12,6 +12,83 @@
   close) -> recs 114/115 voids (with C's gate, the next one: the constant
   rides it; dry run, then the write, after its release) -> B -> the entry
   check steps 1-4 -> Q33 + Q34 -> Q25/Q26 -> Q5 -> Q10.
+  **Q10 BUILT (2026-10-12 ~16:40-17:40Z, on 234dad7 -- Q47 committed
+  locally as 628880c; resumed from the first builder's uncommitted work,
+  stopped by the weekly limit on 2026-10-09; PROVED AND COMMITTED LOCALLY
+  by its prover, below, not pushed, for the gate with Q47; FOLLOWUPS "The
+  size of the side taken"; CLAUDE.md row THE COST OF THE SIDE; "Rulings
+  taken in your absence (2026-10-12, Q10)" below):**
+  question 10, ruled 2026-09-27: "Q10: yes. Size uses the taken side's
+  cost, like the divisor. Its own commit and planting, after the board
+  merge." THE SIZE IS THE SIDE TAKEN'S: `recommend.size_for` takes the
+  side as a keyword with no default (a caller that forgets it is a
+  TypeError; a side that is neither is refused, below the gate too; no side
+  is sized nothing) and works the quarter of Kelly out on that side's own
+  chance against its own cost (`_cost_of`, the divisor's orientation);
+  `for_predictions` hands it the side the pick takes after the bar, which
+  the writer and the page read; a package names its yes. Until then a
+  no-side pick past its gate and measured ahead was sized as the yes bet:
+  43% against 48.5c, +3.5c on the no side, was 0.0 units written as a
+  `fraction` -- at the cap on its own side. KEPT the first builder's code,
+  read as an adversary; CHANGED its fraction's words ("on the no side" ->
+  "on the side bought") and its measurement (taken again on a fresh copy;
+  its own copy of 2026-10-09T02:59Z, left behind by the limit, deleted unread
+  at 2026-10-12T16:45:32Z). MEASURED FIRST on ONE verified copy
+  (rebuild.verified_backup, 2026-10-12T16:45:47Z to 16:46:50Z, integrity ok,
+  67 tables, none mismatched; read through `db.read_only`; DELETED
+  2026-10-12T16:50:46Z): all 149 recommendations flat units, none a
+  fraction; eleven categories past their hundred, none measured ahead
+  (NCAAF's six and MLB moneyline's two behind the market, MLB spread and
+  total with nothing settled beside a price) -- the defect touched no
+  stored row and NOTHING STORED CHANGES (LAW 3); one measurement away from
+  each of the 110 no-side rows (0.0 units by the released rule, the cap by
+  the ruled one); every sport's current slate, both forecasters, 0 of
+  184,428 values moved, the 5 engine entries with a side kept their size.
+  The payout floor and a proposed combo's no-side legs, named beside it on
+  2026-09-26: CONFIRMED FIXED by pick-number steps C and B. THE PLANTING
+  `plant_a_no_side_size_on_the_yes_sides_numbers` (the size asked blind,
+  the side's own arithmetic under the cap and at it, the yes side
+  unchanged, the question's numbers through the engine and the writer, and
+  the released computation planted at the call site named) ESCAPES on
+  234dad7 (`git archive`, this plant.py) and is CAUGHT here; four tests in
+  `test_recommend.py`, each failing on 234dad7. Nothing drawn moves, so
+  nothing rendered (no page's drawing changes). THE SUITE AND plant.py
+  (detached, `q47q10\q10\run_detached.ps1`, a dummy token): `plant.py`
+  whole 465/465 caught in 462 s (inside the harness's 600 s, short of 480;
+  the planting 0.1 s); the full suite 3,313 passed, 4 skipped, 0 failed, in
+  1,713 s, on its first run. No question put; nothing joins the queue (FOLLOWUPS, "NOT
+  SEEN, AND FOUND, NOT BUILT"). **PROVED (2026-10-12 ~17:40-19:10Z, its
+  prover, alone in the worktree; FOLLOWUPS "The size of the side taken",
+  ITS PROVER; scratchpad `q47q10\q10prover`):** no defect in the code --
+  `size_for` asked at the edges of every side and price (6,732 asks; 13
+  sides that are neither refused at four gates each; the side left out, or
+  given by position, a TypeError), and every size the page draws (the
+  Today card, the board's row and tile, the recommendation line) drawn the
+  side bought's own on scratch worlds past both gates: a moneyline, a
+  spread and a total, on the model's own words and the other side of them,
+  at the cap and under it (on 234dad7, "0.00 units" beside every no-side
+  pick's green outline). ONE DEFECT IN THE PROOF, FIXED: the planting's
+  call-site check asked only at the cap, where a call site handing
+  `size_for` the side's cost as the price sizes the question's numbers as
+  the ruled computation does, and the planting as handed passed it; it
+  asks a pick under the cap too (1.071 units), and that form is planted
+  and named -- escaping on 234dad7, caught here. Three tests, each failing
+  on 234dad7 (the page's sizes on each road). MEASURED AGAIN on ONE
+  verified copy (2026-10-12T17:50:32Z to 17:51:33Z, integrity ok, 67
+  tables; DELETED 17:52:32Z): the builder's figures, each again -- 149 flat
+  units, none a fraction; none of the eleven categories past their hundred
+  ahead; 0 of 184,428 page values moved; the recommendations hashed before
+  and after both trees read the copy, one hash. NOTHING STORED CHANGES.
+  `prose_reaching_the_raw_side()` is []. `plant.py` whole 465/465 in 453
+  s; the full suite 3,316 passed, 4 skipped, 0 failed, in 1,681 s, on its
+  second run (the first failed the prover's three new page tests alone:
+  after a blind window rebuilds the market package, the test file's
+  `recommend` was not the module the page reads, so the patched
+  measurement missed the page; both are patched now, and each still fails
+  on 234dad7). Committed locally, one commit of Q10's files ("Q10: a
+  no-side pick is sized on its own side's chance and cost"), not pushed.
+  Nothing joins the queue; no question put. **Next: the gate for Q47 and
+  Q10 together, then their release.**
   **Q47 BUILT (2026-10-09 ~00:00-01:15Z, on d7a16c2 -- Q5 released as
   451ab3d; question 47 joined the queue FIRST, before Q10; UNCOMMITTED;
   FOLLOWUPS "A part of the page draws only the answer to the latest thing
@@ -2678,6 +2755,19 @@ depend on the answer.
     Default until ruled: (B); not built; FOLLOWUPS has it with two more of
     the same shape, also not named -- the payout floor and a proposed
     combo's no-side legs.
+    **RULED 2026-09-27 (docs/briefs/2026-09-27-close-out-rulings.md): "Q10:
+    yes. Size uses the taken side's cost, like the divisor. Its own commit
+    and planting, after the board merge."** -- (A). **BUILT 2026-10-12 (Q10
+    BUILT, START HERE; FOLLOWUPS "The size of the side taken"; readings
+    under "Rulings taken in your absence (2026-10-12, Q10)"), uncommitted:
+    `size_for` takes the side with no default and sizes on that side's own
+    chance and cost; latent on the record (149 recommendations, all flat;
+    no market past its gate measured ahead), nothing stored changes. The
+    two of the same shape were fixed since by pick-number steps C (the
+    payout floor) and B (a combo's legs), confirmed. PROVED the same day
+    (START HERE, Q10 BUILT): no defect in the code; the planting's
+    call-site check made to see a pick under the cap; three tests of the
+    page's sizes; committed locally.**
 11. **Does "never both sides" bind the page, or the record? (Repair item 5;
     asked 2026-09-26.)** The ruling: "One recommendation per game and
     market, and never both sides." Built: the record -- `record_for` asks
@@ -3689,6 +3779,50 @@ depend on the answer.
     the slate and the Props page both draw, was drawn by a late Props page
     under the week chosen on Games after it; one local commit for its gate
     with Q10.**
+
+## Rulings taken in your absence (2026-10-12, Q10)
+
+Question 10, ruled 2026-09-27 ("Q10: yes. Size uses the taken side's cost,
+like the divisor."), built under item 4's precedent; each reading below is
+the conservative one, reversible in a line, none touching a law (FOLLOWUPS,
+"The size of the side taken", READINGS TAKEN).
+- **"THE TAKEN SIDE" IS THE SIDE THE PICK TAKES AFTER THE BAR**
+  (`for_predictions`' `chosen["side"]`), the side the writer records and the
+  page sizes; an edge whose pick does not clear the bar takes nothing.
+  Reversal: `side=edge_side` at the one call site.
+- **"LIKE THE DIVISOR"**: the cost is `_cost_of`'s, the one orientation the
+  edge and the return on stake share, and the chance is that side's own
+  number; the fee stays out of Kelly, as it always was (the ruling names
+  the cost, not the fee).
+- **NO SIDE IS SIZED NOTHING** (kind `none`, 0 units), as `return_on_stake`
+  states no return for one; until now such an entry carried a flat unit
+  that nothing read -- the writer skips it and the page draws no size for
+  it (measured: no drawn value moves). Reversal: the `side is None` branch.
+- **A SIDE THAT IS NEITHER IS REFUSED BELOW THE GATE TOO**, where the
+  answer is a flat unit whichever the side, so a wrong side cannot pass
+  unnoticed until its market passes its gate.
+- **A PACKAGE IS BOUGHT ON ITS YES** (`combos.size_for` names it), as its
+  edge and return already were on 2026-09-26; nothing moves.
+- **THE FIRST BUILDER'S WORK IS KEPT**, its code read against the ruling and
+  found right; its measurement is taken again on a fresh copy and its
+  stale copy, which the limit left behind, is deleted unread (the operator's
+  ruling of 2026-09-28: every scratch copy of the record deleted once
+  used).
+
+## Rulings taken in your absence (2026-10-12, Q10's prover)
+
+- **THE PLANTING'S BLIND SPOT IS FIXED UNDER THE RULING'S "PLANTING"**, as
+  every prover's has been: its call-site check asked only at the cap, where
+  a call site handing `size_for` the side's cost as the price cannot be
+  told from the ruled one; it asks a pick under the cap too, and that form
+  is planted and named. No code changed. Reversal: drop the second pick
+  and the second form from `plant_a_no_side_size_on_the_yes_sides_numbers`.
+- **NO GATE CHECK OF A DRAWN SIZE IS ADDED** (the queue rule: nothing drawn
+  today is a wrong number -- no market past its gate is measured ahead, so
+  every size drawn is a flat unit): the size has one door, held by the
+  planting and the tests, and three tests hold the page's sizes on each
+  road. FOLLOWUPS names the check as the next guard should a market pass
+  its gate measured ahead.
 
 ## Rulings taken in your absence (2026-10-09, Q47's prover)
 

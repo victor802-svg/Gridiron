@@ -4738,8 +4738,10 @@ def plant_a_stake_column() -> Result:
     """
     from gridiron.market import recommend as _recommend
 
-    lean = _recommend.size_for(model_prob=0.62, price=0.50, settled=3)
-    strong = _recommend.size_for(model_prob=0.92, price=0.50, settled=3)
+    # THE YES SIDE'S BET, NAMED: `size_for` takes the side taken and has no
+    # default (operator question 10, ruled 2026-09-27; built 2026-10-12).
+    lean = _recommend.size_for(model_prob=0.62, price=0.50, side="yes", settled=3)
+    strong = _recommend.size_for(model_prob=0.92, price=0.50, side="yes", settled=3)
     if lean["kind"] != "flat" or strong["kind"] != "flat":
         return Result("LAW 5", "size a wager off a tier below its gate",
                       "recommend.size_for", False,
@@ -17397,8 +17399,9 @@ def plant_a_full_kelly_stake() -> Result:
     from gridiron.market import recommend as _recommend
 
     full = _recommend.kelly_fraction(0.62, 0.50)
-    sized = _recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                                measured_edge=True)
+    # the yes side's bet, named (operator question 10, 2026-10-12)
+    sized = _recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                                settled=400, measured_edge=True)
     if sized["fraction"] >= full:
         return Result(LAW_NEVER_TRANSACTS, "stake the full Kelly fraction",
                       "recommend.size_for", False,
@@ -17418,8 +17421,9 @@ def plant_a_sized_bet_below_the_gate() -> Result:
     """Size on a market with a sample but no measured edge (LAW 5, 2026-09-07)."""
     from gridiron.market import recommend as _recommend
 
-    behind = _recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                                 measured_edge=False)
+    # the yes side's bet, named (operator question 10, 2026-10-12)
+    behind = _recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                                 settled=400, measured_edge=False)
     if behind["kind"] != "flat":
         return Result(LAW_NEVER_TRANSACTS, "size up on a market the model loses on",
                       "recommend.size_for", False,
@@ -21362,6 +21366,293 @@ def plant_a_no_side_edge_divided_by_the_yes_price() -> Result:
                   f"3's numbers have no side (edge still +{a['edge_cents']}c on "
                   f"the no side) and nothing is written, and the mirror is "
                   f"recommended on the no side")
+
+
+def plant_a_no_side_size_on_the_yes_sides_numbers() -> Result:
+    """The question's own numbers: a 43% claim against a 48.5c yes price.
+
+    OPERATOR QUESTION 10, ruled 2026-09-27 (docs/briefs/2026-09-27-close-out-
+    rulings.md): "Q10: yes. Size uses the taken side's cost, like the
+    divisor. Its own commit and planting, after the board merge." Built
+    2026-10-12.
+
+    THE DEFECT. Above a market's gate, with its edge measured ahead,
+    `size_for` handed `kelly_fraction` the claim's YES probability and the
+    YES price whatever side the pick took, so a no-side pick with a real
+    edge was sized as the yes bet: 43% against 48.5c is +3.5c on the no side,
+    whose contract costs 51.5c and wins 57% of the time -- a quarter of
+    Kelly past the cap -- and the yes bet's quarter of Kelly is 0.0 units,
+    which `record_for` wrote as a `fraction`. Latent on the record (every
+    recommendation a flat unit; no market past its hundred measured ahead,
+    2026-10-12), one measurement away from each of its 110 no-side rows.
+
+    CAUGHT means all four, every check run and every failure named (so on the
+    code before the fix the escape shows each): `size_for` cannot be asked
+    without naming the side (a keyword with no default, item 4's precedent),
+    and a side that is neither is refused below the gate too; its arithmetic
+    is the side bought's own -- worked out here as (chance - cost) / (1 -
+    cost), never by `kelly_fraction` -- under the cap (the no side of 65.5%
+    against 70c: 34.5% against 30c, 0.01607) and at it (the question's
+    numbers), and the yes side's unchanged; THROUGH THE ONE CALL SITE and the
+    writer, on a scratch record past its gate and measured ahead, the
+    question's numbers are sized on the no side and written so; and the
+    released computation PLANTED at that call site -- `size_for` handed the
+    yes side whatever the pick took, so the no-side pick is sized on the yes
+    side's numbers -- is named by this planting's own call-site check, which
+    is therefore not blind to it.
+
+    AND UNDER THE CAP THROUGH THE CALL SITE (Q10's prover, 2026-10-12). As
+    first built the call-site check asked the question's numbers alone, and
+    they are capped whichever side's chance meets whichever side's cost: a
+    call site handing `size_for` the side's COST as the price, which
+    `size_for` turns again, sized them 1.333 units as the ruled computation
+    does, and the check passed it. It asks a second pick too, a 65.5% home
+    claim against 70c bought on the no side (34.5% against 30c, 1.071 units;
+    nothing turned twice), and that form is planted and named beside the
+    released one.
+    """
+    import inspect
+
+    from gridiron import db as _db
+    from gridiron import shortlist as _shortlist
+    from gridiron.market import at_the_line as _atl, recommend as _rec
+    from gridiron.priced import coverage as _coverage
+
+    law, what = LAW_NEVER_TRANSACTS, "a no-side size computed on the yes side's numbers"
+    guard = "market.recommend.size_for(side=) at recommend.for_predictions"
+    faults: list[str] = []
+
+    def quarter(chance: float, cost: float) -> tuple[float, float]:
+        full = max(0.0, (chance - cost) / (1.0 - cost))
+        capped = min(config.KELLY_FRACTION * full, config.MAX_FRACTION)
+        return round(capped, 5), round(capped * config.BANKROLL_UNITS, 3)
+
+    # 1. THE SIZE CANNOT BE ASKED BLIND.
+    side = inspect.signature(_rec.size_for).parameters.get("side")
+    if side is None or side.kind is not inspect.Parameter.KEYWORD_ONLY \
+            or side.default is not inspect.Parameter.empty:
+        faults.append("`size_for` can be asked without naming the side, so a "
+                      "caller that forgets it sizes every pick as the yes bet")
+    try:
+        _rec.size_for(model_prob=0.43, price=0.485, settled=400,
+                      measured_edge=True)
+    except TypeError:
+        pass
+    else:
+        faults.append("`size_for` asked with no side answered rather than "
+                      "refusing")
+    try:
+        _rec.size_for(model_prob=0.43, price=0.485, side="home", settled=3)
+    except ValueError:
+        pass
+    except TypeError as exc:
+        faults.append(f"`size_for` does not take the side at all ({exc})")
+    else:
+        faults.append("`size_for` sized a side that is neither, below the gate")
+
+    # 2. THE ARITHMETIC IS THE SIDE BOUGHT'S OWN.
+    asks = (("the question's 43% against 48.5c, on the no side", 0.43, 0.485,
+             "no", quarter(0.57, 0.515)),
+            ("65.5% against 70c, on the no side (34.5% against 30c)", 0.655,
+             0.70, "no", quarter(0.345, 0.30)),
+            ("34.5% against 30c, on the yes side, unchanged", 0.345, 0.30,
+             "yes", quarter(0.345, 0.30)))
+    for label, prob, price, s, (fraction, units) in asks:
+        try:
+            got = _rec.size_for(model_prob=prob, price=price, side=s,
+                                settled=400, measured_edge=True)
+        except TypeError as exc:
+            faults.append(f"{label}: `size_for` does not take the side ({exc})")
+            continue
+        if got["kind"] != "fraction" or abs(got["fraction"] - fraction) > 5e-6 \
+                or abs(got["units"] - units) > 5e-4:
+            faults.append(f"{label} was sized {got['units']} units ({got['kind']}, "
+                          f"{got['fraction']}) where a quarter of Kelly of that "
+                          f"side is {units} units ({fraction})")
+
+    # 3. THROUGH THE ONE CALL SITE AND THE WRITER.
+    def stamp(delta: timedelta) -> str:
+        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def forecast(conn, gid: str, subject: str, prob: float, claim: float,
+                 yes: float) -> int:
+        """`subject` (AAA at home, BBB away) to win at `prob`; its claim
+        stated from the home side, against the home side's yes price."""
+        conn.execute(
+            "INSERT INTO games (id, sport, season, week, game_type, home, away,"
+            " kickoff_utc, status, league_date) VALUES (?, 'mlb', 2026, 1,"
+            " 'R', 'AAA', 'BBB', ?, 'scheduled', ?)",
+            (gid, stamp(timedelta(days=2)), stamp(timedelta(days=2))[:10]))
+        conn.execute(
+            "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+            " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+            " factor_set_version, factors_json, reasoning) VALUES (?, 'mlb',"
+            " ?, 'moneyline', ?, NULL, ?, 'win', 'statistical', 'final',"
+            " 'fs2', '{\"coverage\": 1.0}', 'planted')",
+            (stamp(timedelta(hours=-3)), gid, subject, prob))
+        new = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+        conn.execute(
+            "INSERT INTO market_snapshots (prediction_id, fetched_utc, source,"
+            " implied_prob, kind) VALUES (?, ?, 'planted', ?, 'open_at_predict')",
+            (new, stamp(timedelta(hours=-2)), yes))
+        conn.execute(
+            "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport,"
+            " game_id, market, quantity, line, yes_side, yes_bid, yes_ask,"
+            " fetched_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', ?, ?, ?)",
+            (_atl.VENUE, "T" + gid, "ET" + gid, gid, round(yes - 0.01, 4),
+             round(yes + 0.01, 4), stamp(timedelta(hours=-2))))
+        qid = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+        conn.execute(
+            "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue,"
+            " sport, game_id, market, quantity, line, side, shape, dist_mean,"
+            " dist_sd, model_prob, venue_price, venue_implied, price_basis,"
+            " created_utc) VALUES (?, ?, ?, 'mlb', ?, 'moneyline',"
+            " 'home_win', NULL, 'home', 'line_less', NULL, NULL, ?, ?, ?,"
+            " 'mid', ?)",
+            (new, qid, _atl.VENUE, gid, claim, yes, yes,
+             stamp(timedelta(hours=-1))))
+        return new
+
+    # THE TWO PICKS ASKED THROUGH THE CALL SITE, each (game, subject, the
+    # subject's chance, the home claim, the home side's yes price, its edge
+    # on the no side, what it is in words, and the side bought's own chance
+    # and cost). THE SECOND IS UNDER THE CAP (Q10's prover, 2026-10-12): at
+    # the cap the question's numbers are capped whichever side's chance meets
+    # whichever side's cost, so a call site that handed `size_for` the side's
+    # COST as the price -- turned twice, back to the yes price -- sized them
+    # exactly as the ruled one does and the check, asked at the cap alone,
+    # passed it; under the cap it is nothing.
+    picks = (("g1", "BBB", 0.57, 0.43, 0.485, 3.5,
+              "the question's 43% against 48.5c", 0.57, 0.515),
+             ("g2", "AAA", 0.655, 0.655, 0.70, 2.5,
+              "a 65.5% home claim against 70c, under the cap", 0.345, 0.30))
+
+    def through_the_call_site() -> tuple[list[str], str]:
+        """The question's numbers, and a pick under the cap, on a scratch
+        record past its gate and measured ahead: what the engine sizes and
+        what the writer writes, each on its own side."""
+        found: list[str] = []
+        conn = _db.connect(":memory:")
+        try:
+            _db.init(conn)
+            # THE QUESTION: the away side at 57%, a 43% home claim, 48.5c;
+            # AND UNDER THE CAP: the home side at 65.5% against 70c, so the
+            # no side -- the other side of its words -- is 34.5% against 30c.
+            pids = [forecast(conn, gid, subject, prob, claim, yes)
+                    for gid, subject, prob, claim, yes, *_ in picks]
+            conn.commit()
+            _shortlist.rank_rows(conn, pids)
+            # PAST ITS GATE once ranked, for the engine and the writer alone.
+            config.MIN_SAMPLE_FOR_EDGE_CLAIM = 0
+            got = {e["prediction_id"]: e for e in _rec.for_predictions(conn, pids)}
+            for pid, (_, _, _, _, _, edge, label, _, _) in zip(pids, picks):
+                entry = got.get(pid)
+                if entry is None or entry.get("side") != "no" \
+                        or abs((entry.get("edge_cents") or 0) - edge) > 0.005:
+                    return [], (f"the planted world is wrong: {label} should "
+                                f"be a +{edge}c pick on the no side, and gave "
+                                f"{entry and entry.get('side')} at "
+                                f"{entry and entry.get('edge_cents')}. Fix the "
+                                f"world before trusting this planting")
+            for pid, (*_, label, chance, cost) in zip(pids, picks):
+                fraction, units = quarter(chance, cost)
+                size = got[pid]["size"]
+                if size.get("kind") != "fraction" \
+                        or abs(size.get("units", -1) - units) > 5e-4:
+                    found.append(
+                        f"through the call site the no-side pick ({label}) was "
+                        f"sized {size.get('units')} units ({size.get('kind')}); a "
+                        f"quarter of Kelly of {chance:.1%} against the "
+                        f"{cost * 100:g}c it costs is {units}")
+            wrote = _rec.record_for(conn, pids)
+            for pid, (*_, label, chance, cost) in zip(pids, picks):
+                fraction, units = quarter(chance, cost)
+                row = conn.execute("SELECT side, size_kind, size_units FROM"
+                                   " recommendations WHERE prediction_id = ?",
+                                   (pid,)).fetchone()
+                if wrote["recommended"] != len(picks) or row is None \
+                        or row["side"] != "no" or row["size_kind"] != "fraction" \
+                        or abs(row["size_units"] - units) > 5e-4:
+                    found.append(f"record_for wrote {row and tuple(row)} for the "
+                                 f"no-side pick ({label}); its own side's size is "
+                                 f"('no', 'fraction', {units})")
+        finally:
+            config.MIN_SAMPLE_FOR_EDGE_CLAIM = saved[1]
+            conn.close()
+        return found, ""
+
+    saved = (_coverage.priceable, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+             _rec.measured_edge, _rec.size_for)
+    # PAST ITS GATE AND MEASURED AHEAD, as `plant_a_correction_that_does_not_
+    # reach_the_pick` asks it (the gate inside, once the world is ranked);
+    # the market covered, as item 4's planting does.
+    _coverage.priceable = lambda conn, sport, market, **_: {
+        "priceable": True, "market": market, "why": "covered, in this planting"}
+    _rec.measured_edge = lambda conn, **_: {
+        "ahead": True, "n": 100, "model_brier": 0.2, "market_brier": 0.25,
+        "why": "measured and ahead, in this planting"}
+    try:
+        found, broken = through_the_call_site()
+        if broken:
+            return Result(law, what, guard, False, "NOT CAUGHT - " + broken)
+        faults.extend(found)
+        # 4. THE RELEASED COMPUTATION, PLANTED AT THE CALL SITE: the yes side
+        # handed to `size_for` whatever side the pick took. The call-site
+        # check above must name it, or it could not have seen the defect.
+        # AND FROM Q10'S PROVER (2026-10-12): the side's COST handed to
+        # `size_for` as the price, which `size_for` turns again -- the yes
+        # price's other half against the side's own chance. At the cap it
+        # sizes the question's numbers as the ruled computation does; the
+        # pick under the cap names it.
+        named: list[str] = []
+        if not faults:
+            real = saved[3]
+
+            def on_the_yes_side(**kw):
+                if kw.get("side") is not None:
+                    kw["side"] = "yes"
+                return real(**kw)
+
+            def on_its_cost_as_the_price(**kw):
+                if kw.get("side") in ("yes", "no") and kw.get("price") is not None \
+                        and 0 < kw["price"] < 1:
+                    kw["price"] = _rec._cost_of(kw["side"], kw["price"])
+                return real(**kw)
+
+            for form, wrong in (
+                    ("the released computation planted at the call site -- "
+                     "`size_for` handed the yes side whatever the pick took",
+                     on_the_yes_side),
+                    ("the side's cost handed to `size_for` as the price at the "
+                     "call site, turned twice", on_its_cost_as_the_price)):
+                _rec.size_for = wrong
+                try:
+                    planted, broken = through_the_call_site()
+                finally:
+                    _rec.size_for = real
+                if broken or not planted:
+                    faults.append(f"{form} was named by nothing: "
+                                  + (broken or "the call-site check passed it"))
+                else:
+                    named.append(planted[0])
+    finally:
+        (_coverage.priceable, config.MIN_SAMPLE_FOR_EDGE_CLAIM,
+         _rec.measured_edge, _rec.size_for) = saved
+    if faults:
+        return Result(law, what, guard, False, "NOT CAUGHT - " + "; ".join(faults))
+    fraction, units = quarter(0.57, 0.515)
+    return Result(law, what, guard, True,
+                  f"asked blind, the size is a TypeError and a side that is "
+                  f"neither a ValueError; the no side of 65.5% against 70c is "
+                  f"{quarter(0.345, 0.30)[1]} units and the yes side of 34.5% "
+                  f"against 30c the same, unchanged; through the call site the "
+                  f"question's 43% against 48.5c is sized on the no side, "
+                  f"{units} units at the cap, and the no side of a 65.5% home "
+                  f"claim against 70c {quarter(0.345, 0.30)[1]} units under it, "
+                  f"each written so; the yes side handed to `size_for` in its "
+                  f"place is named: {named[0]}; and the side's cost handed as "
+                  f"the price is named: {named[1]}")
 
 
 def plant_a_regrade_that_is_false_or_rewritten() -> Result:
@@ -31691,6 +31982,10 @@ def main() -> int:
     # permanent.
     results.append(plant_a_no_side_edge_divided_by_the_yes_price())
     results.append(plant_a_regrade_that_is_false_or_rewritten())
+    # OPERATOR QUESTION 10 (ruled 2026-09-27, built 2026-10-12): the size uses
+    # the taken side's chance and cost, like the divisor -- a no-side pick is
+    # never sized on the yes side's numbers.
+    results.append(plant_a_no_side_size_on_the_yes_sides_numbers())
     # GRIDIRON_REPAIR item 5 (the operator's ruling of 2026-09-23, built
     # 2026-09-26): one recommendation per game and market, never both
     # sides -- recs 45 and 46, replayed.

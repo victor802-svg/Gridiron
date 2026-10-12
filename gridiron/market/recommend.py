@@ -235,6 +235,13 @@ def kelly_fraction(model_prob: float, price: float) -> float:
     Computed because a quarter of it has to come from somewhere, and named
     honestly so nobody has to reverse-engineer what the quarter is a quarter
     of. `size_for` is the only caller and it always takes the quarter.
+
+    OF ONE BET: `model_prob` is the chance THE SIDE BOUGHT wins and `price`
+    what one contract of THAT SIDE costs (operator question 10, ruled
+    2026-09-27; built 2026-10-12). `size_for` hands it the side taken's
+    numbers; until that date it handed it the claim's yes probability and
+    the yes price whatever the side, so a no-side pick was sized as the yes
+    bet.
     """
     if not 0 < price < 1:
         return 0.0
@@ -244,8 +251,43 @@ def kelly_fraction(model_prob: float, price: float) -> float:
 
 
 def size_for(*, model_prob: float | None, price: float | None,
-             settled: int, measured_edge: bool | None = None) -> dict:
+             side: str | None, settled: int,
+             measured_edge: bool | None = None) -> dict:
     """How much, in units, and why.
+
+    THE SIZE IS THE SIDE TAKEN'S (operator question 10, ruled 2026-09-27:
+    "Q10: yes. Size uses the taken side's cost, like the divisor. Its own
+    commit and planting, after the board merge."; built 2026-10-12).
+    `model_prob` is the claim's number for its fixed proposition and `price`
+    the venue's YES price, as `edge_cents` and `return_on_stake` take them;
+    `side` is the side the pick takes. The quarter of Kelly is worked out on
+    THAT side: its own chance (the number on the yes side, one minus it on
+    the no side) against what one contract of it costs (`_cost_of`, the one
+    orientation the edge and the return on stake share). Until this date the
+    claim's yes probability and the yes price went to `kelly_fraction`
+    whatever the side, so above a market's gate a no-side pick with a real
+    edge was sized as the yes bet: 43% against 48.5c is +3.5c on the no side,
+    and a quarter of Kelly of the yes bet is 0.0 units, which `record_for`
+    would have written as a `fraction` -- where the no side's own 57% against
+    the 51.5c it costs is a quarter of Kelly past the cap. Measured on one
+    verified copy of the record before the fix (made 2026-10-12T16:45:47Z):
+    every one of the 149 recommendations is a flat unit, and none of the
+    eleven categories past their hundred is measured ahead (each behind the
+    market, or with nothing settled beside a price), so the defect touched
+    no stored row (LAW 3: none changes). It was one measurement away from
+    each of the 110 on the no side: had its market been past its gate and
+    measured ahead, the released rule sized every one of them 0.0 units, and
+    the side's own numbers put every one at the cap.
+
+    THE SIDE HAS NO DEFAULT (item 4's precedent, `return_on_stake` and
+    `clears_the_bar`): a caller that forgets it is a TypeError, never the
+    yes side. A side that is neither is refused by name, below the gate too,
+    so a wrong side is never sized as a flat unit and passed. A pick that
+    takes NO side (None) is sized nothing, as `return_on_stake` states no
+    return for one -- there is no bet to size; the writer writes nothing for
+    it and the page draws no size for it ("a size on a pick that does not
+    clear the bar is a recommendation the app is not making", `views`). Until
+    this date such an entry carried a flat unit that nothing read.
 
     TWO CONDITIONS, NOT ONE, and the second was missing for an afternoon. The
     fraction needs a market with its hundred settled questions AND a measured
@@ -267,10 +309,20 @@ def size_for(*, model_prob: float | None, price: float | None,
     unchanged. `plant.py` proves it by asking twice with different confidence.
     """
     gate = config.MIN_SAMPLE_FOR_EDGE_CLAIM
+    # A SIDE THAT IS NEITHER IS REFUSED FIRST (2026-10-12), in `_cost_of`'s
+    # words, whatever the gate: below it the answer is a flat unit whatever
+    # the side, and a wrong side passed through there would be found only
+    # the day the market passed its gate.
+    if side not in ("yes", "no", None):
+        raise ValueError(f"a side is 'yes' or 'no', not {side!r}")
     if model_prob is None or price is None or not 0 < price < 1:
         return {"kind": "none", "units": 0.0, "fraction": 0.0, "gate_n": settled,
-                "gated": settled >= gate,
+                "gated": settled >= gate, "side": side,
                 "why": "no recorded price, so nothing is sized"}
+    if side is None:
+        return {"kind": "none", "units": 0.0, "fraction": 0.0, "gate_n": settled,
+                "gated": settled >= gate, "side": None,
+                "why": "no side is taken, so nothing is sized"}
     if settled < gate:
         return {
             "kind": "flat",
@@ -278,6 +330,7 @@ def size_for(*, model_prob: float | None, price: float | None,
             "fraction": None,
             "gate_n": settled,
             "gated": False,
+            "side": side,
             "why": (f"no measured edge yet: {settled} of {gate} settled in "
                     f"this market"),
         }
@@ -288,11 +341,17 @@ def size_for(*, model_prob: float | None, price: float | None,
             "fraction": None,
             "gate_n": settled,
             "gated": False,
+            "side": side,
             "why": (f"measured and NOT ahead: {settled} settled here, and the "
                     f"market's own prices score at least as well as the "
                     f"model's on them"),
         }
-    quarter = config.KELLY_FRACTION * kelly_fraction(model_prob, price)
+    # ON THE SIDE TAKEN (operator question 10, 2026-10-12): its own chance and
+    # its own cost, the orientation `edge_points` reads -- never the claim's
+    # yes number and the yes price for a pick on the no side.
+    chance = float(model_prob) if side == "yes" else 1.0 - float(model_prob)
+    cost = _cost_of(side, price)
+    quarter = config.KELLY_FRACTION * kelly_fraction(chance, cost)
     capped = min(quarter, config.MAX_FRACTION)
     return {
         "kind": "fraction",
@@ -300,8 +359,14 @@ def size_for(*, model_prob: float | None, price: float | None,
         "fraction": round(capped, 5),
         "gate_n": settled,
         "gated": True,
-        "why": (f"a quarter of Kelly, capped at {config.MAX_FRACTION:.1%} of the "
-                f"declared bankroll ({settled} settled in this market)"),
+        "side": side,
+        # IN WORDS OF THE SIDE BOUGHT, never "the no side" (step C's
+        # recommendation line names a side by its contract's words): its
+        # chance and its cost.
+        "why": (f"a quarter of Kelly on the side bought, {chance * 100:.1f}% "
+                f"against the {_cents(cost)}¢ it costs, capped at "
+                f"{config.MAX_FRACTION:.1%} of the declared bankroll ({settled} "
+                f"settled in this market)"),
     }
 
 
@@ -650,8 +715,17 @@ def for_predictions(conn: sqlite3.Connection, prediction_ids: list[int], *,
                               market_type=row["market_type"],
                               prop_type=row["prop_type"],
                               predictor=row["predictor"])
+        # ON THE SIDE TAKEN (operator question 10, ruled 2026-09-27: "Size
+        # uses the taken side's cost, like the divisor"; built 2026-10-12).
+        # This handed `size_for` the claim's yes number and the yes price,
+        # and it sized every pick as the yes bet: above a market's gate a
+        # no-side pick at +3.5c (43% against 48.5c) was a quarter of Kelly of
+        # nothing. The side is the pick's own -- after the bar, so a pick
+        # that takes none is sized nothing, as the page draws none -- and
+        # `size_for` works that side's chance and cost out through `_cost_of`.
         size = size_for(model_prob=model_prob, price=price,
-                        settled=settled, measured_edge=ahead["ahead"])
+                        side=chosen["side"], settled=settled,
+                        measured_edge=ahead["ahead"])
         out.append({
             "prediction_id": row["id"],
             "sport": row["sport"],

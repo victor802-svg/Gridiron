@@ -3228,7 +3228,8 @@ before the next gate.
   gets a quarter of Kelly of the yes bet, which is zero units, recorded as
   a `fraction`. Latent while every market is under its gate (all flat
   units). The same shape as item 4's return-on-stake denominator; a fix is
-  its own ruling.
+  its own ruling. *(RULED 2026-09-27 as question 10 and BUILT 2026-10-12:
+  "The size of the side taken", below.)*
 
 ## The return on what the side costs -- built 2026-09-26 *(GRIDIRON_REPAIR item 4; the operator's ruling of 2026-09-23)*
 
@@ -3423,8 +3424,10 @@ cleared'. Planting." (The line has moved since THE READ: the call was
 ### OPEN, found by this item *(2026-09-26)*
 
 - **The size of a no-side pick** (item 3's prover; question 10): measured
-  latent above.
+  latent above. *(BUILT 2026-10-12: "The size of the side taken", below.)*
 - **The payout floor reads the yes price's payout on a no-side pick.**
+  *(FIXED 2026-09-30 by pick-number step C's sweep; confirmed by question
+  10's builder, 2026-10-12.)*
   `for_predictions` carries `payout = payout_multiple(price)` -- one over the
   YES price -- and `views` folds a clearing pick below `min_payout` (1.5 by
   default) on that number whatever the side, while the card's own chip turns
@@ -3433,6 +3436,8 @@ cleared'. Planting." (The line has moved since THE READ: the call was
   is. Display only (`record_for` ignores the floor); not named by the
   ruling, which is about an edge; not built.
 - **A proposed combo's no-side legs** (item 3's entry above): not built.
+  *(FIXED 2026-09-30 by pick-number step B, `combos.leg_on_its_side`;
+  confirmed by question 10's builder, 2026-10-12.)*
 - **The bar's own words print the return to one place**, so a pick at 4.97%
   of its cost would read "5.0% ... under the 5%" in `side_why`. Nothing
   renders `side_why`; the re-grade and the page line use two places.
@@ -10823,7 +10828,7 @@ contacted, nothing run from the main checkout.
 - The no-side SIZE above a market's gate is sized on the yes side's number
   and price (`recommend.size_for`) -- question 10, already queued; every
   market is below its gate or not measured ahead, so every size is a flat
-  unit today.
+  unit today. *(BUILT 2026-10-12: "The size of the side taken", below.)*
 - rec 111's tile edge "+22.5¢" and every rung-differs spread figure: finding
   2, step A.
 
@@ -17863,6 +17868,274 @@ pick)*:
   stored; the page reads the stored value back through its latest render and
   draws what the appliance holds (the build's reading (e)); the operator's
   last typing is then not what is kept.
+
+## The size of the side taken -- built 2026-10-12 *(operator question 10, ruled 2026-09-27, docs/briefs/2026-09-27-close-out-rulings.md: "Q10: yes. Size uses the taken side's cost, like the divisor. Its own commit and planting, after the board merge."; last in every order since; built on 234dad7 -- Q47 committed locally as 628880c, not yet gated; a first builder began it on 2026-10-09 and the weekly usage limit stopped it with its work uncommitted; resumed 2026-10-12 16:40Z from that work; UNCOMMITTED, for the gate with Q47)*
+
+Q10 BUILT. Above a market's gate, with its edge measured ahead,
+`recommend.size_for` handed `kelly_fraction` the claim's YES number and the
+YES price whatever side the pick took, so a no-side pick with a real edge was
+sized as the yes bet: 43% against 48.5c is +3.5c on the no side -- 57%
+against the 51.5c that side costs, a quarter of Kelly past the cap -- and the
+yes bet's quarter of Kelly is 0.0 units, which `record_for` would have
+written as a `fraction`. (Found by item 3's prover, 2026-09-26: "Found in
+passing, not item 3", above; question 10 in docs/REPAIR_STATE.md.) The size
+is now the side taken's: its own chance against its own cost, the
+orientation the edge and the divisor already share.
+
+### MEASURED FIRST *(ONE verified copy of the record through `rebuild.verified_backup`, 2026-10-12T16:45:47Z to 16:46:50Z, 1,206,730,752 bytes, integrity ok, 67 tables, none mismatched; read with `db.read_only`; deleted 2026-10-12T16:50:46Z, nothing beside it; scratchpad `q47q10\q10\measure_1012.py` -> `measure_1012.txt`/`.json`, `moves_1012.py` and `moves_diff_1012.py` -> `moves_diff_1012.txt`, HEAD's `git archive` against this tree, the clock held at the copy's instant)*
+
+- **Every stored recommendation is a flat unit**: 149 (ids 1-149, written
+  2026-09-07T20:52:31Z to 2026-10-11T15:04:07Z; 110 on the no side, 39 on
+  the yes; 57 withdrawn), every one `flat` at 1.0 unit, none a `fraction`.
+  71 were written with their market's count at or past 100 (the highest
+  251) -- each a flat unit because its market was not measured ahead.
+- **No category past its hundred is measured ahead.** Eleven are past it
+  (the edge gate's own count, `shortlist.settled_for_gate`): NCAAF
+  moneyline (statistical 250, reasoning pass 120), spread (286, 113) and
+  total (251, 127), each BEHIND the market on its settled questions with a
+  price (NCAAF spread statistical 0.2221 against 0.1963 on 284; NCAAF total
+  statistical 0.1622 against 0.1540 on 251); MLB moneyline (260, 148),
+  behind (0.2535 against 0.2410 on 179; 0.2608 against 0.2374 on 100); MLB
+  spread statistical (202) and total (213, 141), with nothing settled beside
+  a price. The one category measured ahead anywhere is MLB batter hits,
+  statistical, on 2 questions, 31 settled. So THE DEFECT TOUCHED NO STORED
+  ROW, and NOTHING STORED CHANGES (LAW 3).
+- **One measurement away from every no-side row.** Worked out for each
+  stored row from its own frozen side, claim (the corrected one where it
+  carries one) and price -- had its market been past its gate and measured
+  ahead -- the released rule sizes every one of the 110 no-side rows 0.0
+  units and the ruled one puts every one at the cap (1.333 units, 2% of
+  the declared bankroll); the 39 yes-side rows are the same both ways.
+- **What moves, HEAD against this tree**: every sport's current slate,
+  both forecasters (ten payloads), 0 of 184,428 values; the engine's
+  entries for every shortlisted forecast on a game still to come (56 of
+  379 asked), 79 of 2,576 values, all in `size`: the 5 entries with a side
+  (NBA moneylines 3153, 3154, 3159, 3160, 3165; three no, two yes) keep
+  their size, a flat unit, and gain the side they were sized on; the 5 with
+  a price and no side (the bar not cleared) lose a flat unit nothing read
+  ("no side is taken, so nothing is sized"); every entry carries `side`.
+
+### BUILT *(kept from the first builder, read as an adversary against the ruling; what was changed is said)*
+
+- **`recommend.size_for(*, model_prob, price, side, settled,
+  measured_edge=None)`**: `side` is keyword-only with NO DEFAULT (item 4's
+  precedent, `return_on_stake` and `clears_the_bar`), so a caller that
+  forgets it is a TypeError, never the yes side; a side that is neither is
+  refused by name (`_cost_of`'s words) FIRST, below the gate and with no
+  price too -- below the gate the answer is a flat unit whichever the side,
+  so a wrong side would otherwise pass until the day its market passed its
+  gate; a pick that takes no side (None) is sized nothing (kind `none`, 0
+  units, "no side is taken, so nothing is sized"), as `return_on_stake`
+  states no return for one. Above the gate and measured ahead, the quarter
+  of Kelly is `kelly_fraction` of THAT side's chance -- the claim's number
+  on the yes side, one minus it on the no side -- and what one contract of
+  it costs (`_cost_of`: the yes price on the yes side, the rest of the
+  dollar on the no side), capped as before; the size carries the side it
+  was worked on. Kept. CHANGED: its words for a fraction said "a quarter of
+  Kelly on the no side"; they say "on the side bought, 57.0% against the
+  51.5¢ it costs" -- step C names a side by its contract's words, and these
+  words are payload only (a fraction's words are not drawn; the page draws
+  "N units, a quarter of Kelly and capped").
+- **Every caller names the side.** `for_predictions` hands `size_for` the
+  side the pick takes AFTER the bar (`chosen["side"]`), and the writer
+  (`record_for`) and the page (the Today card, the recommendation lines)
+  read that entry's size -- the one call site for both; `combos.size_for`
+  names `side="yes"` for a package the venue published, bought on its yes
+  (`package_edge`); a proposed combo is sized below its gate (`settled=0`)
+  and never reaches it. The tests and plantings that asked a yes-side bet
+  name it (`test_recommend.py`'s four, `test_three_states.py`'s ceiling,
+  `plant_a_stake_column`, `plant_a_full_kelly_stake`,
+  `plant_a_sized_bet_below_the_gate`). Kept.
+- **The first builder's measurement** was of a copy made 2026-10-09T02:59Z
+  (137 recommendations), left undeleted when the limit stopped it; that
+  copy was deleted unread at 2026-10-12T16:45:32Z (1,177,743,360 bytes,
+  with its -shm and empty -wal) and the record measured again on a fresh
+  one (above); the docstring states the fresh figures.
+- **The planting** `plant_a_no_side_size_on_the_yes_sides_numbers` (item
+  4's shape, `plant_a_no_side_edge_divided_by_the_yes_price`): `size_for`
+  asked without its side, and with a side that is neither below the gate;
+  the side bought's own arithmetic, worked out by the planting as (chance -
+  cost) / (1 - cost) and never by `kelly_fraction` -- the no side of 65.5%
+  against 70c (34.5% against 30c, 0.01607, 1.071 units: under the cap,
+  where the arithmetic shows), the question's numbers at the cap, the yes
+  side of 34.5% against 30c unchanged; through the one call site and the
+  writer on a scratch record past its gate and measured ahead, the
+  question's numbers sized on the no side and written so; and THE RELEASED
+  COMPUTATION PLANTED AT THAT CALL SITE (`size_for` handed the yes side
+  whatever the pick took) named by the planting's own call-site check.
+  ESCAPES on 234dad7 (`git archive`, this plant.py; `escape_head.txt`),
+  naming every check: the size asked blind, no side taken at all, each of
+  the three asks a TypeError, "through the call site the no-side pick was
+  sized 0.0 units (fraction); a quarter of Kelly of 57% against the 51.5c
+  it costs is 1.333", and "record_for wrote ('no', 'fraction', 0.0)".
+  CAUGHT here (`caught_tree.txt`), in 0.1 s. In `main()` and
+  `test_guards.py`'s harness list.
+- **Tests** (`test_recommend.py`, "the size of the side taken"), each
+  failing on 234dad7 (`new_tests_on_head.txt`):
+  `::test_a_no_side_pick_past_its_gate_is_sized_on_its_own_side` (the
+  question's numbers through the engine and the writer: 0.0 there, 1.333
+  at the cap here, written `('no', 'fraction', 1.333)`),
+  `::test_a_no_side_pick_under_the_cap_is_its_sides_own_quarter_of_kelly`
+  (a 65.5% claim against 70c bought on the no side -- the other side of
+  its words, as question 37's are: 0.0 there, 0.01607 here),
+  `::test_the_yes_side_is_sized_as_it_was` (the mirror under the cap and a
+  yes-side pick through the engine, each `kelly_fraction` of its yes
+  numbers, as released; the side keyword a TypeError there), and
+  `::test_the_size_cannot_be_asked_without_naming_the_side` (TypeError
+  without it, ValueError for a side that is neither below the gate, with
+  no price and past it, nothing sized for no side, a flat unit either side
+  below the gate).
+- **Nothing drawn moves** (0 of 184,428 values on every sport's current
+  slate, both forecasters, above), so no page was rendered: no page's
+  drawing changes.
+- **`plant.py` whole** (detached, `q47q10\q10\run_detached.ps1`, a dummy
+  token; `plant.txt`): 465/465 caught in 462 s, inside the harness's 600 s
+  and short of 480, the limit not widened (464 in 444-448 s for Q47; the
+  new planting 0.1 s).
+- **The suite** (detached, `suite.txt`): 3,313 passed, 4 skipped, 0 failed,
+  in 1,713 s, on its first run (3,309 before: the four tests above).
+
+### READINGS TAKEN *(the conservative default; docs/REPAIR_STATE.md, "Rulings taken in your absence (2026-10-12, Q10)")*
+
+- **"The taken side"** is the side the pick takes after the bar
+  (`for_predictions`' `chosen["side"]`), which is the side the writer
+  records and the page sizes; the edge's side (`edge_side`) of a pick that
+  does not clear the bar takes nothing and is sized nothing.
+- **"Like the divisor"**: the cost is `_cost_of`'s, the one orientation the
+  edge and the return on stake share, and the chance is that side's own
+  number; the fee is left out of Kelly as it always was (the ruling names
+  the side's cost, not the fee).
+- **A pick with no side is sized nothing**, as it has no return; until
+  this date its entry carried a flat unit nothing read (measured above).
+- **A package is bought on its yes**, as its edge and its return already
+  are (2026-09-26); its size names that side and moves nothing.
+
+### CONFIRMED: THE TWO MORE OF THE SAME SHAPE *(named "Open, found by this item" in item 4's section, 2026-09-26)*
+
+- **The payout floor** read the yes price's payout on a no-side pick:
+  FIXED by pick-number step C (2026-09-30, the sweep): `views` folds a
+  clearing pick by `_payout_for(_cost_of_the_side_bought(entry))`, what the
+  side bought pays, and the day strip's "below your floor" counts the same
+  (`plant_a_payout_on_the_propositions_side`, the fold by the
+  proposition's payout among its forms).
+- **A proposed combo's no-side legs**: FIXED by pick-number step B
+  (2026-09-30): `combos.leg_on_its_side` makes each leg the contract it is
+  picked on -- that side's number and cost -- and the worth, the ceiling
+  and the singles line are those sides' (`plant_a_combo_worth_its_legs_
+  yes_sides`, `test_combo_sides.py`).
+
+### NOT SEEN, AND FOUND, NOT BUILT *(the queue rule: nothing here breaks LAW 1 or LAW 3, makes a gate count false, or could show the operator a wrong number on a pick today)*
+
+- No fraction can be drawn today: no market past its gate is measured
+  ahead, and ruling B draws no size beside a recommendation that is not a
+  pick (B.5's gate). The ruled size is seen on scratch worlds only.
+- Still as the Q33 + Q34 builder left it ("FOUND, NOT BUILT", above):
+  `recommend.measured_edge`, the sizing's "measured and ahead", reads
+  `calibration.curve` with no card, so for UFC it is every card's; asked
+  only past a card's hundred, which no UFC card is near (Fight Night 50 the
+  most), and no UFC question has settled beside a price (n 0 on every
+  card).
+
+### ITS PROVER *(2026-10-12 ~17:40-19:10Z, alone in the worktree on the change as handed; scratchpad `q47q10\q10prover`)*
+
+- **No defect in the code.** `size_for`, its one call site and
+  `combos.size_for` were read against the ruling as an adversary, and
+  `size_for` was asked at the edges (`edges.py`, 6,732 asks): each side --
+  yes, no, none -- against prices at and around the edges (none, below
+  nothing, nothing, a billionth, a tenth of a cent, 2c, 20c, 48.5c, 50c,
+  51.5c, 80c, 98c, 99.9c, a billionth short of a dollar, a dollar, 1.5, and
+  a price that is not a number) and chances from nothing to certain, below
+  the gate and past it, measured ahead, behind and never. No price, or no
+  side, is sized nothing; below either condition it is one flat unit
+  whichever the side; past both it is the side's own quarter of Kelly,
+  worked out by its own spelling, (chance - cost) / (1 - cost), never
+  outside nothing to the cap, and the no side at (p, c) is the yes side at
+  (1 - p, 1 - c). Thirteen sides that are neither (home, away, over, under,
+  an empty word, YES, No, y, True, False, 0, 1, a list) are refused by name
+  at four gates and prices each; the size asked without its side, or by
+  position, is a TypeError.
+- **Every size the page draws is the side bought's.** The page works no
+  size out of its own: the Today card's `size_words` (which the board's
+  row and tile carry) and the recommendation line's units and words read
+  the entry's one size (`views`), and nothing else in the package, the
+  tools or the gate reads a size. Drawn on scratch worlds past both gates
+  (the edge gate put at nothing and measured ahead; B.5's gate passed by
+  `tests/gate_world.py`), each is the side bought's own quarter of Kelly: a
+  moneyline's no side on the model's own words (the question's numbers,
+  1.33 units at the cap) and on the other side of them ("AAA to win" at 74%
+  against 80c, bought as BBB at 26% against 20c, 1.25 units); a moneyline's
+  yes side on the other side of its words (1.25 units, as released); a
+  spread's other side (rec 111's shape, North Texas +1.5 at 76% against
+  51.5c, 1.33 units); and a total's under, bought on the model's over (1.25
+  units) and on its own under (1.33 units). On each, the gate's checks of
+  the side, the line, the headline and the pick pass the payload. On
+  234dad7 every no-side pick there was drawn "0.00 units, a quarter of
+  Kelly and capped." beside its green outline (`page_probe.py`). Held by
+  three new tests (below).
+- **A DEFECT FOUND IN THE PROOF: the planting's call-site check asked only
+  at the cap.** The question's numbers are capped whichever side's chance
+  meets whichever side's cost. So a call site that handed `size_for` the
+  side's COST as the price -- which `size_for` turns again, back to the
+  other half of the yes price -- sized them at 1.333 units, as the ruled
+  computation does, and the planting as handed passed it
+  (`cost_form_on_handed.txt`: "named by nothing: the call-site check passed
+  it"). The suite's under-the-cap test goes through the engine and would
+  have caught it; the planting would not. FIXED: the call-site check also
+  asks a pick under the cap -- a 65.5% home claim against 70c, bought on
+  the no side (the other side of its words) at 34.5% against 30c, +2.5c,
+  1.071 units -- through the engine and the writer, and the cost form is
+  planted beside the released one and named ("through the call site the
+  no-side pick (a 65.5% home claim against 70c, under the cap) was sized
+  0.0 units"). The planting ESCAPES on 234dad7 (`escape_head.txt`: both
+  picks sized 0.0 units through the call site and written so) and is
+  CAUGHT here (`caught_tree.txt`, 0.1 s).
+- **Three tests** (`test_recommend.py`, "every size the page draws is the
+  side bought's"), each failing on 234dad7 with "0.00 units" where the
+  side's own size is drawn (`new_tests_on_head.txt`):
+  `::test_a_moneylines_size_on_the_page_is_the_side_boughts`,
+  `::test_a_spreads_other_side_on_the_page_is_its_own_size` and
+  `::test_a_totals_under_on_the_page_is_its_own_size`. AS FIRST WRITTEN
+  they passed alone and failed in the whole suite (3 failed, 3,313 passed,
+  4 skipped, 1,690 s): a blind window drops the market package from
+  `sys.modules` and the next import builds it afresh (`tests/conftest.py`,
+  `_market_clocks_put_back`), so after one the `recommend` the test file
+  imported was not the module `views` reads, and the page drew the real
+  measurement ("measured and NOT ahead") beside the patched one.
+  `_past_the_gate_and_ahead` now patches the module the page reads too
+  (shown with `test_starts_are_instants.py` run first: 29 passed); each of
+  the three still fails on 234dad7 with "0.00 units".
+- **Measured again on ONE verified copy** (`rebuild.verified_backup`,
+  2026-10-12T17:50:32Z to 17:51:33Z, 1,206,730,752 bytes, integrity ok, 67
+  tables, none mismatched; read through `db.read_only`; DELETED
+  2026-10-12T17:52:32Z; `measure.py`, `moves.py`, `moves_diff.py`): each of
+  the builder's figures again. 149 recommendations (ids 1-149, the last
+  written 2026-10-11T15:04:07Z), every one a flat 1.0 unit and none a
+  fraction, 110 on the no side and 39 on the yes, 57 withdrawn. Eleven
+  categories past their hundred, none measured ahead (the only category
+  ahead anywhere is MLB batter hits, statistical, on 2). HEAD against this
+  tree, the clock held at the copy's instant: every sport's current slate,
+  both forecasters, 0 of 184,428 values moved; the engine's 56 entries on
+  games still to come, 79 of 2,576 values, all in `size` (the 5 with a
+  side keep their flat unit; the 5 priced with no side -- 3166, 5002, 5011,
+  5013, 5014 -- lose the flat unit nothing read). The table's rows hashed
+  before and after both trees read the copy give one hash. NOTHING STORED
+  CHANGES (LAW 3).
+- `audit.prose_reaching_the_raw_side()` is `[]`.
+- **plant.py whole and the suite** (detached, `q10prover\run_detached.ps1`,
+  a dummy non-secret token): `plant.py` whole 465/465 caught in 453 s,
+  inside the harness's 600 s and short of 480, the limit not widened (462
+  s for the change as handed; the planting still 0.1 s); the full suite
+  3,316 passed, 4 skipped, 0 failed, in 1,681 s (3,313 before: the three
+  page tests), on its second run -- the first is the one above, its three
+  failures the prover's own tests, fixed before the second.
+- **NOT BUILT, AND WHY (not the queue: nothing drawn today is wrong).** No
+  gate check reads a drawn size against the side bought's arithmetic. The
+  size has one door (`size_for`, at `for_predictions`), which the planting
+  and the tests hold. On the record no fraction can be drawn (no market
+  past its gate is measured ahead), so a payload check would hold nothing
+  today. If a market passes its gate measured ahead, a step-2 check working
+  each pick's size out again from its Today card's number and price is the
+  next guard.
 
 ## The rules stay on, and their marks stay put -- built 2026-09-29 *(operator questions 25 and 29, ruled 2026-09-28; question 29's reading confirmed by the operator 2026-09-29; docs/briefs/2026-09-28-rulings.md, 2026-09-28-rulings-second-set.md and 2026-09-29-rulings.md)*
 

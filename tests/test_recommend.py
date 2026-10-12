@@ -118,9 +118,14 @@ def test_an_edge_that_does_not_clear_the_fee_is_no_edge():
     assert recommend.side_for(0.62, None)["side"] is None
 
 
+# THE SIDE IS NAMED in every ask below (operator question 10, ruled
+# 2026-09-27; built 2026-10-12): `size_for` takes the side taken, with no
+# default. Each of these is a 62% or 92% claim against a 50c yes price, which
+# is the yes side's bet, so each names the yes side and asks what it asked.
+
 def test_below_the_gate_the_size_does_not_move_with_confidence():
-    lean = recommend.size_for(model_prob=0.62, price=0.50, settled=3)
-    strong = recommend.size_for(model_prob=0.92, price=0.50, settled=3)
+    lean = recommend.size_for(model_prob=0.62, price=0.50, side="yes", settled=3)
+    strong = recommend.size_for(model_prob=0.92, price=0.50, side="yes", settled=3)
     assert lean["kind"] == strong["kind"] == "flat"
     assert lean["units"] == strong["units"] == config.FLAT_UNIT
     assert "no measured edge" in lean["why"]
@@ -129,28 +134,28 @@ def test_below_the_gate_the_size_does_not_move_with_confidence():
 def test_a_measured_sample_is_not_a_measured_edge():
     """286 settled questions on a market the model is BEHIND on is not a
     licence to size up. Both conditions or the flat unit."""
-    behind = recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                                measured_edge=False)
+    behind = recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                                settled=400, measured_edge=False)
     assert behind["kind"] == "flat" and behind["units"] == config.FLAT_UNIT
     assert "NOT ahead" in behind["why"]
-    unknown = recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                                 measured_edge=None)
+    unknown = recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                                 settled=400, measured_edge=None)
     assert unknown["kind"] == "flat"
-    ahead = recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                               measured_edge=True)
+    ahead = recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                               settled=400, measured_edge=True)
     assert ahead["kind"] == "fraction" and ahead["units"] > 0
 
 
 def test_the_fraction_is_a_quarter_of_kelly_and_capped():
     full = recommend.kelly_fraction(0.62, 0.50)
-    sized = recommend.size_for(model_prob=0.62, price=0.50, settled=400,
-                               measured_edge=True)
+    sized = recommend.size_for(model_prob=0.62, price=0.50, side="yes",
+                               settled=400, measured_edge=True)
     assert sized["fraction"] == pytest.approx(
         min(config.KELLY_FRACTION * full, config.MAX_FRACTION))
     assert sized["fraction"] < full          # never full Kelly
     # a wild claim is capped rather than trusted
-    wild = recommend.size_for(model_prob=0.97, price=0.30, settled=400,
-                              measured_edge=True)
+    wild = recommend.size_for(model_prob=0.97, price=0.30, side="yes",
+                              settled=400, measured_edge=True)
     assert wild["fraction"] == config.MAX_FRACTION
 
 
@@ -498,9 +503,13 @@ def test_the_size_is_computed_from_the_corrected_claim(tmp_path, monkeypatch):
     _correct(conn)
     got = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert got["side"] == "yes" and got["size"]["kind"] == "fraction"
+    # ON THE SIDE THE CORRECTED CLAIM TAKES, the yes side, both times
+    # (operator question 10, 2026-10-12: the size is the side taken's, and
+    # its side has no default). On the yes side the raw 43% is still nothing.
     corrected = recommend.size_for(model_prob=got["fair_value"], price=0.485,
-                                   settled=got["gate_n"], measured_edge=True)
-    raw = recommend.size_for(model_prob=0.43, price=0.485,
+                                   side="yes", settled=got["gate_n"],
+                                   measured_edge=True)
+    raw = recommend.size_for(model_prob=0.43, price=0.485, side="yes",
                              settled=got["gate_n"], measured_edge=True)
     assert raw["units"] == 0 < corrected["units"]
     assert got["size"]["units"] == pytest.approx(corrected["units"], abs=1e-3)
@@ -627,6 +636,333 @@ def test_a_pick_with_no_side_carries_no_return(tmp_path):
     entry = recommend.for_predictions(conn, [pid], now=ASKED)[0]
     assert entry["side"] is None and entry["edge_side"] is None
     assert entry["return_on_stake"] is None
+
+
+# --- the size of the side taken (operator question 10) ----------------------
+#
+# Ruled 2026-09-27 (docs/briefs/2026-09-27-close-out-rulings.md): "Q10: yes.
+# Size uses the taken side's cost, like the divisor. Its own commit and
+# planting, after the board merge." Built 2026-10-12. Above a market's gate,
+# with its edge measured ahead, `size_for` handed `kelly_fraction` the claim's
+# YES number and the YES price whatever the side, so a no-side pick with a
+# real edge was sized as the yes bet. Each test below fails on 234dad7.
+
+def _quarter_kelly_units(chance: float, cost: float) -> tuple[float, float]:
+    """A quarter of Kelly, capped, worked out here by its own spelling and
+    never by `recommend.kelly_fraction`: a contract costing `cost` that pays
+    a dollar has a full Kelly fraction of (chance - cost) / (1 - cost)."""
+    full = max(0.0, (chance - cost) / (1.0 - cost))
+    capped = min(config.KELLY_FRACTION * full, config.MAX_FRACTION)
+    return round(capped, 5), round(capped * config.BANKROLL_UNITS, 3)
+
+
+def _past_the_gate_and_ahead(monkeypatch):
+    """The two conditions a fraction needs: the market past its gate (the gate
+    put at nothing, as `test_the_size_is_computed_from_the_corrected_claim`
+    puts it) and its edge measured ahead.
+
+    ON THE MODULE THE PAGE READS TOO (Q10's prover, 2026-10-12). A blind
+    window drops the market package from `sys.modules` and the next import
+    builds it afresh (`tests/conftest.py`, `_market_clocks_put_back`), so in
+    the whole suite the `recommend` this file imported can be another module
+    than the one `views` imports when it draws: the page tests below passed
+    alone and, after a blind window, drew the real measurement ("measured
+    and NOT ahead"). Both are patched."""
+    from gridiron.market import recommend as the_pages
+
+    monkeypatch.setattr(config, "MIN_SAMPLE_FOR_EDGE_CLAIM", 0)
+    for module in {id(recommend): recommend, id(the_pages): the_pages}.values():
+        monkeypatch.setattr(module, "measured_edge", lambda conn, **_: {
+            "ahead": True, "n": 100, "model_brier": 0.2, "market_brier": 0.25,
+            "why": "measured and ahead, in this test"})
+
+
+def test_a_no_side_pick_past_its_gate_is_sized_on_its_own_side(tmp_path, monkeypatch):
+    """THE QUESTION'S OWN NUMBERS, THROUGH THE ONE CALL SITE AND THE WRITER:
+    a 43% claim against a 48.5c yes price is +3.5c on the no side, whose
+    contract costs 51.5c and wins 57% of the time. A quarter of Kelly of
+    that is past the cap, so the pick is sized at the cap; on 234dad7 it was
+    a quarter of Kelly of the yes bet, 0.0 units, and `record_for` wrote it
+    as a `fraction` of nothing."""
+    _past_the_gate_and_ahead(monkeypatch)
+    conn = _world(tmp_path)
+    pid = _away_pick(conn)                    # 43% on the home side, 48.5c
+    entry = recommend.for_predictions(conn, [pid], now=ASKED)[0]
+    assert (entry["side"], entry["edge_cents"]) == ("no", pytest.approx(3.5))
+    fraction, units = _quarter_kelly_units(0.57, 0.515)
+    assert units > 0 and fraction == config.MAX_FRACTION        # at the cap
+    assert entry["size"]["kind"] == "fraction"
+    assert entry["size"]["units"] == pytest.approx(units)       # 0.0 on 234dad7
+    assert entry["size"]["fraction"] == pytest.approx(fraction)
+    assert entry["size"]["side"] == "no"
+    assert "57.0% against the 51.5¢ it costs" in entry["size"]["why"]
+    assert recommend.record_for(conn, [pid], now=ASKED)["recommended"] == 1
+    row = conn.execute("SELECT side, size_kind, size_units FROM recommendations"
+                       ).fetchone()
+    assert (row["side"], row["size_kind"]) == ("no", "fraction")
+    assert row["size_units"] == pytest.approx(units)
+
+
+def test_a_no_side_pick_under_the_cap_is_its_sides_own_quarter_of_kelly(
+        tmp_path, monkeypatch):
+    """UNDER THE CAP, WHERE THE ARITHMETIC SHOWS. The model says the home
+    side at 65.5% against a 70c yes price: the no side -- the other side of
+    the question's words, as question 37's recommendations are -- is 34.5%
+    against the 30c it costs, +2.5c after the fee and 8.3% of the cost, so it
+    clears the bar. Its quarter of Kelly is 0.25 * (0.345 - 0.30) / 0.70 =
+    0.01607 of the bankroll, 1.071 units. The yes bet's is nothing."""
+    _past_the_gate_and_ahead(monkeypatch)
+    conn = _world(tmp_path)
+    pid = _pick(conn, prob=0.655, implied=0.70)
+    entry = recommend.for_predictions(conn, [pid], now=ASKED)[0]
+    assert (entry["side"], entry["edge_cents"]) == ("no", pytest.approx(2.5))
+    fraction, units = _quarter_kelly_units(0.345, 0.30)
+    assert (fraction, units) == (pytest.approx(0.01607), pytest.approx(1.071))
+    assert entry["size"]["kind"] == "fraction"
+    assert entry["size"]["fraction"] == pytest.approx(fraction)
+    assert entry["size"]["units"] == pytest.approx(units)
+    # and the yes bet's own numbers size nothing: the released computation
+    assert _quarter_kelly_units(0.655, 0.70) == (0.0, 0.0)
+
+
+def test_the_yes_side_is_sized_as_it_was(tmp_path, monkeypatch):
+    """THE YES SIDE UNCHANGED: its chance is the claim's number and its cost
+    the yes price, which is what the released computation handed
+    `kelly_fraction` for every side. Asked directly under the cap, the mirror
+    of the test above (34.5% against a 30c yes price) is the same 0.01607;
+    and through the call site a yes-side pick (62% against 46c) is sized
+    exactly as `kelly_fraction` of its yes numbers says, at the cap."""
+    yes = recommend.size_for(model_prob=0.345, price=0.30, side="yes",
+                             settled=400, measured_edge=True)
+    fraction, units = _quarter_kelly_units(0.345, 0.30)
+    assert (yes["kind"], yes["side"]) == ("fraction", "yes")
+    assert yes["fraction"] == pytest.approx(fraction)
+    assert yes["units"] == pytest.approx(units)
+    released = min(config.KELLY_FRACTION * recommend.kelly_fraction(0.345, 0.30),
+                   config.MAX_FRACTION)
+    assert yes["fraction"] == pytest.approx(round(released, 5))
+    # the no side at (p, c) is the yes side at (1 - p, 1 - c): one bet
+    no = recommend.size_for(model_prob=0.655, price=0.70, side="no",
+                            settled=400, measured_edge=True)
+    assert (no["fraction"], no["units"]) == (yes["fraction"], yes["units"])
+    _past_the_gate_and_ahead(monkeypatch)
+    conn = _world(tmp_path)
+    pid = _pick(conn, prob=0.62, implied=0.46)
+    entry = recommend.for_predictions(conn, [pid], now=ASKED)[0]
+    assert entry["side"] == "yes" and entry["size"]["kind"] == "fraction"
+    released = min(config.KELLY_FRACTION * recommend.kelly_fraction(0.62, 0.46),
+                   config.MAX_FRACTION)
+    assert entry["size"]["fraction"] == pytest.approx(round(released, 5))
+    assert entry["size"]["units"] == pytest.approx(
+        round(released * config.BANKROLL_UNITS, 3))
+
+
+def test_the_size_cannot_be_asked_without_naming_the_side():
+    """A KEYWORD WITH NO DEFAULT (item 4's precedent): a caller that forgets
+    the side is a TypeError, never the yes side. A side that is neither is
+    refused by name whatever the gate -- below it too, where the answer is a
+    flat unit whichever the side, so a wrong side would otherwise pass until
+    the day the market passed its gate -- and with no price. A pick that
+    takes no side is sized nothing: there is no bet to size."""
+    import inspect
+
+    side = inspect.signature(recommend.size_for).parameters["side"]
+    assert side.kind is inspect.Parameter.KEYWORD_ONLY
+    assert side.default is inspect.Parameter.empty
+    with pytest.raises(TypeError):
+        recommend.size_for(model_prob=0.43, price=0.485, settled=400,
+                           measured_edge=True)
+    with pytest.raises(TypeError):
+        recommend.size_for(model_prob=0.62, price=0.50, settled=3)
+    for settled, price in ((400, 0.485), (3, 0.485), (400, None)):
+        with pytest.raises(ValueError, match="'yes' or 'no'"):
+            recommend.size_for(model_prob=0.43, price=price, side="home",
+                               settled=settled, measured_edge=True)
+    none = recommend.size_for(model_prob=0.43, price=0.485, side=None,
+                              settled=400, measured_edge=True)
+    assert (none["kind"], none["units"]) == ("none", 0.0)
+    assert none["why"] == "no side is taken, so nothing is sized"
+    # below the gate a side changes nothing: one flat unit, either side
+    for s in ("yes", "no"):
+        flat = recommend.size_for(model_prob=0.43, price=0.485, side=s, settled=3)
+        assert (flat["kind"], flat["units"]) == ("flat", config.FLAT_UNIT)
+
+
+# --- every size the page draws is the side bought's (Q10's prover) ----------
+#
+# 2026-10-12. The four tests above hold the engine and the writer. The page
+# draws a pick's size in two places and works none out of its own: the Today
+# card's `size_words` (which the board's row and tile carry) and the
+# recommendation line's units and words, both read off the entry's size
+# (`views`). These draw it past both gates -- the edge gate put at nothing
+# and measured ahead, as above, and B.5's at-the-line gate passed
+# (`tests/gate_world.py`), so the pick is a pick and its size is drawn -- on
+# each road a side is bought on: a moneyline, a spread and a total, on the
+# model's own words and on the other side of them, at the cap and under it.
+# Each fails on 234dad7, where every no-side pick was drawn "0.00 units, a
+# quarter of Kelly and capped." beside its green outline.
+
+def _home_pick(conn, *, confidence, price):
+    """AAA (home) to win at `confidence`: a line-less claim of that number on
+    the home side, against a home price of `price`."""
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'moneyline', 'AAA', NULL, ?,"
+        " 'win', 'statistical', 'final', 'fs2', ?, 'test')", (confidence, WHOLE))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', ?, 'e', 'mlb', 'g0', 'moneyline', 'home_win', NULL,"
+        " 'home', ?, ?, '2026-09-07T01:30:00Z')",
+        (f"t{pid}", price - 0.01, price + 0.01))
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'moneyline', 'home_win', NULL,"
+        " 'home', 'line_less', NULL, NULL, ?, ?, ?, 'mid',"
+        " '2026-09-07T01:30:00Z')", (pid, quote, confidence, price, price))
+    conn.commit()
+    shortlist.rank_rows(conn, [pid])
+    return pid
+
+
+def _total_pick(conn, *, side, confidence, over_price):
+    """`side` 8.5 total runs at `confidence` on g0: a claim of the over's
+    chance at the venue's own 8.5, against an over price of `over_price`."""
+    over = confidence if side == "over" else 1.0 - confidence
+    conn.execute(
+        "INSERT INTO predictions (created_utc, sport, game_id, market_type,"
+        " subject, line_asked, model_prob, model_side, predictor, pass_kind,"
+        " factor_set_version, factors_json, reasoning) VALUES"
+        " ('2026-09-07T00:00:00Z', 'mlb', 'g0', 'total', 'BBB @ AAA', 8.5, ?, ?,"
+        " 'statistical', 'final', 'fs2', '{\"coverage\": 1.0}', 'test')",
+        (confidence, side))
+    pid = conn.execute("SELECT MAX(id) FROM predictions").fetchone()[0]
+    conn.execute(
+        "INSERT INTO venue_quotes (venue, ticker, event_ticker, sport, game_id,"
+        " market, quantity, line, yes_side, yes_bid, yes_ask, fetched_utc)"
+        " VALUES ('kalshi', ?, 'e', 'mlb', 'g0', 'total', 'total', 8.5, 'over',"
+        " ?, ?, '2026-09-07T01:30:00Z')",
+        (f"t{pid}", over_price - 0.01, over_price + 0.01))
+    quote = conn.execute("SELECT MAX(id) FROM venue_quotes").fetchone()[0]
+    conn.execute(
+        "INSERT INTO at_the_line_claims (prediction_id, quote_id, venue, sport,"
+        " game_id, market, quantity, line, side, shape, dist_mean, dist_sd,"
+        " model_prob, venue_price, venue_implied, price_basis, created_utc)"
+        " VALUES (?, ?, 'kalshi', 'mlb', 'g0', 'total', 'total', 8.5, 'over',"
+        " 'rung_matched', NULL, NULL, ?, ?, ?, 'mid', '2026-09-07T01:30:00Z')",
+        (pid, quote, over, over_price, over_price))
+    conn.commit()
+    shortlist.rank_rows(conn, [pid])
+    return pid
+
+
+def _the_page_draws_the_side_boughts_size(conn, pid, *, sport, week, side,
+                                          chance, cost):
+    """Every size the page draws for `pid`'s pick -- the Today card's, the
+    board's row and tile, the recommendation line's units and words -- is a
+    quarter of Kelly of the side bought's own `chance` against its own
+    `cost`, worked out here (`_quarter_kelly_units`); and the page's own
+    checks of the side, the line and the headline pass it."""
+    from gridiron import audit, views
+    from gridiron.market import recommend as the_pages   # the module `views` reads
+
+    entry = the_pages.for_predictions(conn, [pid])[0]
+    assert entry["side"] == side
+    fraction, units = _quarter_kelly_units(chance, cost)
+    words = language.size_words(units=units, flat=False, why=None, unit_dollars=None)
+    payload = views.week(conn, sport, 2026, week)
+    [card] = [c for c in payload["today"]["clears"] if c["prediction_id"] == pid]
+    assert card["pick"] is True and card["size_words"] == words
+    blocks = [g["pick"] for g in payload["board"]["games"]
+              if g.get("pick") and g["pick"]["prediction_id"] == pid]
+    blocks += [q for g in payload["board"]["games"] for q in g["questions"]
+               if q["prediction_id"] == pid]
+    assert len(blocks) == 2                       # the row's pick and its tile
+    assert [b["size_words"] for b in blocks] == [words, words]
+    [line] = [x for x in payload["recommendations"]["lines"]
+              if x["prediction_id"] == pid]
+    assert line["pick"] is True and line["units"] == pytest.approx(units)
+    assert words in line["words"]
+    assert (audit.headline_faults(payload) + audit.pick_side_faults(payload)
+            + audit.board_price_side_faults(payload)
+            + audit.number_line_faults(payload, audit.pick_contracts(conn, payload))
+            + audit.pick_rank_faults(conn, payload)) == []
+    return units
+
+
+def test_a_moneylines_size_on_the_page_is_the_side_boughts(tmp_path, monkeypatch):
+    """A MONEYLINE, EACH SIDE. The question's numbers (BBB, the model's own
+    side, at 57% against the 51.5c its no side costs) drawn at the cap; the
+    no side bought on the other side of the model's words (AAA to win at 74%
+    against an 80c yes price: BBB at 26% against 20c, +4.0c) under it, 1.25
+    units; and the yes side bought on the other side of its words (BBB at
+    74%: AAA at 26% against a 20c yes price) the same 1.25, as released. On
+    234dad7 the two no-side picks were drawn at 0.00 units."""
+    from tests.gate_world import pass_the_gate
+
+    _past_the_gate_and_ahead(monkeypatch)
+    for name, pick, side, chance, cost, units in (
+            ("own", lambda c: _away_pick(c, price=0.485, confidence=0.57),
+             "no", 0.57, 0.515, 1.333),
+            ("other", lambda c: _home_pick(c, confidence=0.74, price=0.80),
+             "no", 0.26, 0.20, 1.25),
+            ("yes", lambda c: _away_pick(c, price=0.20, confidence=0.74),
+             "yes", 0.26, 0.20, 1.25)):
+        (tmp_path / name).mkdir()
+        conn = _world(tmp_path / name, kickoff="2099-01-01T00:00:00Z")
+        pid = pick(conn)
+        pass_the_gate(conn, sport="mlb", market="moneyline")
+        assert _the_page_draws_the_side_boughts_size(
+            conn, pid, sport="mlb", week=1, side=side, chance=chance,
+            cost=cost) == pytest.approx(units), name
+        conn.close()
+
+
+def test_a_spreads_other_side_on_the_page_is_its_own_size(tmp_path, monkeypatch):
+    """A SPREAD'S OTHER SIDE: rec 111's shape (step A's world), "TLSA covers
+    +6.5" answered "fail to cover" and priced off the home contract "Tulsa
+    wins by over 1.5" at 48.5c with the model's 23.98% -- the pick buys North
+    Texas +1.5, the no side, at 76.02% against 51.5c. At the cap, 1.333 units;
+    on 234dad7, 0.00."""
+    from tests import test_every_number_names_its_line as step_a
+    from tests.gate_world import pass_the_gate
+
+    _past_the_gate_and_ahead(monkeypatch)
+    conn, pid, sport, week = step_a._world(tmp_path / "rec111.db", "rec111")
+    pass_the_gate(conn, sport="cfb", market="spread")
+    assert _the_page_draws_the_side_boughts_size(
+        conn, pid, sport=sport, week=week, side="no", chance=1 - 0.2398,
+        cost=0.515) == pytest.approx(1.333)
+    conn.close()
+
+
+def test_a_totals_under_on_the_page_is_its_own_size(tmp_path, monkeypatch):
+    """A TOTAL'S OTHER SIDE, BOTH WAYS: the under bought on the model's over
+    (over 8.5 at 74% against an 80c over price: the under at 26% against 20c,
+    1.25 units, under the cap) and the model's own under (57%, the over's 43%
+    against 48.5c: the under at 57% against 51.5c, at the cap). On 234dad7
+    each was drawn at 0.00 units."""
+    from tests.gate_world import pass_the_gate
+
+    _past_the_gate_and_ahead(monkeypatch)
+    for name, side, confidence, over_price, chance, cost, units in (
+            ("over", "over", 0.74, 0.80, 0.26, 0.20, 1.25),
+            ("under", "under", 0.57, 0.485, 0.57, 0.515, 1.333)):
+        (tmp_path / name).mkdir()
+        conn = _world(tmp_path / name, kickoff="2099-01-01T00:00:00Z")
+        pid = _total_pick(conn, side=side, confidence=confidence,
+                          over_price=over_price)
+        pass_the_gate(conn, sport="mlb", market="total")
+        assert _the_page_draws_the_side_boughts_size(
+            conn, pid, sport="mlb", week=1, side="no", chance=chance,
+            cost=cost) == pytest.approx(units), name
+        conn.close()
 
 
 def _recorded(conn, rid, *, side, price, edge, created, fair=0.40, pid=None):

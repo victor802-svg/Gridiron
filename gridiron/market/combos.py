@@ -288,8 +288,12 @@ def size_for(legs: int, *, settled: int, gate: int, fair: float | None = None,
                 "why": ("no measured edge in this market yet"
                         if settled < gate else
                         "the record does not show this market beating its price")}
-    sized = recommend.size_for(model_prob=fair, price=price, settled=settled,
-                               measured_edge=measured_edge)
+    # A PACKAGE IS BOUGHT ON ITS YES (`package_edge`), so its size is the yes
+    # side's: `fair` is what the package is worth and `price` what it costs.
+    # Named because `size_for` takes the side taken and has no default
+    # (operator question 10, ruled 2026-09-27; built 2026-10-12).
+    sized = recommend.size_for(model_prob=fair, price=price, side="yes",
+                               settled=settled, measured_edge=measured_edge)
     # CAPPED AT THE FLAT FRACTION, so a package can never be staked above what
     # an unproven one would have been.
     return {"kind": sized["kind"], "legs": legs,
