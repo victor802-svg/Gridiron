@@ -685,6 +685,18 @@
   escape collapsed -- this entry's own path to the runner -- and was
   repaired when it was read back). **Next: its prover; then the step's
   gate and release.**
+  **Q47 BUILT, PROVED AND COMMITTED (628880c, not yet gated); Q10 STOPPED
+  MID-BUILD by the weekly limit (~2026-10-09; resumed 2026-10-12 16:40Z
+  at the reset):** workflow wf_9858f6e1-cb0 (scratchpad wf_q47q10.js);
+  Q10's builder left changes to gridiron/market/combos.py,
+  gridiron/market/recommend.py, tests/test_recommend.py,
+  tests/test_three_states.py and tools/guards/plant.py, uncommitted.
+  RESUMED from there (the weekly-limit rule: Q47's finished steps
+  replayed, not rerun). Meanwhile (2026-10-10, the operator's word,
+  after he updated an API key): today's college final pass, hung at
+  16:19Z, was rerun by hand (Start-ScheduledTask Gridiron-Final-CFB):
+  ok at 16:46:55Z, 105 questions re-forecast; its 9 recommendations
+  are not picks under B.5 (NCAAF spread 82 of 100).
   **Q5 RELEASED as 451ab3d (2026-10-08 23:54Z; gate 4/4 on its first run,
   463/463; serving 451ab3dbafd8)** -- the page says when a render has
   landed (`gridiron:rendered`, its view, panel and place in the order
