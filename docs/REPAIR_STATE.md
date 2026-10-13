@@ -2,6 +2,29 @@
 
 ## START HERE (2026-09-27 ~02:40Z): the overnight queue is closed out
 
+- **THE ORDER NOW (13 Oct, docs/briefs/2026-10-13-props.md; wins over every
+  order below):** everything the brief's ORDER names from C to Q10 was
+  already released (the read-only report of 13 Oct, scratchpad
+  wf_props_report.js); so the next fix is its rulings 2-7, "the props
+  board picks regular lines". READINGS (conservative, recorded,
+  reversible): ruling 2 answers question 40 (the main line only between
+  35c and 65c) and, with ruling 3's "any the venue lists", question 39
+  (the venue's NFL prop series are read: KXNFLPASSYDS, KXNFLRECYDS,
+  KXNFLREC, KXNFLPASSTDS; no per-game rushing-yards series); question 43
+  stays open (the yardage stats store no projection, so their main-line
+  row shows the venue's line and no model chance until it is ruled);
+  ruling 3 makes a main-line leg at +3 points against a typed payout a
+  pick, "not yet proven" beside it (the step-2 default that an unproven
+  M4 makes no pick gives way to the ruling's words); M4's chance at the
+  main line is recorded before the start as a claim and graded after
+  (its "100 graded legs" and ruling 6's main-line hit rate); ruling 2
+  covers player props (the venue-priced game-market favourites stay rows,
+  not picks under B, and are reported); ruling 4's "one fitted spread
+  unit" is one standard deviation of M4's form at the projection; the
+  model's own questions stay as asked (LAW 3) and move under "show full
+  ladder". BUILDING: scratchpad wf_props.js -- ruling 6 (hit rates),
+  then the venue's prop ladders, then rulings 2-5 with the plantings;
+  three commits, one gate.
 - **THE ORDER NOW (6 Oct, second ruling, docs/briefs/2026-10-06-rulings-
   second.md; wins over every order below):** C -> Q38 ((A): a game's start
   is the earlier of its listed start and the first poll that sees it truly
